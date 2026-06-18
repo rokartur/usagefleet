@@ -1,0 +1,25 @@
+{
+  "name": "claude-track-collector",
+  "version": "1.0.0",
+  "description": "Tails Claude Code JSONL logs and reports token usage to a Claude Track server.",
+  "type": "module",
+  "bin": {
+    "claude-track": "dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

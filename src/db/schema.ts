@@ -1,0 +1,152 @@
+import { relations } from "drizzle-orm";
+import {
+  pgTable,
+  pgEnum,
+  text,
+  timestamp,
+  integer,
+  bigint,
+  boolean,
+  index,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
+
+// Re-export the better-auth-owned tables (user/session/account/verification).
+export * from "./auth-schema";
+import { user } from "./auth-schema";
+
+export const osEnum = pgEnum("os", ["mac", "linux", "windows"]);
+export const planEnum = pgEnum("plan", ["pro", "max5", "max20", "custom"]);
+
+// A named bucket of devices; usage is reported per group.
+export const groups = pgTable(
+  "groups",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    color: text("color").notNull().default("#6366f1"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [index("groups_owner_idx").on(t.ownerId)],
+);
+
+// A desktop install of the collector. Authenticates to the ingest API with a
+// long-lived bearer token; only the SHA-256 hash is stored.
+export const devices = pgTable(
+  "devices",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    groupId: text("group_id").references(() => groups.id, {
+      onDelete: "set null",
+    }),
+    name: text("name").notNull(),
+    os: osEnum("os"),
+    hostname: text("hostname"),
+    tokenHash: text("token_hash").notNull().unique(),
+    tokenPrefix: text("token_prefix").notNull(),
+    revoked: boolean("revoked").notNull().default(false),
+    collectorVersion: text("collector_version"),
+    lastSeenAt: timestamp("last_seen_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("devices_user_idx").on(t.userId),
+    index("devices_group_idx").on(t.groupId),
+  ],
+);
+
+// One raw JSONL assistant-message segment, deduped server-side on `uuid`.
+// Aggregation folds rows by (messageId, requestId) — see lib/usage/fold.ts.
+export const usageEvents = pgTable(
+  "usage_event",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    deviceId: text("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+    uuid: text("uuid").notNull(),
+    messageId: text("message_id"),
+    requestId: text("request_id"),
+    model: text("model"),
+    sessionId: text("session_id"),
+    ts: timestamp("ts", { withTimezone: true }).notNull(),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    cacheCreationTokens: integer("cache_creation_tokens").notNull().default(0),
+    cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
+    serviceTier: text("service_tier"),
+    cwd: text("cwd"),
+    gitBranch: text("git_branch"),
+    claudeVersion: text("claude_version"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // Dedup is scoped per-user so one account can never suppress/poison another
+    // account's rows by reusing a uuid.
+    uniqueIndex("usage_event_user_uuid_uq").on(t.userId, t.uuid),
+    index("usage_event_user_ts_idx").on(t.userId, t.ts),
+    index("usage_event_device_ts_idx").on(t.deviceId, t.ts),
+  ],
+);
+
+// Per-user limit configuration. Defaults mirror the `max5` plan preset; the
+// numbers approximate Anthropic's (opaque) limits and are editable in Settings.
+export const userSettings = pgTable("user_settings", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  plan: planEnum("plan").notNull().default("max5"),
+  sessionLimitTokens: bigint("session_limit_tokens", { mode: "number" })
+    .notNull()
+    .default(88_000),
+  weeklyLimitTokens: bigint("weekly_limit_tokens", { mode: "number" })
+    .notNull()
+    .default(2_200_000),
+  weekResetWeekday: integer("week_reset_weekday").notNull().default(1), // 0=Sun
+  weekResetHourUtc: integer("week_reset_hour_utc").notNull().default(0),
+  // Deprecated (manual sessionKey flow, replaced by collector-reported limits).
+  // Kept as nullable no-op columns to avoid a destructive migration.
+  claudeSessionKey: text("claude_session_key"),
+  claudeOrgId: text("claude_org_id"),
+  // Latest REAL utilization reported by the collector (read from the local
+  // Claude Code login on a device — `sub` = subscription OAuth, `api` = API key).
+  limitSource: text("limit_source"), // 'sub' | 'api'
+  fiveHourPct: integer("five_hour_pct"),
+  sevenDayPct: integer("seven_day_pct"),
+  fiveHourResetsAt: timestamp("five_hour_resets_at", { withTimezone: true }),
+  sevenDayResetsAt: timestamp("seven_day_resets_at", { withTimezone: true }),
+  limitsReportedAt: timestamp("limits_reported_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const groupsRelations = relations(groups, ({ many, one }) => ({
+  devices: many(devices),
+  owner: one(user, { fields: [groups.ownerId], references: [user.id] }),
+}));
+
+export const devicesRelations = relations(devices, ({ one, many }) => ({
+  group: one(groups, { fields: [devices.groupId], references: [groups.id] }),
+  user: one(user, { fields: [devices.userId], references: [user.id] }),
+  events: many(usageEvents),
+}));
+
+export const usageEventsRelations = relations(usageEvents, ({ one }) => ({
+  device: one(devices, {
+    fields: [usageEvents.deviceId],
+    references: [devices.id],
+  }),
+}));
+
+export type Device = typeof devices.$inferSelect;
+export type Group = typeof groups.$inferSelect;
+export type UsageEvent = typeof usageEvents.$inferSelect;
+export type UserSettings = typeof userSettings.$inferSelect;

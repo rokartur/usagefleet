@@ -1,36 +1,101 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Claude Track
 
-## Getting Started
+Self-hosted tracker for **Claude usage** across one subscription used on many
+**desktop** devices (macOS, Linux, Windows). Group devices and see each group's
+share of your **5-hour session** and **weekly** limits.
 
-First, run the development server:
+- **Server** — Next.js 16 (App Router) + better-auth + Drizzle + PostgreSQL,
+  shipped as two Docker containers (`web` + `db`).
+- **Collector** — a tiny Node CLI that tails Claude Code's local JSONL logs
+  (`~/.claude/projects/**/*.jsonl`) and pushes token usage to the server.
+
+> Phones are out of scope: the Claude mobile app keeps no local usage logs.
+
+## How usage is measured
+
+The headline **5-hour** and **weekly** percentages are Claude's own utilization
+figures — not an estimate. The collector auto-detects your local Claude login on
+each machine (subscription OAuth from `claude`, or `ANTHROPIC_API_KEY`), reads
+the real numbers from Anthropic's `anthropic-ratelimit-unified-5h/7d-utilization`
+response headers, and reports them to the server. No keys are pasted into the web
+app. (Same idea as
+[Claude-Usage-Tracker](https://github.com/hamed-elfayome/Claude-Usage-Tracker).)
+
+Those account-wide percentages are then split **per group** using local activity:
+the collector tails Claude Code's JSONL logs, dedups streamed segments by `uuid`,
+folds by `(messageId, requestId)`, and each group's share of billable tokens
+(input+output+cache-creation, excluding the huge cache-read replay) apportions the
+official total.
+
+## Run the server (Docker)
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env
+
+# Generate the better-auth secret (>=32 chars) and write it into .env:
+SECRET=$(openssl rand -base64 32)
+sed -i '' "s|^BETTER_AUTH_SECRET=.*|BETTER_AUTH_SECRET=$SECRET|" .env   # macOS
+# Linux: sed -i "s|^BETTER_AUTH_SECRET=.*|BETTER_AUTH_SECRET=$SECRET|" .env
+# …then set POSTGRES_PASSWORD and the URLs in .env.
+
+docker compose up --build -d  # db + web; migrations run automatically on boot
+# open http://localhost:3000  (override host port with WEB_PORT=)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`BETTER_AUTH_SECRET` signs session cookies — it must be a high-entropy string of
+at least 32 characters. Generate one with `openssl rand -base64 32` (or
+`node -e "console.log(crypto.randomBytes(32).toString('base64'))"`). Keep it
+secret and stable; changing it invalidates all existing sessions.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**Lock signup** — set `ALLOW_SIGNUP=false` to disable new account creation
+(enforced server-side by better-auth, not just hidden in the UI). Typical flow:
+sign up once, then set `ALLOW_SIGNUP=false` and `docker compose up -d` to apply.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`web` runs Drizzle migrations at startup (idempotent), then serves Next.js. The
+DB is reached over the compose network at `db:5432`; it is not exposed to the
+host by default.
 
-## Learn More
+**Port already in use?** If `curl localhost:3000` returns `000` even though
+`docker compose ps` shows `web` up and healthy, another process holds host port
+3000 (the container app listens fine inside — only the host→container forward
+fails). Pick a free port: set `WEB_PORT=3002` and the matching
+`NEXT_PUBLIC_APP_URL` / `BETTER_AUTH_URL` in `.env`, then `docker compose up -d`.
+The auth client uses the same origin it's served from, so no rebuild is needed
+to change ports.
 
-To learn more about Next.js, take a look at the following resources:
+## Use it
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Sign up at `/signup`.
+2. **Groups** → create groups (e.g. "Laptops", "Work desktops").
+3. **Devices** → add a device, assign a group, **copy the token** (shown once).
+4. Install the collector on that machine (see `collector/README.md`) with the
+   token, on a machine where you're signed into Claude Code. It auto-detects your
+   subscription and reports real usage — the **Dashboard** fills in within a
+   minute. No keys to configure in the web app.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Local development
 
-## Deploy on Vercel
+```bash
+docker run -d --name ct-db -e POSTGRES_DB=app -e POSTGRES_USER=app \
+  -e POSTGRES_PASSWORD=app -p 5432:5432 postgres:17-alpine
+npm install
+npm run db:migrate     # apply migrations
+npm run dev            # http://localhost:3000
+npm test               # usage-math + collector unit tests
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Schema changes: edit `src/db/schema.ts`, run `npm run db:generate`
+(drizzle-kit), commit the SQL under `drizzle/`. better-auth tables live in
+`src/db/auth-schema.ts` (regenerate with `npx @better-auth/cli generate`).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Layout
+
+| Path | What |
+|------|------|
+| `src/db/` | Drizzle schema (auth + groups/devices/usage_event/user_settings) |
+| `src/lib/usage/` | fold + 5h blocks + weekly window + limits + pricing (pure, unit-tested) |
+| `src/lib/auth.ts` | better-auth (email/password); device auth is a separate hashed token |
+| `src/app/api/v1/usage/` | ingestion endpoint (`x-api-key`, dedup on `uuid`) |
+| `src/app/(dash)/` | dashboard, groups, devices, settings |
+| `collector/` | standalone Node CLI (`claude-track`) |
+| `Dockerfile`, `docker-compose.yml` | two-container deployment |

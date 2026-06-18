@@ -32,6 +32,15 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# collector build artifacts + local state
+/collector/node_modules
+/collector/dist
+.claude-track-state.json
+
+# bundled migrator (built inside the Docker image)
+/migrate.cjs
 
 # vercel
 .vercel
