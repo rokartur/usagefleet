@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createDevice } from "@/lib/actions";
 
@@ -9,7 +8,6 @@ export function AddDeviceForm({
 }: {
   groups: { id: string; name: string }[];
 }) {
-  const router = useRouter();
   const [name, setName] = useState("");
   const [groupId, setGroupId] = useState("");
   const [token, setToken] = useState<string | null>(null);
@@ -24,7 +22,8 @@ export function AddDeviceForm({
       const res = await createDevice(name, groupId || null);
       setToken(res.token);
       setName("");
-      router.refresh();
+      // createDevice already calls revalidatePath("/devices"), which refreshes
+      // the server-rendered device list; no manual router.refresh() needed.
     } catch {
       setError("Failed to create device. Please try again.");
     } finally {

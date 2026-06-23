@@ -63,6 +63,9 @@ export function tailFile(
     // No newline in a full MAX_READ window = one pathologically long line.
     // Skip past it so the file can't stall forever.
     if (length >= MAX_READ) {
+      console.warn(
+        `claude-track: skipping a line > ${MAX_READ} bytes in ${filePath} at offset ${start}`,
+      );
       return {
         records: [],
         nextState: { ...base, offset: start + length },

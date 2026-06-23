@@ -1,4 +1,13 @@
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  fsyncSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeSync,
+} from "node:fs";
+import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { StateFile } from "./types.js";
 
@@ -27,10 +36,46 @@ export function loadState(path: string): StateFile {
   };
 }
 
-/** Atomic write: tmp file + rename, so a crash mid-write can't corrupt state. */
+/**
+ * Durable atomic write: write to a per-process tmp file, fsync it, rename over
+ * the target, then fsync the directory. The per-pid tmp name means two
+ * concurrent collectors (e.g. the installed service + a manual `run`) can never
+ * clobber a shared `.tmp` and publish corrupt JSON; the rename is atomic so a
+ * reader never sees a half-written file, and the fsyncs make the committed
+ * offsets survive a power loss (otherwise a crash could truncate state and reset
+ * every offset to 0, forcing a full re-tail).
+ */
 export function saveState(path: string, state: StateFile): void {
   state.updatedAt = new Date().toISOString();
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, JSON.stringify(state, null, 2), "utf8");
-  renameSync(tmp, path);
+  const tmp = `${path}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
+  const data = JSON.stringify(state, null, 2);
+  try {
+    const fd = openSync(tmp, "w");
+    try {
+      writeSync(fd, data, 0, "utf8");
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(tmp, path);
+  } catch (err) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* tmp may not exist */
+    }
+    throw err;
+  }
+  // Best-effort directory fsync so the rename's entry is durable. Some platforms
+  // (e.g. Windows) reject opening a directory for fsync — ignore there.
+  try {
+    const dirFd = openSync(dirname(path), "r");
+    try {
+      fsyncSync(dirFd);
+    } finally {
+      closeSync(dirFd);
+    }
+  } catch {
+    /* directory fsync unsupported — the rename is still atomic */
+  }
 }

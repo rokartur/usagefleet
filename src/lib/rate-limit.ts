@@ -38,11 +38,43 @@ export function rateLimit(
   return { ok: true, retryAfter: 0 };
 }
 
-/** Best-effort client IP from common proxy headers. */
+/**
+ * Rate-limit key derived from the client IP.
+ *
+ * `X-Forwarded-For` is client-controlled, so trusting its leftmost value lets an
+ * attacker mint a fresh bucket per request and defeat the pre-auth throttle. We
+ * only parse it when `TRUST_PROXY` is set (the operator runs a reverse proxy
+ * that appends a trustworthy entry), and then read from the RIGHT — the entries
+ * your own infrastructure appended — skipping `hops` proxies. Leftmost (forged)
+ * entries are ignored.
+ *
+ * Default (no trusted proxy, e.g. the direct-exposed compose port): ignore all
+ * client-supplied headers and use a single shared bucket. Strict but unspoofable
+ * — legitimate ingestion always carries a device token and is keyed on its hash,
+ * not the IP, so this only throttles anonymous (missing-token) spam.
+ */
 export function clientIp(req: Request): string {
+  const trust = process.env.TRUST_PROXY;
+  if (!trust || trust === "false" || trust === "0") return "anon";
+
+  const hops =
+    trust === "true"
+      ? 1
+      : Number.isFinite(Number(trust)) && Number(trust) > 0
+        ? Math.floor(Number(trust))
+        : 1;
+
   const xff = req.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  return req.headers.get("x-real-ip") ?? "unknown";
+  if (xff) {
+    const parts = xff
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const idx = parts.length - hops;
+    if (idx >= 0 && parts[idx]) return parts[idx]!;
+    if (parts.length > 0) return parts[0]!;
+  }
+  return req.headers.get("x-real-ip") ?? "anon";
 }
 
 export function tooMany(retryAfter: number): Response {

@@ -36,7 +36,10 @@ function OfficialCard({
 export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
   const [dash, setDash] = useState<DashboardDTO>(initial);
   const [lastOk, setLastOk] = useState(() => Date.now());
-  const [, setTick] = useState(0);
+  // `now` advances once a second (below) so the staleness check stays a pure
+  // read of state during render — calling Date.now() in the render body is
+  // impure (flagged by react-hooks/purity) and can render unstable results.
+  const [now, setNow] = useState(() => Date.now());
   const reqIdRef = useRef(0);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
@@ -60,9 +63,9 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
   useEffect(() => {
     const ac = new AbortController();
     const id = setInterval(() => refresh(ac.signal), POLL_MS);
-    // Re-render every second so the staleness indicator updates even when polls
-    // are failing (failed polls don't call setDash).
-    const ticker = setInterval(() => setTick((t) => t + 1), 1000);
+    // Advance `now` every second so the staleness indicator updates even when
+    // polls are failing (failed polls don't call setDash).
+    const ticker = setInterval(() => setNow(Date.now()), 1000);
     // Single source (visibilitychange) avoids the focus+visibility double fire.
     const onVisible = () => {
       if (document.visibilityState === "visible") refresh(ac.signal);
@@ -76,7 +79,7 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
     };
   }, [refresh]);
 
-  const stale = Date.now() - lastOk > 3 * POLL_MS;
+  const stale = now - lastOk > 3 * POLL_MS;
 
   if (!dash.connected) {
     return (
