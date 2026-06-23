@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-app}
       POSTGRES_USER: ${POSTGRES_USER:-app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     # Uncomment to reach the DB from the host (host port → container 5432):
@@ -28,15 +28,32 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-app}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env (>=32 chars)}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       # Set to "false" to block new account creation.
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
+      # Set to the number of trusted reverse proxies in front of the app (or
+      # "true" for one) so rate limiting reads a real client IP from
+      # X-Forwarded-For. Leave "false" for direct exposure — see .env.example.
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       NODE_ENV: production
     ports:
       - "${WEB_PORT:-3000}:3000"
+    healthcheck:
+      # The standalone runner image has no curl/wget — use node's built-in fetch.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
 
 volumes:
   pgdata:

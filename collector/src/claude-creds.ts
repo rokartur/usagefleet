@@ -29,9 +29,21 @@ function fromCredentialsFile(): OAuthBlob | null {
   }
 }
 
+/** Set by the most recent fromMacKeychain() call so callers can distinguish a
+ *  genuine "no login" from an access denial (common when the collector runs as a
+ *  non-interactive launchd agent and the login Keychain read is refused). */
+let macKeychainError: null | "notfound" | "denied" = null;
+
+/** True if the last Keychain read failed for a reason other than item-not-found
+ *  (exit 44) — i.e. the item likely exists but access was denied. */
+export function macKeychainDenied(): boolean {
+  return macKeychainError === "denied";
+}
+
 /** macOS: Claude Code stores the same JSON in the login Keychain. */
 function fromMacKeychain(): OAuthBlob | null {
   if (process.platform !== "darwin") return null;
+  macKeychainError = null;
   try {
     const out = execFileSync(
       "security",
@@ -39,7 +51,11 @@ function fromMacKeychain(): OAuthBlob | null {
       { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
     );
     return JSON.parse(out) as OAuthBlob;
-  } catch {
+  } catch (err) {
+    // `security` exits 44 (errSecItemNotFound) when there is genuinely no item;
+    // any other non-zero status usually means the read was denied.
+    const code = (err as { status?: number }).status;
+    macKeychainError = code === 44 ? "notfound" : "denied";
     return null;
   }
 }

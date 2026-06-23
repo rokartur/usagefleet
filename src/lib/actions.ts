@@ -8,10 +8,16 @@ import { devices, groups } from "@/db/schema";
 import { generateDeviceToken } from "@/lib/device-token";
 import { requireUser } from "@/lib/session";
 
+/** Accept only a #rrggbb hex color; fall back to the default otherwise so a
+ *  malformed value can't render a broken swatch or pollute stored data. */
+function safeColor(v: string): string {
+  return /^#[0-9a-fA-F]{6}$/.test(v) ? v : "#6366f1";
+}
+
 export async function createGroup(formData: FormData) {
   const user = await requireUser();
   const name = String(formData.get("name") ?? "").trim();
-  const color = String(formData.get("color") ?? "#6366f1");
+  const color = safeColor(String(formData.get("color") ?? "#6366f1"));
   if (!name) return;
   await db.insert(groups).values({ id: randomUUID(), ownerId: user.id, name, color });
   revalidatePath("/groups");

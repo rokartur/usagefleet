@@ -29,6 +29,7 @@ or set env vars (they override the config file):
 | `CLAUDE_TRACK_TOKEN` | device token |
 | `CLAUDE_TRACK_PROJECTS` | override `~/.claude/projects` |
 | `CLAUDE_TRACK_INTERVAL` | watch poll seconds (default 15) |
+| `CLAUDE_TRACK_LIMITS_INTERVAL` | how often to ping for real 5h/weekly limits, seconds (default 300; decoupled from the faster usage poll so the 1-token ping doesn't run every cycle) |
 | `CLAUDE_TRACK_STATE` | override `~/.claude-track-state.json` |
 
 ### Setting the token per shell
@@ -126,3 +127,12 @@ claude-track uninstall
   `claude-track watch` (the binary auto-detects the OS as `windows`).
 
 The OS is reported automatically (`process.platform` → `mac`/`linux`/`windows`).
+
+> **macOS limits under the service.** Usage collection (reading JSONL files) works
+> headless. The **real limit %** feature reads the login Keychain, and a
+> non-interactive launchd agent may be denied that read — the collector logs a
+> clear hint when this happens. If it does, either approve `/usr/bin/security`
+> access to the `Claude Code-credentials` item once, or set `ANTHROPIC_API_KEY`
+> before `claude-track install` (it's baked into the service) so limits use the
+> API key instead. A compiled binary is copied to a stable per-user location at
+> install time, so you can move or delete the downloaded file afterward.

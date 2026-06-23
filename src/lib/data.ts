@@ -200,15 +200,14 @@ export async function getLiveDashboard(
   const earliest = new Date(
     Math.min(weekStart.getTime(), fiveStart.getTime()) - 5 * 60 * 1000,
   );
-  const events = await loadRecentEvents(userId, earliest);
+  // Events and the group list are independent — fetch them in one round-trip.
+  const [events, groupRows] = await Promise.all([
+    loadRecentEvents(userId, earliest),
+    db.select().from(groups).where(eq(groups.ownerId, userId)),
+  ]);
 
   const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct);
   const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct);
-
-  const groupRows = await db
-    .select()
-    .from(groups)
-    .where(eq(groups.ownerId, userId));
 
   const keys = new Set<string | null>([
     ...sessionSplit.keys(),

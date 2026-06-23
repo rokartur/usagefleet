@@ -72,6 +72,19 @@ export async function fetchLimits(creds: ClaudeCreds): Promise<LimitsReport> {
     }),
     signal: AbortSignal.timeout(15000),
   });
-  // The unified rate-limit headers are present on success AND error responses.
-  return parseLimitsHeaders(creds.source, (n) => res.headers.get(n));
+  // The unified rate-limit headers are (historically) present on success AND
+  // error responses — this OAuth/header-scraping path against the public
+  // Messages endpoint is undocumented and may break without notice. If a
+  // rejected response ALSO lacks the headers, the feature is unavailable; throw
+  // so the caller logs it instead of POSTing an all-null report silently.
+  const report = parseLimitsHeaders(creds.source, (n) => res.headers.get(n));
+  const gotHeaders =
+    report.fiveHourPct != null ||
+    report.sevenDayPct != null ||
+    report.fiveHourResetsAt != null ||
+    report.sevenDayResetsAt != null;
+  if (!res.ok && !gotHeaders) {
+    throw new Error(`limits unavailable: HTTP ${res.status} with no rate-limit headers`);
+  }
+  return report;
 }

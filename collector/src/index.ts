@@ -57,6 +57,13 @@ async function cmdWatch(): Promise<void> {
   const cfg = loadConfig();
   const raw = Number(flag("interval") ?? process.env.CLAUDE_TRACK_INTERVAL ?? 15);
   const interval = Math.max(1, Number.isFinite(raw) && raw > 0 ? raw : 15) * 1000;
+  // The limits ping hits the real Messages API (1 billable token) — don't run it
+  // every usage-scan tick. Report at most once per CLAUDE_TRACK_LIMITS_INTERVAL
+  // seconds (default 300), decoupled from the much faster usage poll.
+  const rawLimits = Number(process.env.CLAUDE_TRACK_LIMITS_INTERVAL ?? 300);
+  const limitsInterval =
+    Math.max(interval / 1000, Number.isFinite(rawLimits) && rawLimits > 0 ? rawLimits : 300) * 1000;
+  let lastLimitsAt = 0;
   console.log(
     `[${ts()}] claude-track watching ${cfg.projectsDir} every ${interval / 1000}s → ${cfg.endpoint}`,
   );
@@ -71,11 +78,15 @@ async function cmdWatch(): Promise<void> {
       if (r.sent > 0) {
         console.log(`[${ts()}] sent ${r.sent} · accepted ${r.accepted} · dup ${r.duplicates}`);
       }
-      const limits = await reportLimitsOnce(cfg, (m) => console.log(`[${ts()}] ${m}`));
-      if (limits) {
-        console.log(
-          `[${ts()}] limits (${limits.source}): 5h ${limits.fiveHourPct ?? "?"}% · weekly ${limits.sevenDayPct ?? "?"}%`,
-        );
+      const nowMs = Date.now();
+      if (nowMs - lastLimitsAt >= limitsInterval) {
+        lastLimitsAt = nowMs;
+        const limits = await reportLimitsOnce(cfg, (m) => console.log(`[${ts()}] ${m}`));
+        if (limits) {
+          console.log(
+            `[${ts()}] limits (${limits.source}): 5h ${limits.fiveHourPct ?? "?"}% · weekly ${limits.sevenDayPct ?? "?"}%`,
+          );
+        }
       }
     } catch (err) {
       console.error(`[${ts()}] cycle error:`, (err as Error).message);
@@ -162,6 +173,16 @@ Config (env overrides ~/.claude-track.json):
 }
 
 async function main(): Promise<void> {
+  // Log-and-continue for the long-running watch daemon: a stray rejection must
+  // not silently kill the background service. One-shot commands still set a
+  // non-zero exit via their own error paths.
+  process.on("unhandledRejection", (reason) => {
+    console.error(`[${ts()}] unhandledRejection:`, reason);
+  });
+  process.on("uncaughtException", (err) => {
+    console.error(`[${ts()}] uncaughtException:`, (err as Error).message);
+  });
+
   const cmd = process.argv[2] ?? "help";
   switch (cmd) {
     case "run":

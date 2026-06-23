@@ -53,7 +53,17 @@ sign up once, then set `ALLOW_SIGNUP=false` and `docker compose up -d` to apply.
 
 `web` runs Drizzle migrations at startup (idempotent), then serves Next.js. The
 DB is reached over the compose network at `db:5432`; it is not exposed to the
-host by default.
+host by default. The `web` container has a `/api/health` healthcheck.
+
+**Behind a reverse proxy (HTTPS)** — set `TRUST_PROXY` to the number of proxies
+in front of the app (or `true` for one) so per-IP rate limiting reads a real
+client IP from `X-Forwarded-For`. Leave it `false` for direct exposure: the
+header is client-forgeable, so it's ignored and anonymous (missing-token)
+requests share one bucket. Your proxy should strip inbound `X-Forwarded-For`.
+
+> Rate limits (and better-auth's login throttle) are in-memory: they reset on
+> container restart and assume a **single** `web` instance. Add a shared store
+> before running multiple replicas.
 
 **Port already in use?** If `curl localhost:3000` returns `000` even though
 `docker compose ps` shows `web` up and healthy, another process holds host port

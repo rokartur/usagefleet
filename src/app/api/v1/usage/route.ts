@@ -23,10 +23,13 @@ const RecordSchema = z.object({
   cwd: z.string().nullish(),
   gitBranch: z.string().nullish(),
   version: z.string().nullish(),
-  inputTokens: z.number().int().nonnegative().default(0),
-  outputTokens: z.number().int().nonnegative().default(0),
-  cacheCreationTokens: z.number().int().nonnegative().default(0),
-  cacheReadTokens: z.number().int().nonnegative().default(0),
+  // Cap below Postgres int4 max (2^31-1) so a corrupt/malicious value is a clean
+  // 400 instead of a numeric-overflow 500 that rejects the whole batch. Real
+  // per-message counts are bounded by the context window (~1M), far below this.
+  inputTokens: z.number().int().nonnegative().max(2_000_000_000).default(0),
+  outputTokens: z.number().int().nonnegative().max(2_000_000_000).default(0),
+  cacheCreationTokens: z.number().int().nonnegative().max(2_000_000_000).default(0),
+  cacheReadTokens: z.number().int().nonnegative().max(2_000_000_000).default(0),
   serviceTier: z.string().nullish(),
 });
 
