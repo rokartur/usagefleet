@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Tabs } from "@/components/dashboard/Tabs";
-import { formatTokens } from "@/lib/format";
+import { formatTokens, formatUsd } from "@/lib/format";
 import type { DashboardDTO } from "@/lib/data";
 import type { TokenTotals, UsagePeriod } from "@/lib/usage";
 
@@ -58,7 +58,8 @@ function LedgerTable({ rows }: { rows: UsagePeriod[] }) {
             <th className="px-2 py-2 text-right font-medium">In</th>
             <th className="px-2 py-2 text-right font-medium">Out</th>
             <th className="px-2 py-2 text-right font-medium">Cache</th>
-            <th className="py-2 pl-2 text-right font-medium">Total</th>
+            <th className="px-2 py-2 text-right font-medium">Total</th>
+            <th className="py-2 pl-2 text-right font-medium">Cost</th>
           </tr>
         </thead>
         <tbody>
@@ -82,8 +83,14 @@ function LedgerTable({ rows }: { rows: UsagePeriod[] }) {
                 <td className="px-2 py-2 text-right text-neutral-400">
                   {formatTokens(cache)}
                 </td>
-                <td className="py-2 pl-2 text-right">
+                <td className="px-2 py-2 text-right text-neutral-400">
                   {formatTokens(r.totals.totalTokens)}
+                </td>
+                <td
+                  className="py-2 pl-2 text-right text-neutral-200"
+                  title="At public API list prices"
+                >
+                  {formatUsd(r.costUsd)}
                 </td>
               </tr>
             );

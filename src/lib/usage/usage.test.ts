@@ -10,7 +10,7 @@ import { pct, limitsForPlan, PLAN_PRESETS } from "./limits";
 import { costForTotals, costUsd, priceFor } from "./pricing";
 import { modelBreakdown, modelLabel } from "./models";
 import { computeDashboardUsage } from "./aggregate";
-import type { UsageRecord } from "./types";
+import type { TokenTotals, UsageRecord } from "./types";
 
 function rec(p: Partial<UsageRecord> & { uuid: string; ts: string }): UsageRecord {
   return {
@@ -124,9 +124,23 @@ describe("limits", () => {
 });
 
 describe("pricing", () => {
-  it("prices per million tokens by model family", () => {
-    expect(costForTotals({ inputTokens: 1_000_000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1_000_000 }, "claude-opus-4-8")).toBeCloseTo(15);
-    expect(costForTotals({ inputTokens: 0, outputTokens: 1_000_000, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 1_000_000 }, "claude-opus-4-8")).toBeCloseTo(75);
+  it("prices per million tokens by model family and version", () => {
+    const mtok = (over: Partial<TokenTotals>): TokenTotals => ({
+      inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0, ...over,
+    });
+    // Opus 4.5+ current tier: $5 in / $25 out per MTok.
+    expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-opus-4-8")).toBeCloseTo(5);
+    expect(costForTotals(mtok({ outputTokens: 1_000_000 }), "claude-opus-4-8")).toBeCloseTo(25);
+    // Opus 4.1 legacy tier: $15 in / $75 out per MTok.
+    expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-opus-4-1")).toBeCloseTo(15);
+    expect(costForTotals(mtok({ outputTokens: 1_000_000 }), "claude-opus-4-1")).toBeCloseTo(75);
+    // Haiku 4.5 ($1/$5) vs Haiku 3.5 legacy ($0.80/$4).
+    expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-haiku-4-5")).toBeCloseTo(1);
+    expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-3-5-haiku")).toBeCloseTo(0.8);
+    // Sonnet flat $3 in / $15 out; cache write 1.25x, cache read 0.1x.
+    expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(3);
+    expect(costForTotals(mtok({ cacheCreationTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(3.75);
+    expect(costForTotals(mtok({ cacheReadTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(0.3);
   });
   it("skips synthetic fable entries", () => {
     expect(priceFor("claude-fable-5")).toBeNull();

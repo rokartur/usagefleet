@@ -1,3 +1,4 @@
+import { costForTokens } from "./pricing";
 import type { TimelineBucket } from "./timeline";
 import { EMPTY_TOTALS, type TokenTotals } from "./types";
 
@@ -34,6 +35,9 @@ export interface UsagePeriod {
   /** Display label, e.g. "Jun 18" or "Jun 2026". */
   label: string;
   totals: TokenTotals;
+  /** Period cost in USD at public list prices, summed per-model (each row is
+   *  priced by its own model before summing, since rates differ per model). */
+  costUsd: number;
 }
 
 const emptyTotals = (): TokenTotals => ({ ...EMPTY_TOTALS });
@@ -94,31 +98,43 @@ export function totalsForMonth(rows: DailyAggRow[], ym: string): TokenTotals {
   return sumAgg(rows, (r) => r.day.startsWith(ym));
 }
 
+/**
+ * Group rows by a period key, summing tokens and cost. Cost is accrued per row
+ * using that row's own model (rates differ per model), then summed — so a mixed
+ * Opus+Haiku day costs each slice at its own list price. Newest period first.
+ */
+function buildLedger(
+  rows: DailyAggRow[],
+  keyOf: (r: DailyAggRow) => string,
+  labelOf: (key: string) => string,
+): UsagePeriod[] {
+  const totalsBy = new Map<string, TokenTotals>();
+  const costBy = new Map<string, number>();
+  for (const r of rows) {
+    const k = keyOf(r);
+    let t = totalsBy.get(k);
+    if (!t) totalsBy.set(k, (t = emptyTotals()));
+    addInto(t, r);
+    costBy.set(k, (costBy.get(k) ?? 0) + costForTokens(r, r.model));
+  }
+  return [...totalsBy.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([key, totals]) => ({
+      key,
+      label: labelOf(key),
+      totals,
+      costUsd: costBy.get(key) ?? 0,
+    }));
+}
+
 /** Per-day ledger, newest first. One entry per day that had any activity. */
 export function dailyLedger(rows: DailyAggRow[]): UsagePeriod[] {
-  const by = new Map<string, TokenTotals>();
-  for (const r of rows) {
-    let t = by.get(r.day);
-    if (!t) by.set(r.day, (t = emptyTotals()));
-    addInto(t, r);
-  }
-  return [...by.entries()]
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([key, totals]) => ({ key, label: dayLabel(key), totals }));
+  return buildLedger(rows, (r) => r.day, dayLabel);
 }
 
 /** Per-month ledger, newest first. */
 export function monthlyLedger(rows: DailyAggRow[]): UsagePeriod[] {
-  const by = new Map<string, TokenTotals>();
-  for (const r of rows) {
-    const ym = r.day.slice(0, 7);
-    let t = by.get(ym);
-    if (!t) by.set(ym, (t = emptyTotals()));
-    addInto(t, r);
-  }
-  return [...by.entries()]
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([key, totals]) => ({ key, label: monthLabel(key), totals }));
+  return buildLedger(rows, (r) => r.day.slice(0, 7), (k) => monthLabel(k));
 }
 
 function floorUtcDay(t: number): number {
