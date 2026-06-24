@@ -3,7 +3,25 @@
 Tails Claude Code's local JSONL logs and reports token usage to a Claude Track
 server. Read-only on the log files. Zero runtime dependencies (Node ≥ 18).
 
-## Install
+## Install (recommended)
+
+One line — downloads the prebuilt binary for your OS, verifies its checksum,
+configures it, and enables autostart. You only need a device **token** from the
+server's Devices page (endpoint defaults to `https://claude-tracker.rokartur.com`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rokartur/claude-track/main/install.sh | sh -s -- --token ctk_xxx
+```
+
+The repo is **private**, so the installer pulls releases through the GitHub CLI.
+Install [`gh`](https://cli.github.com/) and run `gh auth login` once first (or set
+`GH_TOKEN`). Works on macOS (launchd) and Linux (systemd `--user`).
+
+**Update** any time by re-running the same command — it fetches the latest
+binary and restarts the service. Flags: `--no-service` (binary only),
+`--endpoint <url>`, `--bin-dir <dir>`, `--version <tag>`; `--help` for all.
+
+### Install from source
 
 ```bash
 cd collector
@@ -150,11 +168,15 @@ claude-track install        # launchd (macOS) / systemd --user (Linux)
 claude-track uninstall
 ```
 
+`install` is idempotent and reload-safe: re-running it swaps in a new binary and
+restarts the service, so it doubles as the update step.
+
 - **macOS** — installs a LaunchAgent (`~/Library/LaunchAgents`, RunAtLoad +
-  KeepAlive). Logs at `/tmp/claude-track.*.log`.
-- **Linux** — writes a `--user` unit; then:
-  `systemctl --user daemon-reload && systemctl --user enable --now claude-track`
-  and `loginctl enable-linger $USER` to keep running after logout.
+  KeepAlive) and boots it (bootout → bootstrap → kickstart). Logs at
+  `/tmp/claude-track.*.log`.
+- **Linux** — writes a `--user` unit and runs `systemctl --user daemon-reload`,
+  `enable --now`, `restart`, plus `loginctl enable-linger $USER` automatically so
+  it survives logout. If `systemctl` can't be driven, it prints the manual steps.
 - **Windows** — `install` prints the NSSM / Task Scheduler command to register
   `claude-track watch` (the binary auto-detects the OS as `windows`).
 

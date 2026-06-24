@@ -146,11 +146,18 @@ ${envXml}
     const path = macPlistPath();
     mkdirSync(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
     writeFileSync(path, plist, "utf8");
+    const domain = `gui/${process.getuid?.()}`;
     // execFile (no shell) so `path` is never subject to shell interpolation.
+    // Reload-safe: boot out any previous instance first so re-running install
+    // (e.g. to apply an update) swaps in the new binary instead of leaving the
+    // old one resident.
     try {
-      execFileSync("launchctl", ["bootstrap", `gui/${process.getuid?.()}`, path], {
-        stdio: "inherit",
-      });
+      execFileSync("launchctl", ["bootout", domain, path], { stdio: "ignore" });
+    } catch {
+      /* not loaded yet — fine */
+    }
+    try {
+      execFileSync("launchctl", ["bootstrap", domain, path], { stdio: "inherit" });
     } catch {
       try {
         execFileSync("launchctl", ["load", path], { stdio: "inherit" });
@@ -158,7 +165,15 @@ ${envXml}
         /* report below; user can load manually */
       }
     }
-    console.log(`Installed launchd agent at ${path}`);
+    // Force a (re)start so an update takes effect immediately, not on next respawn.
+    try {
+      execFileSync("launchctl", ["kickstart", "-k", `${domain}/${LABEL}`], {
+        stdio: "ignore",
+      });
+    } catch {
+      /* best-effort */
+    }
+    console.log(`Installed launchd agent at ${path} (autostart enabled).`);
     return;
   }
 
@@ -191,10 +206,37 @@ WantedBy=default.target
     mkdirSync(join(homedir(), ".config", "systemd", "user"), { recursive: true });
     writeFileSync(path, unit, "utf8");
     console.log(`Installed systemd unit at ${path}`);
-    console.log("Enable it with:");
-    console.log("  systemctl --user daemon-reload");
-    console.log("  systemctl --user enable --now claude-track");
-    console.log("  loginctl enable-linger $USER   # keep running after logout");
+    // Enable + start automatically so autostart "just works". `restart` after
+    // enable picks up a new binary when re-running install to apply an update
+    // (enable --now leaves an already-running unit untouched).
+    const sc = (...args: string[]): boolean => {
+      try {
+        execFileSync("systemctl", ["--user", ...args], { stdio: "inherit" });
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const reloaded = sc("daemon-reload");
+    const enabled = sc("enable", "--now", "claude-track");
+    if (reloaded && enabled) {
+      sc("restart", "claude-track");
+      // Keep the user manager (and thus the service) alive after logout.
+      const user = process.env.USER || process.env.LOGNAME;
+      if (user) {
+        try {
+          execFileSync("loginctl", ["enable-linger", user], { stdio: "ignore" });
+        } catch {
+          /* not critical; service still runs while logged in */
+        }
+      }
+      console.log("Enabled and started claude-track (autostart on login).");
+    } else {
+      console.log("Could not drive systemctl automatically. Enable it manually:");
+      console.log("  systemctl --user daemon-reload");
+      console.log("  systemctl --user enable --now claude-track");
+      console.log("  loginctl enable-linger $USER   # keep running after logout");
+    }
     return;
   }
 
