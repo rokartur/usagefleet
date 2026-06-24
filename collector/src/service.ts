@@ -37,16 +37,32 @@ function stableBinPath(): string {
   return join(stableBinDir(), process.platform === "win32" ? "claude-track.exe" : "claude-track");
 }
 
+/** True when running as a compiled single-file executable rather than
+ *  `node dist/index.js`. A bun `--compile` binary has no real re-invokable
+ *  script at argv[1]: it's absent, equals the exec path, or points into bun's
+ *  virtual bundle filesystem (`/$bunfs/…` on POSIX, `…~BUN\…` on Windows).
+ *  Treating that virtual path as a real script (the old bug) baked a bogus
+ *  argument into the service command, so the launched process saw an unknown
+ *  command, printed help, and exited cleanly — leaving the service down. */
+export function looksLikeCompiledBinary(
+  scriptPath: string | undefined,
+  execPath: string,
+): boolean {
+  if (!scriptPath || scriptPath === execPath) return true;
+  if (scriptPath.includes("/$bunfs/")) return true;
+  if (/[\\/]~BUN[\\/]/.test(scriptPath)) return true;
+  return false;
+}
+
 /** Program + leading args to launch `watch`. Handles both `node dist/index.js`
- *  and a compiled single-file binary (where argv[1] is absent or == execPath).
- *  For the compiled binary, copy it to a stable location and point the service
- *  there — the downloaded file is often a transient ~/Downloads path. */
+ *  and a compiled single-file binary. For the compiled binary, copy it to a
+ *  stable location and point the service there — the downloaded file is often a
+ *  transient ~/Downloads path. */
 function programArgs(): string[] {
   const script = process.argv[1];
-  const isBinary = !script || script === process.execPath;
-  if (!isBinary) {
+  if (!looksLikeCompiledBinary(script, process.execPath)) {
     // `node dist/index.js` (e.g. npm link) — the script path is already stable.
-    return [process.execPath, script, "watch"];
+    return [process.execPath, script as string, "watch"];
   }
   try {
     const dest = stableBinPath();
