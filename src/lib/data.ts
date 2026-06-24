@@ -6,6 +6,8 @@ import {
   computeDashboardUsage,
   type DashboardUsage,
   foldAndSum,
+  modelBreakdown,
+  type ModelUsage,
   type UsageRecord,
 } from "@/lib/usage";
 
@@ -88,6 +90,9 @@ export interface LiveGroupUsage {
   weeklyPct: number;
   sessionTokens: number;
   weeklyTokens: number;
+  /** Which models the group used (and precise token counts) over the weekly
+   *  window — the broader, more stable view than the 5h session. */
+  models: ModelUsage[];
 }
 
 export interface LiveDashboard {
@@ -107,12 +112,18 @@ const SEVEN_D_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Split an official account-wide percentage across groups by each group's
  *  share of local billable tokens within the same window. */
+interface GroupShare {
+  pct: number;
+  tokens: number;
+  models: ModelUsage[];
+}
+
 function splitByShare(
   events: UsageRecord[],
   windowStart: Date,
   now: Date,
   officialPct: number,
-): Map<string | null, { pct: number; tokens: number }> {
+): Map<string | null, GroupShare> {
   const inWin = events.filter((e) => {
     const t = e.ts.getTime();
     return t >= windowStart.getTime() && t <= now.getTime();
@@ -125,19 +136,24 @@ function splitByShare(
     else byGroup.set(g, [e]);
   }
   const tokensByGroup = new Map<string | null, number>();
+  const modelsByGroup = new Map<string | null, ModelUsage[]>();
   let total = 0;
   for (const [g, evs] of byGroup) {
     const tok = billableTokens(foldAndSum(evs));
     tokensByGroup.set(g, tok);
+    modelsByGroup.set(g, modelBreakdown(evs));
     total += tok;
   }
-  const out = new Map<string | null, { pct: number; tokens: number }>();
+  const models = (g: string | null) => modelsByGroup.get(g) ?? [];
+  const out = new Map<string | null, GroupShare>();
 
   // Largest-remainder (Hamilton) apportionment so per-group pcts sum EXACTLY to
   // the integer official pct (avoids the rounding drift of independent rounds).
   const target = Math.max(0, Math.round(officialPct));
   if (total <= 0 || target === 0) {
-    for (const [g, tok] of tokensByGroup) out.set(g, { tokens: tok, pct: 0 });
+    for (const [g, tok] of tokensByGroup) {
+      out.set(g, { tokens: tok, pct: 0, models: models(g) });
+    }
     return out;
   }
   const rows = [...tokensByGroup].map(([g, tok]) => {
@@ -150,7 +166,9 @@ function splitByShare(
   for (let i = 0; i < rows.length && leftover > 0; i++, leftover--) {
     rows[i].floor += 1;
   }
-  for (const r of rows) out.set(r.g, { tokens: r.tok, pct: r.floor });
+  for (const r of rows) {
+    out.set(r.g, { tokens: r.tok, pct: r.floor, models: models(r.g) });
+  }
   return out;
 }
 
@@ -226,6 +244,8 @@ export async function getLiveDashboard(
     weeklyPct: weeklySplit.get(id)?.pct ?? 0,
     sessionTokens: sessionSplit.get(id)?.tokens ?? 0,
     weeklyTokens: weeklySplit.get(id)?.tokens ?? 0,
+    // Model breakdown over the weekly window (matches the weekly token figure).
+    models: weeklySplit.get(id)?.models ?? [],
   }));
   groupUsages.sort((a, b) => b.weeklyTokens - a.weeklyTokens);
 

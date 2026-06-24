@@ -12,3 +12,10 @@ export function defaultStatePath(): string {
 export function defaultConfigPath(): string {
   return process.env.CLAUDE_TRACK_CONFIG ?? join(homedir(), ".claude-track.json");
 }
+
+export function defaultNotifyStatePath(): string {
+  return (
+    process.env.CLAUDE_TRACK_NOTIFY_STATE ??
+    join(homedir(), ".claude-track-notify.json")
+  );
+}

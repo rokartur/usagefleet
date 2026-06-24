@@ -4,4 +4,5 @@ export * from "./blocks";
 export * from "./window";
 export * from "./limits";
 export * from "./pricing";
+export * from "./models";
 export * from "./aggregate";

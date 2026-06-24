@@ -1,6 +1,7 @@
 import { activeBlock } from "./blocks";
 import { foldAndSum } from "./fold";
 import { pct } from "./limits";
+import { modelBreakdown, type ModelUsage } from "./models";
 import { EMPTY_TOTALS, type TokenTotals, type UsageRecord } from "./types";
 import { filterByWindow, weekWindowStart } from "./window";
 
@@ -22,6 +23,8 @@ export interface GroupUsage extends UsageSlice {
   groupId: string | null;
   name: string;
   color: string;
+  /** Which models the group used (and how many tokens), over the weekly window. */
+  models: ModelUsage[];
 }
 
 export interface DashboardUsage {
@@ -78,12 +81,20 @@ export function computeDashboardUsage(
     else byGroup.set(g, [e]);
   }
 
-  const groupUsages: GroupUsage[] = groups.map((g) => ({
-    groupId: g.id,
-    name: g.name,
-    color: g.color,
-    ...sliceFor(byGroup.get(g.id) ?? []),
-  }));
+  // Models a group used over the weekly window (broader than the 5h session).
+  const modelsFor = (subset: UsageRecord[]): ModelUsage[] =>
+    modelBreakdown(filterByWindow(subset, weekStart, now));
+
+  const groupUsages: GroupUsage[] = groups.map((g) => {
+    const subset = byGroup.get(g.id) ?? [];
+    return {
+      groupId: g.id,
+      name: g.name,
+      color: g.color,
+      ...sliceFor(subset),
+      models: modelsFor(subset),
+    };
+  });
 
   const ungrouped = byGroup.get(null) ?? [];
   if (ungrouped.length > 0) {
@@ -92,6 +103,7 @@ export function computeDashboardUsage(
       name: "Ungrouped",
       color: "#94a3b8",
       ...sliceFor(ungrouped),
+      models: modelsFor(ungrouped),
     });
   }
 

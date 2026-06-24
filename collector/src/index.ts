@@ -3,6 +3,8 @@ import { chmodSync, writeFileSync } from "node:fs";
 import { COLLECTOR_VERSION, reportLimitsOnce, runOnce } from "./collector.js";
 import { detectClaudeCreds } from "./claude-creds.js";
 import { loadConfig, readFileConfig } from "./config.js";
+import { sendNotification } from "./notify.js";
+import { loadNotifyConfig } from "./notifier.js";
 import { detectOs } from "./os.js";
 import { defaultConfigPath } from "./paths.js";
 import { loadState } from "./state.js";
@@ -115,6 +117,22 @@ async function cmdWatch(): Promise<void> {
   await tick();
 }
 
+function cmdNotifyTest(): void {
+  const cfg = loadNotifyConfig();
+  if (!cfg.enabled) {
+    console.log("Notifications are disabled (CLAUDE_TRACK_NOTIFY=0).");
+    return;
+  }
+  sendNotification(
+    "claude-track",
+    "Test notification — desktop alerts are working.",
+    { urgency: "normal" },
+  );
+  console.log(
+    `[${ts()}] sent a test notification via ${detectOs()} (thresholds: ${cfg.thresholds.join(", ")}%)`,
+  );
+}
+
 function cmdStatus(): void {
   const cfg = loadConfig();
   const state = loadState(cfg.statePath);
@@ -160,6 +178,7 @@ Usage:
   claude-track run                 Scan once, upload usage + report limits
   claude-track watch [--interval s] Poll continuously (default 15s)
   claude-track limits              Report only your real 5h/weekly limit usage
+  claude-track notify-test         Fire a test desktop notification
   claude-track status              Show resolved config + state + Claude login
   claude-track init --endpoint <url> --token <t>   Write ~/.claude-track.json
   claude-track install             Install as a background service (launchd/systemd)
@@ -169,7 +188,9 @@ Config (env overrides ~/.claude-track.json):
   CLAUDE_TRACK_ENDPOINT   server base URL (e.g. https://track.example.com)
   CLAUDE_TRACK_TOKEN      device token from the Devices page
   CLAUDE_TRACK_PROJECTS   override ~/.claude/projects
-  CLAUDE_TRACK_INTERVAL   watch interval seconds`);
+  CLAUDE_TRACK_INTERVAL   watch interval seconds
+  CLAUDE_TRACK_NOTIFY     desktop notifications on/off (default on; 0 to disable)
+  CLAUDE_TRACK_NOTIFY_THRESHOLDS  comma list of % alerts (default 80,95)`);
 }
 
 async function main(): Promise<void> {
@@ -191,6 +212,8 @@ async function main(): Promise<void> {
       return cmdWatch();
     case "limits":
       return cmdLimits();
+    case "notify-test":
+      return cmdNotifyTest();
     case "status":
       return cmdStatus();
     case "init":

@@ -30,6 +30,9 @@ or set env vars (they override the config file):
 | `CLAUDE_TRACK_PROJECTS` | override `~/.claude/projects` |
 | `CLAUDE_TRACK_INTERVAL` | watch poll seconds (default 15) |
 | `CLAUDE_TRACK_LIMITS_INTERVAL` | how often to ping for real 5h/weekly limits, seconds (default 300; decoupled from the faster usage poll so the 1-token ping doesn't run every cycle) |
+| `CLAUDE_TRACK_NOTIFY` | desktop notifications on/off (default **on**; set `0`/`false`/`off` to disable) |
+| `CLAUDE_TRACK_NOTIFY_THRESHOLDS` | comma list of utilization % that trigger an alert (default `80,95`) |
+| `CLAUDE_TRACK_NOTIFY_STATE` | override `~/.claude-track-notify.json` (notification dedup state) |
 | `CLAUDE_TRACK_STATE` | override `~/.claude-track-state.json` |
 
 ### Setting the token per shell
@@ -110,6 +113,35 @@ It sends a 1-token ping to the Messages API and reads Anthropic's
 the percentages to the server. `claude-track status` shows which login was found.
 The token/credentials never leave your machine — only the resulting percentages
 are uploaded.
+
+### Desktop notifications
+
+When the collector reads your real 5h/weekly utilization, it raises a **desktop
+notification** the first time each window crosses a threshold (default `80%` and
+`95%`). It fires at most once per threshold per window and re-arms when the
+window resets, so it never spams.
+
+```bash
+claude-track notify-test     # fire a sample notification to confirm it works
+```
+
+- **macOS** — uses `osascript` → Notification Center (no extra install).
+- **Linux (KDE Plasma / freedesktop)** — uses `notify-send`; if that's missing it
+  falls back to KDE's `kdialog --passivepopup`. Install `notify-send` via
+  `libnotify` (e.g. `apt install libnotify-bin`) if neither is present.
+
+Tune or disable:
+
+```bash
+export CLAUDE_TRACK_NOTIFY_THRESHOLDS="50,80,95"   # alert at 50/80/95%
+export CLAUDE_TRACK_NOTIFY=0                         # turn notifications off
+```
+
+> **Under a background service.** On macOS the LaunchAgent runs in your GUI
+> session, so notifications appear normally. On Linux a `systemd --user` service
+> needs access to your session bus (`DBUS_SESSION_BUS_ADDRESS`) for `notify-send`
+> to reach the notification daemon — typical for `--user` units in a graphical
+> login. `claude-track install` bakes `CLAUDE_TRACK_NOTIFY*` into the unit.
 
 ## Run as a background service
 

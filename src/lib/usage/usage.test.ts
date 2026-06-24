@@ -8,6 +8,7 @@ import {
 import { weekWindowStart, weeklyTotals } from "./window";
 import { pct, limitsForPlan, PLAN_PRESETS } from "./limits";
 import { costForTotals, costUsd, priceFor } from "./pricing";
+import { modelBreakdown, modelLabel } from "./models";
 import { computeDashboardUsage } from "./aggregate";
 import type { UsageRecord } from "./types";
 
@@ -133,12 +134,51 @@ describe("pricing", () => {
   });
 });
 
+describe("model breakdown", () => {
+  it("labels model families with a major.minor version", () => {
+    expect(modelLabel("claude-opus-4-8-20251101")).toBe("Opus 4.8");
+    expect(modelLabel("claude-sonnet-4-6")).toBe("Sonnet 4.6");
+    expect(modelLabel("claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
+    expect(modelLabel(null)).toBe("Unknown");
+    expect(modelLabel("gpt-4o")).toBe("gpt-4o"); // unknown family → raw id kept
+  });
+
+  it("folds streamed segments, groups by model, sorts by billable desc", () => {
+    const opus = rec({ uuid: "o1", messageId: "mo", requestId: "ro", model: "claude-opus-4-8", ts: "2026-06-18T10:30:00Z", inputTokens: 100, outputTokens: 900 });
+    const mb = modelBreakdown([...m1, m2, opus]);
+    // sonnet billable (13558 from folded m1 + 60 from m2) > opus (1000) → first
+    expect(mb.map((m) => m.label)).toEqual(["Sonnet 4.6", "Opus 4.8"]);
+    const sonnet = mb.find((m) => m.label === "Sonnet 4.6")!;
+    expect(sonnet.billableTokens).toBe(13558 + 60);
+    expect(sonnet.totals.totalTokens).toBe(31057 + 1060); // folded, not 3x m1
+    expect(mb.find((m) => m.label === "Opus 4.8")!.billableTokens).toBe(1000);
+  });
+
+  it("buckets events without a model id under 'unknown'", () => {
+    const noModel = rec({ uuid: "n1", ts: "2026-06-18T10:00:00Z", model: null as unknown as string, outputTokens: 5 });
+    const mb = modelBreakdown([noModel]);
+    expect(mb).toHaveLength(1);
+    expect(mb[0].model).toBe("unknown");
+    expect(mb[0].label).toBe("Unknown");
+  });
+});
+
 describe("dashboard aggregate", () => {
   const cfg = { sessionLimitTokens: 88_000, weeklyLimitTokens: 2_200_000, weekResetWeekday: 1, weekResetHourUtc: 0 };
   const groups = [
     { id: "g1", name: "Laptops", color: "#111" },
     { id: "g2", name: "Desktops", color: "#222" },
   ];
+
+  it("attaches a per-group model breakdown over the weekly window", () => {
+    const dash = computeDashboardUsage([...m1, m2, old], groups, cfg, NOW);
+    const g1 = dash.groups.find((g) => g.groupId === "g1")!;
+    // `old` (06-10) precedes weekStart (06-15) → excluded; only m1 (sonnet) remains.
+    expect(g1.models.map((m) => m.label)).toEqual(["Sonnet 4.6"]);
+    expect(g1.models[0].totals.totalTokens).toBe(31057);
+    const g2 = dash.groups.find((g) => g.groupId === "g2")!;
+    expect(g2.models.map((m) => m.label)).toEqual(["Sonnet 4.6"]);
+  });
 
   it("splits the shared session window across groups", () => {
     const dash = computeDashboardUsage([...m1, m2, old], groups, cfg, NOW);

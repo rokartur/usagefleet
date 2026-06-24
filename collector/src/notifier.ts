@@ -1,0 +1,180 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import type { LimitsReport } from "./claude-limits.js";
+import { sendNotification, type Urgency } from "./notify.js";
+import { defaultNotifyStatePath } from "./paths.js";
+
+export interface NotifyConfig {
+  enabled: boolean;
+  /** Ascending utilization thresholds (%) that trigger a notification once each
+   *  per window, e.g. [80, 95]. */
+  thresholds: number[];
+}
+
+const DEFAULT_THRESHOLDS = [80, 95];
+
+/** Resolve notify config from env. Enabled by default; disable with
+ *  CLAUDE_TRACK_NOTIFY=0 (also: false/off/no). Thresholds from
+ *  CLAUDE_TRACK_NOTIFY_THRESHOLDS as a comma list (e.g. "50,80,95"). */
+export function loadNotifyConfig(
+  env: Record<string, string | undefined> = process.env,
+): NotifyConfig {
+  const flag = env.CLAUDE_TRACK_NOTIFY;
+  const enabled = flag == null || !/^(0|false|off|no)$/i.test(flag.trim());
+
+  let thresholds = DEFAULT_THRESHOLDS;
+  const raw = env.CLAUDE_TRACK_NOTIFY_THRESHOLDS;
+  if (raw && raw.trim()) {
+    const parsed = raw
+      .split(",")
+      .map((s) => Math.round(Number(s.trim())))
+      .filter((n) => Number.isFinite(n) && n > 0 && n <= 100);
+    if (parsed.length > 0) {
+      thresholds = [...new Set(parsed)].sort((a, b) => a - b);
+    }
+  }
+  return { enabled, thresholds };
+}
+
+/** Per-window high-water mark so each threshold notifies at most once per
+ *  window. `resetsAt` ties the mark to a specific window — when it changes the
+ *  window has rolled over and the mark clears. */
+interface WindowNotifyState {
+  lastBucket: number;
+  resetsAt: string | null;
+}
+
+export interface NotifyState {
+  fiveHour: WindowNotifyState;
+  sevenDay: WindowNotifyState;
+}
+
+function freshWindow(): WindowNotifyState {
+  return { lastBucket: 0, resetsAt: null };
+}
+
+export function emptyNotifyState(): NotifyState {
+  return { fiveHour: freshWindow(), sevenDay: freshWindow() };
+}
+
+/**
+ * Decide whether a window crosses a not-yet-notified threshold. Pure — no IO.
+ * Returns the threshold to fire (or null) and the next persisted state.
+ *
+ * A window rollover (resetsAt change) resets the high-water mark first, so the
+ * first crossing in a new window always re-notifies. If utilization later drops
+ * below the mark within the SAME window (e.g. a server correction), the mark is
+ * lowered so a subsequent re-cross notifies again.
+ */
+export function evaluateWindow(
+  prev: WindowNotifyState | undefined,
+  pct: number | null,
+  resetsAt: string | null,
+  thresholds: number[],
+): { fire: number | null; next: WindowNotifyState } {
+  const rolledOver = !prev || prev.resetsAt !== resetsAt;
+  const lastBucket = rolledOver ? 0 : prev.lastBucket;
+
+  if (pct == null) {
+    // No reading this cycle — keep the mark, just track the (possibly new) window.
+    return { fire: null, next: { lastBucket, resetsAt } };
+  }
+
+  // Highest threshold the current pct has reached (thresholds are ascending).
+  let top = 0;
+  for (const t of thresholds) if (pct >= t) top = t;
+
+  if (top > lastBucket) {
+    return { fire: top, next: { lastBucket: top, resetsAt } };
+  }
+  if (top < lastBucket) {
+    return { fire: null, next: { lastBucket: top, resetsAt } };
+  }
+  return { fire: null, next: { lastBucket, resetsAt } };
+}
+
+function loadNotifyState(path: string): NotifyState {
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<NotifyState>;
+    return {
+      fiveHour: { ...freshWindow(), ...raw.fiveHour },
+      sevenDay: { ...freshWindow(), ...raw.sevenDay },
+    };
+  } catch {
+    return emptyNotifyState();
+  }
+}
+
+function saveNotifyState(path: string, state: NotifyState): void {
+  // Best-effort: a write failure must never break the collector cycle.
+  try {
+    writeFileSync(path, JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
+  } catch {
+    /* read-only fs / permissions — notifications just may re-fire next time */
+  }
+}
+
+/** Relative "resets in 12m" / "resets in 2h" suffix, or "" if unknown/past. */
+function resetSuffix(resetsAt: string | null): string {
+  if (!resetsAt) return "";
+  const ms = new Date(resetsAt).getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  const min = Math.round(ms / 60_000);
+  if (min < 60) return ` · resets in ${min}m`;
+  const h = Math.round(min / 60);
+  if (h < 48) return ` · resets in ${h}h`;
+  return ` · resets in ${Math.round(h / 24)}d`;
+}
+
+function urgencyFor(bucket: number): Urgency {
+  return bucket >= 95 ? "critical" : "normal";
+}
+
+/**
+ * Notify on freshly-crossed 5h/weekly thresholds, deduped across runs via a
+ * small state file. Best-effort and self-contained: it owns its state IO and
+ * never throws out to the caller.
+ */
+export function maybeNotify(
+  report: LimitsReport,
+  cfg: NotifyConfig = loadNotifyConfig(),
+  log: (msg: string) => void = () => {},
+  statePath: string = defaultNotifyStatePath(),
+): void {
+  if (!cfg.enabled || cfg.thresholds.length === 0) return;
+  try {
+    const state = loadNotifyState(statePath);
+    const five = evaluateWindow(
+      state.fiveHour,
+      report.fiveHourPct,
+      report.fiveHourResetsAt,
+      cfg.thresholds,
+    );
+    const seven = evaluateWindow(
+      state.sevenDay,
+      report.sevenDayPct,
+      report.sevenDayResetsAt,
+      cfg.thresholds,
+    );
+
+    if (five.fire != null) {
+      sendNotification(
+        "Claude usage · 5-hour limit",
+        `${report.fiveHourPct}% of your 5-hour limit used${resetSuffix(report.fiveHourResetsAt)}.`,
+        { urgency: urgencyFor(five.fire) },
+      );
+      log(`notified: 5h at ${report.fiveHourPct}% (crossed ${five.fire}%)`);
+    }
+    if (seven.fire != null) {
+      sendNotification(
+        "Claude usage · weekly limit",
+        `${report.sevenDayPct}% of your weekly limit used${resetSuffix(report.sevenDayResetsAt)}.`,
+        { urgency: urgencyFor(seven.fire) },
+      );
+      log(`notified: weekly at ${report.sevenDayPct}% (crossed ${seven.fire}%)`);
+    }
+
+    saveNotifyState(statePath, { fiveHour: five.next, sevenDay: seven.next });
+  } catch (err) {
+    log(`notify skipped: ${(err as Error).message}`);
+  }
+}

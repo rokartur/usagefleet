@@ -1,6 +1,7 @@
 import { hostname } from "node:os";
 import { detectClaudeCreds, macKeychainDenied } from "./claude-creds.js";
 import { fetchLimits, type LimitsReport } from "./claude-limits.js";
+import { maybeNotify } from "./notifier.js";
 import { detectOs } from "./os.js";
 import { listJsonlFiles } from "./scanner.js";
 import { loadState, saveState } from "./state.js";
@@ -148,5 +149,8 @@ export async function reportLimitsOnce(
   }
   const ok = await postLimits(report, cfg);
   if (!ok) log("limits upload failed");
+  // Local desktop notification on freshly-crossed thresholds. Independent of the
+  // server upload (notify even if the POST failed) and never throws.
+  maybeNotify(report, undefined, log);
   return report;
 }
