@@ -154,6 +154,13 @@ describe("model breakdown", () => {
     expect(mb.find((m) => m.label === "Opus 4.8")!.billableTokens).toBe(1000);
   });
 
+  it("drops token-less pseudo-models like <synthetic>", () => {
+    const real = rec({ uuid: "r1", model: "claude-opus-4-8", ts: "2026-06-18T10:00:00Z", outputTokens: 100 });
+    const synthetic = rec({ uuid: "s1", model: "<synthetic>", ts: "2026-06-18T10:01:00Z" }); // all token buckets 0
+    const mb = modelBreakdown([real, synthetic]);
+    expect(mb.map((m) => m.label)).toEqual(["Opus 4.8"]); // <synthetic> excluded
+  });
+
   it("buckets events without a model id under 'unknown'", () => {
     const noModel = rec({ uuid: "n1", ts: "2026-06-18T10:00:00Z", model: null as unknown as string, outputTokens: 5 });
     const mb = modelBreakdown([noModel]);
