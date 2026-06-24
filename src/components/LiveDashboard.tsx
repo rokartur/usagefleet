@@ -1,86 +1,30 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { ResetCountdown } from "@/components/ResetCountdown";
-import { UsageBar } from "@/components/usage-ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ShareDonut } from "@/components/charts/ShareDonut";
+import { TokenBarChart } from "@/components/charts/TokenBarChart";
+import { UsageTimelineChart } from "@/components/charts/UsageTimelineChart";
+import { colorAt } from "@/components/charts/chart-theme";
+import { DeviceTable } from "@/components/dashboard/DeviceTable";
+import { GroupTable } from "@/components/dashboard/GroupTable";
+import { KpiRow } from "@/components/dashboard/KpiRow";
+import { ModelTable } from "@/components/dashboard/ModelTable";
+import { Tabs } from "@/components/dashboard/Tabs";
 import type { DashboardDTO } from "@/lib/data";
 import { formatRelative, formatTokens } from "@/lib/format";
-import type { ModelUsage } from "@/lib/usage";
 
 const POLL_MS = 5000;
 
-function OfficialCard({
-  title,
-  pct,
-  resetsAt,
-}: {
-  title: string;
-  pct: number;
-  resetsAt: string | null;
-}) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
-      <div className="flex items-baseline justify-between">
-        <h3 className="text-sm font-medium text-neutral-400">{title}</h3>
-        <span className="text-3xl font-semibold tabular-nums">
-          {Math.min(100, pct)}%
-        </span>
-      </div>
-      <p className="mb-3 text-xs text-neutral-500">
-        <ResetCountdown resetsAt={resetsAt} />
-      </p>
-      <UsageBar pct={pct} />
-    </div>
-  );
-}
-
-/** Per-model token breakdown shown when a group row is expanded. Tokens are the
- *  weekly-window figures; "billable" = input + output + cache-creation (the same
- *  measure that drives the group share), with the raw input/output/cache split
- *  shown for precision. */
-function ModelBreakdown({ models }: { models: ModelUsage[] }) {
-  if (models.length === 0) {
-    return (
-      <p className="px-2 text-xs text-neutral-500">
-        No model activity in the weekly window yet.
-      </p>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-1">
-      <p className="px-2 pb-1 text-[10px] uppercase tracking-wide text-neutral-600">
-        Models · weekly · billable tokens
-      </p>
-      {models.map((m) => (
-        <div
-          key={m.model}
-          className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 rounded px-2 py-1.5 hover:bg-white/[0.02]"
-        >
-          <span className="font-medium text-neutral-200">{m.label}</span>
-          <span className="tabular-nums text-neutral-400">
-            {formatTokens(m.billableTokens)}
-            <span className="ml-2 text-xs text-neutral-600">
-              in {formatTokens(m.totals.inputTokens)} · out{" "}
-              {formatTokens(m.totals.outputTokens)} · cache{" "}
-              {formatTokens(
-                m.totals.cacheCreationTokens + m.totals.cacheReadTokens,
-              )}
-            </span>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
+type Tab = "group" | "device" | "model";
 
 export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
   const [dash, setDash] = useState<DashboardDTO>(initial);
   const [lastOk, setLastOk] = useState(() => Date.now());
   // `now` advances once a second (below) so the staleness check stays a pure
-  // read of state during render — calling Date.now() in the render body is
-  // impure (flagged by react-hooks/purity) and can render unstable results.
+  // read of state during render.
   const [now, setNow] = useState(() => Date.now());
-  // Which group rows are expanded to reveal their per-model token breakdown.
+  const [tab, setTab] = useState<Tab>("group");
+  // Which rows are expanded (group keys + `dev:<id>` keys share one Set).
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const reqIdRef = useRef(0);
 
@@ -114,10 +58,7 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
   useEffect(() => {
     const ac = new AbortController();
     const id = setInterval(() => refresh(ac.signal), POLL_MS);
-    // Advance `now` every second so the staleness indicator updates even when
-    // polls are failing (failed polls don't call setDash).
     const ticker = setInterval(() => setNow(Date.now()), 1000);
-    // Single source (visibilitychange) avoids the focus+visibility double fire.
     const onVisible = () => {
       if (document.visibilityState === "visible") refresh(ac.signal);
     };
@@ -129,6 +70,39 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [refresh]);
+
+  const weeklyTotalTokens = dash.weeklyTotals.totalTokens;
+
+  const groupDonut = useMemo(
+    () =>
+      dash.groups.map((g) => ({
+        key: g.groupId ?? "ungrouped",
+        name: g.name,
+        value: g.weeklyTokens,
+        color: g.color,
+      })),
+    [dash.groups],
+  );
+  const deviceDonut = useMemo(
+    () =>
+      dash.devices.map((d, i) => ({
+        key: d.deviceId,
+        name: d.name,
+        value: d.weeklyTokens,
+        color: colorAt(i),
+      })),
+    [dash.devices],
+  );
+  const modelDonut = useMemo(
+    () =>
+      dash.models.map((m, i) => ({
+        key: m.model,
+        name: m.label,
+        value: m.billableTokens,
+        color: colorAt(i),
+      })),
+    [dash.models],
+  );
 
   const stale = now - lastOk > 3 * POLL_MS;
 
@@ -156,6 +130,9 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
         ? "API key"
         : "—";
 
+  const donut =
+    tab === "group" ? groupDonut : tab === "device" ? deviceDonut : modelDonut;
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -176,112 +153,75 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <OfficialCard
-          title="5-hour session"
-          resetsAt={dash.fiveHourResetsAt}
-          pct={dash.fiveHourPct}
-        />
-        <OfficialCard
-          title="Weekly"
-          resetsAt={dash.sevenDayResetsAt}
-          pct={dash.sevenDayPct}
-        />
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <KpiRow dash={dash} />
       </div>
 
-      <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
-        <h2 className="mb-1 text-sm font-medium text-neutral-400">By group</h2>
-        <p className="mb-4 text-xs text-neutral-500">
-          Account totals split across groups by each group&apos;s share of local
-          activity (billable tokens, excluding cache reads). Click a group to see
-          which models it used.
-        </p>
-        {dash.groups.length === 0 ? (
-          <p className="text-sm text-neutral-500">
-            No device activity in the current windows yet.
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-neutral-500">
-                <th className="pb-2 font-medium">Group</th>
-                <th className="pb-2 font-medium">Session</th>
-                <th className="pb-2 font-medium">Weekly</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dash.groups.map((g) => {
-                const key = g.groupId ?? "ungrouped";
-                const isOpen = expanded.has(key);
-                return (
-                  <Fragment key={key}>
-                    <tr className="border-t border-white/10">
-                      <td className="py-3">
-                        <button
-                          type="button"
-                          onClick={() => toggleRow(key)}
-                          aria-expanded={isOpen}
-                          className="inline-flex items-center gap-2 text-left hover:text-white"
-                        >
-                          <span
-                            className={`text-[10px] text-neutral-500 transition-transform ${
-                              isOpen ? "rotate-90" : ""
-                            }`}
-                            aria-hidden
-                          >
-                            ▶
-                          </span>
-                          <span
-                            className="h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: g.color }}
-                          />
-                          {g.name}
-                          <span className="text-xs text-neutral-600">
-                            {g.models.length} model
-                            {g.models.length === 1 ? "" : "s"}
-                          </span>
-                        </button>
-                      </td>
-                      <td className="py-3 pr-6">
-                        <div className="flex items-center gap-3">
-                          <div className="w-28">
-                            <UsageBar pct={g.sessionPct} />
-                          </div>
-                          <span className="tabular-nums text-neutral-400">
-                            ~{g.sessionPct}% · {formatTokens(g.sessionTokens)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-28">
-                            <UsageBar pct={g.weeklyPct} />
-                          </div>
-                          <span className="tabular-nums text-neutral-400">
-                            ~{g.weeklyPct}% · {formatTokens(g.weeklyTokens)}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <tr className="border-t border-white/5 bg-white/[0.015]">
-                        <td colSpan={3} className="px-2 py-3">
-                          <ModelBreakdown models={g.models} />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+      <UsageTimelineChart
+        timeline={dash.timeline}
+        groups={dash.groups}
+        models={dash.models}
+      />
+
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-medium text-neutral-400">Breakdown</h2>
+          <Tabs
+            ariaLabel="Breakdown dimension"
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: "group", label: "By group", count: dash.groups.length },
+              { value: "device", label: "By device", count: dash.devices.length },
+              { value: "model", label: "By model", count: dash.models.length },
+            ]}
+          />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,260px)_1fr]">
+          <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
+            <ShareDonut
+              data={donut}
+              centerLabel="weekly"
+              centerValue={formatTokens(weeklyTotalTokens)}
+            />
+          </div>
+          <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
+            {tab === "group" && (
+              <GroupTable
+                groups={dash.groups}
+                expanded={expanded}
+                onToggle={toggleRow}
+              />
+            )}
+            {tab === "device" && (
+              <DeviceTable
+                devices={dash.devices}
+                expanded={expanded}
+                onToggle={toggleRow}
+              />
+            )}
+            {tab === "model" && <ModelTable models={dash.models} />}
+          </div>
+        </div>
+
+        {tab === "model" && dash.models.length > 0 && (
+          <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
+            <h3 className="mb-3 text-sm font-medium text-neutral-400">
+              Models by billable tokens · weekly
+            </h3>
+            <TokenBarChart data={modelDonut} />
+          </div>
         )}
-      </div>
+      </section>
 
       <p className="text-xs text-neutral-500">
-        Session and weekly percentages are Claude&apos;s own utilization figures
-        (reported by the collector). Per-group numbers distribute those totals by
-        local token activity.
+        The 5-hour and weekly percentages up top are Claude&apos;s own account
+        utilization (reported by the collector). Each group is budgeted half the
+        account limit, so a group&apos;s percentage is measured against that
+        half — a group can read 100% while the account is at 50%, warning you not
+        to starve the other group. Per-device numbers distribute the account
+        total by local token activity (billable tokens, excluding cache reads).
       </p>
     </div>
   );

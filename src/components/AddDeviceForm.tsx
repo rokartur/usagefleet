@@ -9,7 +9,8 @@ export function AddDeviceForm({
   groups: { id: string; name: string }[];
 }) {
   const [name, setName] = useState("");
-  const [groupId, setGroupId] = useState("");
+  // Default to the first group so a new device is never left ungrouped.
+  const [groupId, setGroupId] = useState(groups[0]?.id ?? "");
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +52,9 @@ export function AddDeviceForm({
             onChange={(e) => setGroupId(e.target.value)}
             className="rounded-md border border-white/15 bg-[#0a0a0a] text-white placeholder:text-neutral-600 px-3 py-2 outline-none focus:border-white/30"
           >
-            <option value="">Ungrouped</option>
+            {groups.length === 0 && (
+              <option value="">Default (created automatically)</option>
+            )}
             {groups.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name}

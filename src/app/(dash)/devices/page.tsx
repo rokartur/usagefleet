@@ -1,7 +1,7 @@
 import { AddDeviceForm } from "@/components/AddDeviceForm";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { assignDeviceGroup, deleteDevice, revokeDevice } from "@/lib/actions";
-import { listDevices, listGroups } from "@/lib/data";
+import { backfillUngroupedDevices, listDevices, listGroups } from "@/lib/data";
 import { OS_LABEL, formatRelative } from "@/lib/format";
 import { requireUser } from "@/lib/session";
 
@@ -9,6 +9,8 @@ export const dynamic = "force-dynamic";
 
 export default async function DevicesPage() {
   const user = await requireUser();
+  // Enforce the "every device is grouped" invariant before listing.
+  await backfillUngroupedDevices(user.id);
   const [devices, groups] = await Promise.all([
     listDevices(user.id),
     listGroups(user.id),
@@ -59,7 +61,6 @@ export default async function DevicesPage() {
                       defaultValue={d.groupId ?? ""}
                       className="rounded-md border border-white/15 bg-[#0a0a0a] text-white placeholder:text-neutral-600 px-2 py-1.5 text-sm focus:border-white/30"
                     >
-                      <option value="">Ungrouped</option>
                       {groups.map((g) => (
                         <option key={g.id} value={g.id}>
                           {g.name}
