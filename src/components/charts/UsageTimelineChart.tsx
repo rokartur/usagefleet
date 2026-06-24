@@ -136,7 +136,9 @@ export function UsageTimelineChart({
               {series.map((s) => (
                 <Area
                   key={s.key}
-                  type="monotone"
+                  // Linear (not monotone) — monotone curves overshoot through
+                  // empty (zero) days, bulging the fill where there's no data.
+                  type="linear"
                   dataKey={s.key}
                   name={s.name}
                   stackId={mode === "total" ? undefined : "u"}
@@ -144,7 +146,10 @@ export function UsageTimelineChart({
                   strokeWidth={1.5}
                   fill={`url(#grad-${mode}-${safeId(s.key)})`}
                   isAnimationActive={false}
-                  dot={false}
+                  // Show a dot so an isolated single-day value is still visible.
+                  dot={{ r: 1.5, fill: s.color, strokeWidth: 0 }}
+                  activeDot={{ r: 3 }}
+                  connectNulls
                 />
               ))}
             </AreaChart>
