@@ -234,6 +234,10 @@ WantedBy=default.target
       }
     };
     const reloaded = sc("daemon-reload");
+    // Clear any prior failure / start-limit lockout so a re-install (e.g. to
+    // recover a unit that crash-looped on an older buggy binary) isn't rejected
+    // with "start request repeated too quickly". No-op on a healthy unit.
+    sc("reset-failed", "claude-track");
     const enabled = sc("enable", "--now", "claude-track");
     if (reloaded && enabled) {
       sc("restart", "claude-track");
