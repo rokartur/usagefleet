@@ -159,6 +159,7 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
 
       <UsageTimelineChart
         timeline={dash.timeline}
+        timelineHourly={dash.timelineHourly}
         groups={dash.groups}
         models={dash.models}
       />
