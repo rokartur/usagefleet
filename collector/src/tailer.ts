@@ -1,6 +1,6 @@
 import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { parseLine } from "./parser.js";
-import type { FileState, UsageRecord } from "./types.js";
+import type { FileState, UsageRecord, UsageSource } from "./types.js";
 
 /** Max bytes read from a single file per cycle (bounds memory on huge backlogs). */
 const MAX_READ = 16 * 1024 * 1024;
@@ -21,6 +21,7 @@ export interface TailResult {
 export function tailFile(
   filePath: string,
   prev: FileState | undefined,
+  source: UsageSource = "cli",
 ): TailResult | null {
   let st;
   try {
@@ -79,7 +80,7 @@ export function tailFile(
 
   const records: UsageRecord[] = [];
   for (const line of text.split("\n")) {
-    const rec = parseLine(line);
+    const rec = parseLine(line, source);
     if (rec) records.push(rec);
   }
 

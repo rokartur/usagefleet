@@ -1,4 +1,5 @@
 import { hostname } from "node:os";
+import { sep } from "node:path";
 import { detectClaudeCreds, macKeychainDenied } from "./claude-creds.js";
 import { fetchLimits, type LimitsReport } from "./claude-limits.js";
 import { maybeNotify } from "./notifier.js";
@@ -7,7 +8,13 @@ import { listJsonlFiles } from "./scanner.js";
 import { loadState, saveState } from "./state.js";
 import { tailFile } from "./tailer.js";
 import { postLimits, uploadBatch, type UploadFailure } from "./uploader.js";
-import type { Config } from "./types.js";
+import type { Config, UsageSource } from "./types.js";
+
+/** Only files inside a `.../.claude/projects/...` subtree are real usage logs.
+ *  Desktop session roots also hold `audit.jsonl` (a full duplicate of the same
+ *  uuids) and other JSONL — restricting to this subtree mirrors Claude Code and
+ *  avoids re-uploading every desktop record twice. */
+const PROJECTS_SUBPATH = `${sep}.claude${sep}projects${sep}`;
 
 export const COLLECTOR_VERSION = "1.0.0";
 
@@ -31,7 +38,24 @@ export async function runOnce(
   log: (msg: string) => void = () => {},
 ): Promise<CycleResult> {
   const state = loadState(cfg.statePath);
-  const files = listJsonlFiles(cfg.projectsDir);
+
+  // Each scan root is tagged with the app that owns it. Claude Code's projects
+  // dir is scanned whole; the Claude Desktop sessions root is filtered to its
+  // `.claude/projects` subtree (see PROJECTS_SUBPATH).
+  const roots: { dir: string; source: UsageSource; onlyProjects: boolean }[] = [
+    { dir: cfg.projectsDir, source: "cli", onlyProjects: false },
+  ];
+  if (cfg.desktopDir) {
+    roots.push({ dir: cfg.desktopDir, source: "desktop", onlyProjects: true });
+  }
+  const files: { fp: string; source: UsageSource }[] = [];
+  for (const root of roots) {
+    for (const fp of listJsonlFiles(root.dir)) {
+      if (root.onlyProjects && !fp.includes(PROJECTS_SUBPATH)) continue;
+      files.push({ fp, source: root.source });
+    }
+  }
+
   const result: CycleResult = {
     files: files.length,
     sent: 0,
@@ -44,10 +68,10 @@ export async function runOnce(
   // Defensive: a bad batchSize must never stall the chunk loop.
   const step = cfg.batchSize > 0 ? Math.floor(cfg.batchSize) : 100;
 
-  for (const fp of files) {
+  for (const { fp, source } of files) {
     let tail;
     try {
-      tail = tailFile(fp, state.files[fp]);
+      tail = tailFile(fp, state.files[fp], source);
     } catch (err) {
       // One unreadable/oversized file must not abort the whole cycle.
       log(`skip ${fp}: ${(err as Error).message}`);

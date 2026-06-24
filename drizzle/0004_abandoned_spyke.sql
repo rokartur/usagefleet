@@ -1,0 +1,1 @@
+ALTER TABLE "usage_event" ADD COLUMN "source" text DEFAULT 'cli' NOT NULL;

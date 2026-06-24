@@ -1,4 +1,4 @@
-import type { UsageRecord } from "./types.js";
+import type { UsageRecord, UsageSource } from "./types.js";
 
 interface RawUsage {
   input_tokens?: number;
@@ -37,9 +37,13 @@ function cacheCreation(u: RawUsage): number {
 /**
  * Parse a single JSONL line. Returns a UsageRecord only for assistant messages
  * that carry a usage object; everything else (user/system/summary/tool/…) → null.
- * `uuid` is the per-line idempotency key the server dedups on.
+ * `uuid` is the per-line idempotency key the server dedups on. `source` tags which
+ * Claude app the file came from (the line itself carries no app identifier).
  */
-export function parseLine(line: string): UsageRecord | null {
+export function parseLine(
+  line: string,
+  source: UsageSource = "cli",
+): UsageRecord | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
   let o: Record<string, unknown>;
@@ -74,5 +78,6 @@ export function parseLine(line: string): UsageRecord | null {
     cacheCreationTokens: cacheCreation(u),
     cacheReadTokens: u.cache_read_input_tokens ?? 0,
     serviceTier: u.service_tier ?? null,
+    source,
   };
 }

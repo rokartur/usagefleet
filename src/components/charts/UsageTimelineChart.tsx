@@ -15,11 +15,11 @@ import { Tabs } from "@/components/dashboard/Tabs";
 import { formatTokens } from "@/lib/format";
 import type { LiveGroupUsage } from "@/lib/data";
 import type { ModelUsage, TimelineBucket, TimelineMetric } from "@/lib/usage";
-import { metricValue } from "@/lib/usage";
+import { metricValue, modelLabel } from "@/lib/usage";
 import { AXIS, ChartTooltip, colorAt, GRID } from "./chart-theme";
 
 type Mode = "group" | "model" | "total";
-type Range = "24h" | "7d";
+type Range = "24h" | "7d" | "30d" | "month";
 
 interface Series {
   key: string;
@@ -46,11 +46,15 @@ const METRIC_OPTIONS: { value: TimelineMetric; label: string; noun: string }[] =
 export function UsageTimelineChart({
   timeline,
   timelineHourly,
+  timeline30d,
+  timelineMonthly,
   groups,
   models,
 }: {
   timeline: TimelineBucket[];
   timelineHourly: TimelineBucket[];
+  timeline30d: TimelineBucket[];
+  timelineMonthly: TimelineBucket[];
   groups: LiveGroupUsage[];
   models: ModelUsage[];
 }) {
@@ -69,7 +73,14 @@ export function UsageTimelineChart({
       return next;
     });
 
-  const buckets = range === "24h" ? timelineHourly : timeline;
+  const buckets =
+    range === "24h"
+      ? timelineHourly
+      : range === "30d"
+        ? timeline30d
+        : range === "month"
+          ? timelineMonthly
+          : timeline;
 
   const { rows, series } = useMemo(() => {
     if (mode === "total") {
@@ -106,7 +117,7 @@ export function UsageTimelineChart({
         const meta = groupMeta.get(k);
         return { key: k, name: meta?.name ?? (k === "ungrouped" ? "Ungrouped" : k), color: meta?.color ?? colorAt(i) };
       }
-      return { key: k, name: modelMeta.get(k) ?? (k === "unknown" ? "Unknown" : k), color: colorAt(i) };
+      return { key: k, name: modelMeta.get(k) ?? (k === "unknown" ? "Unknown" : modelLabel(k)), color: colorAt(i) };
     });
 
     const rows = buckets.map((b) => {
@@ -132,7 +143,11 @@ export function UsageTimelineChart({
   const subtitle =
     range === "24h"
       ? `Hourly ${metricNoun} · last 24h`
-      : `Daily ${metricNoun} · last 7 days`;
+      : range === "30d"
+        ? `Daily ${metricNoun} · last 30 days`
+        : range === "month"
+          ? `Monthly ${metricNoun} · all time`
+          : `Daily ${metricNoun} · last 7 days`;
 
   return (
     <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
@@ -150,6 +165,8 @@ export function UsageTimelineChart({
             options={[
               { value: "24h", label: "24h" },
               { value: "7d", label: "7d" },
+              { value: "30d", label: "30d" },
+              { value: "month", label: "Month" },
             ]}
           />
           <Tabs
@@ -204,7 +221,11 @@ export function UsageTimelineChart({
         <EmptyState>
           {range === "24h"
             ? "No activity in the last 24 hours."
-            : "No activity in the last 7 days."}
+            : range === "30d"
+              ? "No activity in the last 30 days."
+              : range === "month"
+                ? "No activity recorded yet."
+                : "No activity in the last 7 days."}
         </EmptyState>
       ) : (
         <div className="h-72">

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import {
   defaultConfigPath,
+  defaultDesktopSessionsDir,
   defaultProjectsDir,
   defaultStatePath,
 } from "./paths.js";
@@ -12,6 +13,7 @@ interface FileConfig {
   token?: string;
   deviceId?: string;
   projectsDir?: string;
+  desktopDir?: string;
 }
 
 export function readFileConfig(): FileConfig {
@@ -39,8 +41,18 @@ export function loadConfig(): Config {
     token,
     statePath: defaultStatePath(),
     projectsDir: process.env.CLAUDE_TRACK_PROJECTS || file.projectsDir || defaultProjectsDir(),
+    desktopDir: resolveDesktopDir(file.desktopDir),
     batchSize,
   };
+}
+
+/** Claude Desktop agent-mode sessions root, or null when disabled. Set
+ *  CLAUDE_TRACK_DESKTOP to "off"/"0" to turn off desktop collection, or to a
+ *  path to override the auto-detected location. */
+function resolveDesktopDir(fromFile?: string): string | null {
+  const env = process.env.CLAUDE_TRACK_DESKTOP;
+  if (env === "0" || env?.toLowerCase() === "off") return null;
+  return env || fromFile || defaultDesktopSessionsDir();
 }
 
 /** Stable per-install device id, persisted in the state file's deviceId. */

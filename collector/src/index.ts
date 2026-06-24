@@ -67,7 +67,7 @@ async function cmdWatch(): Promise<void> {
     Math.max(interval / 1000, Number.isFinite(rawLimits) && rawLimits > 0 ? rawLimits : 300) * 1000;
   let lastLimitsAt = 0;
   console.log(
-    `[${ts()}] claude-track watching ${cfg.projectsDir} every ${interval / 1000}s → ${cfg.endpoint}`,
+    `[${ts()}] claude-track watching ${cfg.projectsDir}${cfg.desktopDir ? ` + ${cfg.desktopDir}` : ""} every ${interval / 1000}s → ${cfg.endpoint}`,
   );
   let stopping = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -142,6 +142,7 @@ function cmdStatus(): void {
   console.log(`endpoint:  ${cfg.endpoint}`);
   console.log(`token:     ${cfg.token.slice(0, 8)}…`);
   console.log(`projects:  ${cfg.projectsDir}`);
+  console.log(`desktop:   ${cfg.desktopDir ?? "(disabled)"}`);
   console.log(`deviceId:  ${state.deviceId}`);
   console.log(`tracked:   ${tracked} files, ${bytes} bytes consumed`);
   console.log(`updated:   ${state.updatedAt}`);
@@ -187,7 +188,8 @@ Usage:
 Config (env overrides ~/.claude-track.json):
   CLAUDE_TRACK_ENDPOINT   server base URL (e.g. https://track.example.com)
   CLAUDE_TRACK_TOKEN      device token from the Devices page
-  CLAUDE_TRACK_PROJECTS   override ~/.claude/projects
+  CLAUDE_TRACK_PROJECTS   override ~/.claude/projects (Claude Code)
+  CLAUDE_TRACK_DESKTOP    override Claude Desktop sessions dir ("off" to disable)
   CLAUDE_TRACK_INTERVAL   watch interval seconds
   CLAUDE_TRACK_NOTIFY     desktop notifications on/off (default on; 0 to disable)
   CLAUDE_TRACK_NOTIFY_THRESHOLDS  comma list of % alerts (default 80,95)`);

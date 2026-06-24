@@ -35,6 +35,12 @@ describe("parseLine", () => {
     expect(r.outputTokens).toBe(117);
     expect(r.cacheCreationTokens).toBe(9252);
     expect(r.cacheReadTokens).toBe(16713);
+    expect(r.source).toBe("cli");
+  });
+
+  it("tags the record with the given source (default cli)", () => {
+    expect(parseLine(assistantLine, "desktop")!.source).toBe("desktop");
+    expect(parseLine(assistantLine)!.source).toBe("cli");
   });
 
   it("falls back to nested cache_creation when the flat field is absent", () => {

@@ -3,21 +3,34 @@ import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { devices, groups, usageEvents, userSettings } from "@/db/schema";
 import {
+  aggToDailyBuckets,
+  aggToMonthlyBuckets,
   billableTokens,
   buildTimelineFromFolded,
   computeDashboardUsage,
+  type DailyAggRow,
+  dailyLedger,
   type DashboardUsage,
+  dayKey,
   EMPTY_TOTALS,
   filterByWindow,
   foldAndSum,
   foldEvents,
   modelBreakdown,
   type ModelUsage,
+  monthKey,
+  monthlyLedger,
+  sumAgg,
   sumRecords,
   type TimelineBucket,
   type TokenTotals,
+  totalsForDay,
+  totalsForMonth,
+  type UsagePeriod,
   type UsageRecord,
 } from "@/lib/usage";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Lazily create and return the user's settings row (defaults = max5 preset). */
 export async function ensureSettings(userId: string) {
@@ -60,11 +73,81 @@ export async function loadRecentEvents(
       cacheReadTokens: usageEvents.cacheReadTokens,
       deviceId: usageEvents.deviceId,
       groupId: devices.groupId,
+      source: usageEvents.source,
     })
     .from(usageEvents)
     .innerJoin(devices, eq(usageEvents.deviceId, devices.id))
     .where(and(eq(usageEvents.userId, userId), gte(usageEvents.ts, cutoff)));
   return rows.map((r) => ({ ...r, ts: new Date(r.ts) }));
+}
+
+/**
+ * Folded, per-(UTC day × group × model) token aggregates over the user's ENTIRE
+ * history — the cheap foundation for the day / month / all-time usage figures.
+ *
+ * Folding (collapse streamed segments to the largest per logical message — see
+ * fold.ts) is done IN SQL via DISTINCT ON so the whole table never has to be
+ * pulled into Node: the result is one small row per active (day, group, model)
+ * cell. Rows with no real tokens (e.g. "<synthetic>" placeholders) are dropped
+ * by the HAVING clause. Days are bucketed in UTC to match the JS timelines.
+ */
+export async function loadDailyAggregates(
+  userId: string,
+): Promise<DailyAggRow[]> {
+  // The logical-message fold key: (messageId, requestId) when present, else the
+  // row's own uuid. Prefixed so a uuid can never collide with a messageId pair.
+  const foldKey = sql`CASE WHEN ${usageEvents.messageId} IS NOT NULL THEN 'm:' || ${usageEvents.messageId} || '::' || coalesce(${usageEvents.requestId}, '') ELSE 'u:' || ${usageEvents.uuid} END`;
+  const rowTotal = sql`(${usageEvents.inputTokens} + ${usageEvents.outputTokens} + ${usageEvents.cacheCreationTokens} + ${usageEvents.cacheReadTokens})`;
+
+  const result = await db.execute(sql`
+    WITH folded AS (
+      SELECT DISTINCT ON (${foldKey})
+        ${usageEvents.ts} AS ts,
+        ${usageEvents.deviceId} AS device_id,
+        ${usageEvents.model} AS model,
+        ${usageEvents.inputTokens} AS input_tokens,
+        ${usageEvents.outputTokens} AS output_tokens,
+        ${usageEvents.cacheCreationTokens} AS cache_creation_tokens,
+        ${usageEvents.cacheReadTokens} AS cache_read_tokens
+      FROM ${usageEvents}
+      WHERE ${usageEvents.userId} = ${userId}
+      ORDER BY ${foldKey}, ${rowTotal} DESC, ${usageEvents.ts} ASC
+    )
+    SELECT
+      to_char(date_trunc('day', folded.ts AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+      d.group_id AS group_id,
+      folded.model AS model,
+      sum(folded.input_tokens)::bigint AS input,
+      sum(folded.output_tokens)::bigint AS output,
+      sum(folded.cache_creation_tokens)::bigint AS cache_creation,
+      sum(folded.cache_read_tokens)::bigint AS cache_read
+    FROM folded
+    JOIN ${devices} d ON d.id = folded.device_id
+    GROUP BY 1, 2, 3
+    HAVING (
+      sum(folded.input_tokens) + sum(folded.output_tokens) +
+      sum(folded.cache_creation_tokens) + sum(folded.cache_read_tokens)
+    ) > 0
+  `);
+
+  const rows = result as unknown as Array<{
+    day: string;
+    group_id: string | null;
+    model: string | null;
+    input: string;
+    output: string;
+    cache_creation: string;
+    cache_read: string;
+  }>;
+  return rows.map((r) => ({
+    day: r.day,
+    groupId: r.group_id,
+    model: r.model,
+    inputTokens: Number(r.input),
+    outputTokens: Number(r.output),
+    cacheCreationTokens: Number(r.cache_creation),
+    cacheReadTokens: Number(r.cache_read),
+  }));
 }
 
 export async function getDashboard(
@@ -120,6 +203,32 @@ export interface LiveDeviceUsage {
   models: ModelUsage[];
 }
 
+/** Per-source usage over the windows: Claude Code (`cli`) vs Claude Desktop
+ *  (`desktop`). Same Hamilton split of the official account pct as groups/devices,
+ *  keyed by the record's originating app. */
+export interface LiveSourceUsage {
+  source: string;
+  label: string;
+  sessionPct: number;
+  weeklyPct: number;
+  sessionTokens: number;
+  weeklyTokens: number;
+  models: ModelUsage[];
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  cli: "Claude Code",
+  desktop: "Claude Desktop",
+};
+
+/** "How much was used" at three scopes: the current UTC day, the current UTC
+ *  calendar month, and the whole tracked history. */
+export interface UsageTotals {
+  today: TokenTotals;
+  month: TokenTotals;
+  allTime: TokenTotals;
+}
+
 export interface LiveDashboard {
   /** True once the collector has reported real utilization at least once. */
   connected: boolean;
@@ -132,12 +241,24 @@ export interface LiveDashboard {
   groups: LiveGroupUsage[];
   /** Per-device breakdown (same split method as groups), weekly-sorted. */
   devices: LiveDeviceUsage[];
+  /** Per-source breakdown (Claude Code vs Claude Desktop), weekly-sorted. */
+  sources: LiveSourceUsage[];
   /** Account-wide per-model breakdown over the weekly window. */
   models: ModelUsage[];
   /** Daily billable-token timeline over the weekly window (headline chart). */
   timeline: TimelineBucket[];
   /** Hourly billable-token timeline over the last 24h. */
   timelineHourly: TimelineBucket[];
+  /** Daily timeline over the last 30 days (chart's "30d" range). */
+  timeline30d: TimelineBucket[];
+  /** Monthly timeline over the whole history (chart's "Month" range). */
+  timelineMonthly: TimelineBucket[];
+  /** Consumed tokens for today / this month / all-time. */
+  usageTotals: UsageTotals;
+  /** Per-day consumption ledger, newest first (whole history). */
+  dailyLedger: UsagePeriod[];
+  /** Per-month consumption ledger, newest first (whole history). */
+  monthlyLedger: UsagePeriod[];
   /** Account-wide folded token totals for the weekly / 5h windows. */
   weeklyTotals: TokenTotals;
   sessionTotals: TokenTotals;
@@ -246,9 +367,19 @@ export async function getLiveDashboard(
 
   const emptyExtras = {
     devices: [] as LiveDeviceUsage[],
+    sources: [] as LiveSourceUsage[],
     models: [] as ModelUsage[],
     timeline: [] as TimelineBucket[],
     timelineHourly: [] as TimelineBucket[],
+    timeline30d: [] as TimelineBucket[],
+    timelineMonthly: [] as TimelineBucket[],
+    usageTotals: {
+      today: { ...EMPTY_TOTALS },
+      month: { ...EMPTY_TOTALS },
+      allTime: { ...EMPTY_TOTALS },
+    },
+    dailyLedger: [] as UsagePeriod[],
+    monthlyLedger: [] as UsagePeriod[],
     weeklyTotals: { ...EMPTY_TOTALS },
     sessionTotals: { ...EMPTY_TOTALS },
     idleDeviceCount: 0,
@@ -277,11 +408,13 @@ export async function getLiveDashboard(
   const earliest = new Date(
     Math.min(weekStart.getTime(), fiveStart.getTime()) - 5 * 60 * 1000,
   );
-  // Events, the group list, and device metadata are independent — one round-trip.
-  const [events, groupRows, deviceRows] = await Promise.all([
+  // Events, the group list, device metadata, and the all-time daily aggregates
+  // are independent — one round-trip.
+  const [events, groupRows, deviceRows, aggRows] = await Promise.all([
     loadRecentEvents(userId, earliest),
     db.select().from(groups).where(eq(groups.ownerId, userId)),
     listDevices(userId),
+    loadDailyAggregates(userId),
   ]);
 
   const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct);
@@ -346,6 +479,28 @@ export async function getLiveDashboard(
     (d) => !d.revoked && !activeDeviceIds.has(d.id),
   ).length;
 
+  // Per-source split (Claude Code vs Claude Desktop) — same apportionment, keyed
+  // by the record's originating app. Legacy rows with no source read as `cli`.
+  const sourceKey = (e: UsageRecord) => e.source ?? "cli";
+  const sessionSourceSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, sourceKey);
+  const weeklySourceSplit = splitByShare(events, weekStart, now, base.sevenDayPct, sourceKey);
+  const sourceKeys = new Set<string | null>([
+    ...sessionSourceSplit.keys(),
+    ...weeklySourceSplit.keys(),
+  ]);
+  const sourceUsages: LiveSourceUsage[] = [...sourceKeys]
+    .filter((k): k is string => k !== null)
+    .map((k) => ({
+      source: k,
+      label: SOURCE_LABELS[k] ?? k,
+      sessionPct: sessionSourceSplit.get(k)?.pct ?? 0,
+      weeklyPct: weeklySourceSplit.get(k)?.pct ?? 0,
+      sessionTokens: sessionSourceSplit.get(k)?.tokens ?? 0,
+      weeklyTokens: weeklySourceSplit.get(k)?.tokens ?? 0,
+      models: weeklySourceSplit.get(k)?.models ?? [],
+    }));
+  sourceUsages.sort((a, b) => b.weeklyTokens - a.weeklyTokens);
+
   // Fold the weekly window ONCE; reuse it for totals, model breakdown, timeline.
   const weeklyFolded = foldEvents(filterByWindow(events, weekStart, now));
   const weeklyTotals = sumRecords(weeklyFolded);
@@ -355,13 +510,35 @@ export async function getLiveDashboard(
   const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const timelineHourly = buildTimelineFromFolded(weeklyFolded, dayAgo, now, "hour");
 
+  // All-time usage figures, derived from the cheap daily aggregates.
+  const todayK = dayKey(now);
+  const monthK = monthKey(now);
+  const usageTotals: UsageTotals = {
+    today: totalsForDay(aggRows, todayK),
+    month: totalsForMonth(aggRows, monthK),
+    allTime: sumAgg(aggRows),
+  };
+  const thirtyStart = new Date(now.getTime() - 29 * DAY_MS);
+  const timeline30d = aggToDailyBuckets(aggRows, thirtyStart, now);
+  // Monthly chart spans the earliest active month through the current one.
+  let earliestDay = todayK;
+  for (const r of aggRows) if (r.day < earliestDay) earliestDay = r.day;
+  const monthStart = new Date(`${earliestDay.slice(0, 7)}-01T00:00:00.000Z`);
+  const timelineMonthly = aggToMonthlyBuckets(aggRows, monthStart, now);
+
   return {
     connected: true,
     groups: groupUsages,
     devices: deviceUsages,
+    sources: sourceUsages,
     models,
     timeline,
     timelineHourly,
+    timeline30d,
+    timelineMonthly,
+    usageTotals,
+    dailyLedger: dailyLedger(aggRows),
+    monthlyLedger: monthlyLedger(aggRows),
     weeklyTotals,
     sessionTotals,
     idleDeviceCount,
@@ -385,9 +562,15 @@ export interface DashboardDTO {
   sevenDayResetsAt: string | null;
   groups: LiveGroupUsage[];
   devices: DeviceUsageDTO[];
+  sources: LiveSourceUsage[];
   models: ModelUsage[];
   timeline: TimelineBucket[];
   timelineHourly: TimelineBucket[];
+  timeline30d: TimelineBucket[];
+  timelineMonthly: TimelineBucket[];
+  usageTotals: UsageTotals;
+  dailyLedger: UsagePeriod[];
+  monthlyLedger: UsagePeriod[];
   weeklyTotals: TokenTotals;
   sessionTotals: TokenTotals;
   idleDeviceCount: number;
@@ -407,9 +590,15 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
       ...dev,
       lastSeenAt: dev.lastSeenAt?.toISOString() ?? null,
     })),
+    sources: d.sources,
     models: d.models,
     timeline: d.timeline,
     timelineHourly: d.timelineHourly,
+    timeline30d: d.timeline30d,
+    timelineMonthly: d.timelineMonthly,
+    usageTotals: d.usageTotals,
+    dailyLedger: d.dailyLedger,
+    monthlyLedger: d.monthlyLedger,
     weeklyTotals: d.weeklyTotals,
     sessionTotals: d.sessionTotals,
     idleDeviceCount: d.idleDeviceCount,

@@ -9,13 +9,15 @@ import { DeviceTable } from "@/components/dashboard/DeviceTable";
 import { GroupTable } from "@/components/dashboard/GroupTable";
 import { KpiRow } from "@/components/dashboard/KpiRow";
 import { ModelTable } from "@/components/dashboard/ModelTable";
+import { SourceTable } from "@/components/dashboard/SourceTable";
 import { Tabs } from "@/components/dashboard/Tabs";
+import { UsageTotals } from "@/components/dashboard/UsageTotals";
 import type { DashboardDTO } from "@/lib/data";
 import { formatRelative, formatTokens } from "@/lib/format";
 
 const POLL_MS = 5000;
 
-type Tab = "group" | "device" | "model";
+type Tab = "group" | "device" | "source" | "model";
 
 export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
   const [dash, setDash] = useState<DashboardDTO>(initial);
@@ -103,6 +105,16 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
       })),
     [dash.models],
   );
+  const sourceDonut = useMemo(
+    () =>
+      dash.sources.map((s, i) => ({
+        key: s.source,
+        name: s.label,
+        value: s.weeklyTokens,
+        color: colorAt(i),
+      })),
+    [dash.sources],
+  );
 
   const stale = now - lastOk > 3 * POLL_MS;
 
@@ -131,7 +143,13 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
         : "—";
 
   const donut =
-    tab === "group" ? groupDonut : tab === "device" ? deviceDonut : modelDonut;
+    tab === "group"
+      ? groupDonut
+      : tab === "device"
+        ? deviceDonut
+        : tab === "source"
+          ? sourceDonut
+          : modelDonut;
 
   return (
     <div className="flex flex-col gap-8">
@@ -160,9 +178,13 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
       <UsageTimelineChart
         timeline={dash.timeline}
         timelineHourly={dash.timelineHourly}
+        timeline30d={dash.timeline30d}
+        timelineMonthly={dash.timelineMonthly}
         groups={dash.groups}
         models={dash.models}
       />
+
+      <UsageTotals dash={dash} />
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -174,6 +196,7 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
             options={[
               { value: "group", label: "By group", count: dash.groups.length },
               { value: "device", label: "By device", count: dash.devices.length },
+              { value: "source", label: "By source", count: dash.sources.length },
               { value: "model", label: "By model", count: dash.models.length },
             ]}
           />
@@ -198,6 +221,13 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
             {tab === "device" && (
               <DeviceTable
                 devices={dash.devices}
+                expanded={expanded}
+                onToggle={toggleRow}
+              />
+            )}
+            {tab === "source" && (
+              <SourceTable
+                sources={dash.sources}
                 expanded={expanded}
                 onToggle={toggleRow}
               />

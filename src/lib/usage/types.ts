@@ -12,6 +12,8 @@ export interface UsageRecord {
   cacheReadTokens: number;
   groupId?: string | null;
   deviceId?: string | null;
+  /** Which Claude app produced the row: 'cli' (Claude Code) or 'desktop'. */
+  source?: string | null;
 }
 
 export interface TokenTotals {
