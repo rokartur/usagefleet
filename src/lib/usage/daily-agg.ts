@@ -1,5 +1,5 @@
 import { costForTokens } from "./pricing";
-import type { TimelineBucket } from "./timeline";
+import { cellKey, type TimelineBucket, type TimelineCell } from "./timeline";
 import { EMPTY_TOTALS, type TokenTotals } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -22,6 +22,10 @@ export interface DailyAggRow {
   groupId: string | null;
   /** Raw model id, or null ("unknown" key). */
   model: string | null;
+  /** Originating app: "cli" / "desktop", or null (read as "cli"). */
+  source: string | null;
+  /** Device that produced the rows, or null ("unknown" key). */
+  deviceId: string | null;
   inputTokens: number;
   outputTokens: number;
   cacheCreationTokens: number;
@@ -203,7 +207,8 @@ export function aggToMonthlyBuckets(
   return out;
 }
 
-/** Assemble one bucket's totals + per-group + per-model breakdown from rows. */
+/** Assemble one bucket's totals + per-group + per-model breakdown + the
+ *  fully-dimensioned cells (group × model × source × device) from rows. */
 function fillBucket(
   ts: string,
   label: string,
@@ -212,12 +217,36 @@ function fillBucket(
   const totals = emptyTotals();
   const byGroup: Record<string, TokenTotals> = {};
   const byModel: Record<string, TokenTotals> = {};
+  const cellAcc = new Map<string, TimelineCell>();
   for (const r of rows) {
     addInto(totals, r);
     const gk = r.groupId ?? "ungrouped";
     addInto((byGroup[gk] ??= emptyTotals()), r);
     const mk = r.model ?? "unknown";
     addInto((byModel[mk] ??= emptyTotals()), r);
+    const sk = r.source ?? "cli";
+    const dk = r.deviceId ?? "unknown";
+    const ck = cellKey(gk, mk, sk, dk);
+    let cell = cellAcc.get(ck);
+    if (!cell) cellAcc.set(ck, (cell = { g: gk, m: mk, s: sk, d: dk, totals: emptyTotals() }));
+    addInto(cell.totals, r);
   }
-  return { ts, label, totals, byGroup, byModel };
+  return { ts, label, totals, byGroup, byModel, cells: [...cellAcc.values()] };
+}
+
+/** Per-group token totals over the rows matching `pred` (all rows when omitted),
+ *  keyed by groupId (null → "ungrouped"). Feeds the group-vs-group compare. */
+export function groupTotals(
+  rows: DailyAggRow[],
+  pred?: (r: DailyAggRow) => boolean,
+): Map<string, TokenTotals> {
+  const out = new Map<string, TokenTotals>();
+  for (const r of rows) {
+    if (pred && !pred(r)) continue;
+    const k = r.groupId ?? "ungrouped";
+    let t = out.get(k);
+    if (!t) out.set(k, (t = emptyTotals()));
+    addInto(t, r);
+  }
+  return out;
 }

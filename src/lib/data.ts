@@ -16,6 +16,7 @@ import {
   filterByWindow,
   foldAndSum,
   foldEvents,
+  groupTotals,
   modelBreakdown,
   type ModelUsage,
   monthKey,
@@ -105,6 +106,7 @@ export async function loadDailyAggregates(
         ${usageEvents.ts} AS ts,
         ${usageEvents.deviceId} AS device_id,
         ${usageEvents.model} AS model,
+        ${usageEvents.source} AS source,
         ${usageEvents.inputTokens} AS input_tokens,
         ${usageEvents.outputTokens} AS output_tokens,
         ${usageEvents.cacheCreationTokens} AS cache_creation_tokens,
@@ -117,13 +119,15 @@ export async function loadDailyAggregates(
       to_char(date_trunc('day', folded.ts AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
       d.group_id AS group_id,
       folded.model AS model,
+      folded.source AS source,
+      folded.device_id AS device_id,
       sum(folded.input_tokens)::bigint AS input,
       sum(folded.output_tokens)::bigint AS output,
       sum(folded.cache_creation_tokens)::bigint AS cache_creation,
       sum(folded.cache_read_tokens)::bigint AS cache_read
     FROM folded
     JOIN ${devices} d ON d.id = folded.device_id
-    GROUP BY 1, 2, 3
+    GROUP BY 1, 2, 3, 4, 5
     HAVING (
       sum(folded.input_tokens) + sum(folded.output_tokens) +
       sum(folded.cache_creation_tokens) + sum(folded.cache_read_tokens)
@@ -134,6 +138,8 @@ export async function loadDailyAggregates(
     day: string;
     group_id: string | null;
     model: string | null;
+    source: string | null;
+    device_id: string | null;
     input: string;
     output: string;
     cache_creation: string;
@@ -143,6 +149,8 @@ export async function loadDailyAggregates(
     day: r.day,
     groupId: r.group_id,
     model: r.model,
+    source: r.source,
+    deviceId: r.device_id,
     inputTokens: Number(r.input),
     outputTokens: Number(r.output),
     cacheCreationTokens: Number(r.cache_creation),
@@ -229,6 +237,66 @@ export interface UsageTotals {
   allTime: TokenTotals;
 }
 
+/** All of the user's groups (id → name, color), independent of any window —
+ *  the chart resolves group names/colors from this so groups active only in an
+ *  older range still render with their real identity (not a raw id). */
+export interface GroupCatalogEntry {
+  id: string;
+  name: string;
+  color: string;
+}
+
+/** All of the user's devices (id → name), for the chart's device filter. */
+export interface DeviceCatalogEntry {
+  id: string;
+  name: string;
+}
+
+/** One group's consumption within a compare scope (today/month/all-time). */
+export interface GroupCompareRow {
+  /** groupId, or "ungrouped". */
+  key: string;
+  name: string;
+  color: string;
+  billableTokens: number;
+  totalTokens: number;
+}
+
+/** Group-vs-group consumption at the three usage-totals scopes. */
+export interface GroupCompare {
+  today: GroupCompareRow[];
+  month: GroupCompareRow[];
+  allTime: GroupCompareRow[];
+}
+
+const UNGROUPED_COLOR = "#94a3b8";
+
+/** Resolve a per-group totals map into sorted, named, coloured compare rows. */
+function groupCompareRows(
+  totals: Map<string, TokenTotals>,
+  catalog: Map<string, { name: string; color: string }>,
+): GroupCompareRow[] {
+  const rows: GroupCompareRow[] = [];
+  for (const [key, t] of totals) {
+    const meta =
+      key === "ungrouped"
+        ? { name: "Ungrouped", color: UNGROUPED_COLOR }
+        : catalog.get(key);
+    rows.push({
+      key,
+      name: meta?.name ?? "Unknown",
+      color: meta?.color ?? UNGROUPED_COLOR,
+      billableTokens: billableTokens(t),
+      totalTokens: t.totalTokens,
+    });
+  }
+  // Billable desc, key as a stable tiebreak so equal-token groups never flip.
+  rows.sort(
+    (a, b) => b.billableTokens - a.billableTokens || a.key.localeCompare(b.key),
+  );
+  return rows;
+}
+
 export interface LiveDashboard {
   /** True once the collector has reported real utilization at least once. */
   connected: boolean;
@@ -239,8 +307,12 @@ export interface LiveDashboard {
   fiveHourResetsAt: Date | null;
   sevenDayResetsAt: Date | null;
   groups: LiveGroupUsage[];
+  /** Every group the user owns (id → name/color), for stable chart identity. */
+  groupCatalog: GroupCatalogEntry[];
   /** Per-device breakdown (same split method as groups), weekly-sorted. */
   devices: LiveDeviceUsage[];
+  /** Every device the user owns (id → name), for the chart's device filter. */
+  deviceCatalog: DeviceCatalogEntry[];
   /** Per-source breakdown (Claude Code vs Claude Desktop), weekly-sorted. */
   sources: LiveSourceUsage[];
   /** Account-wide per-model breakdown over the weekly window. */
@@ -253,6 +325,10 @@ export interface LiveDashboard {
   timeline30d: TimelineBucket[];
   /** Monthly timeline over the whole history (chart's "Month" range). */
   timelineMonthly: TimelineBucket[];
+  /** Daily timeline over the WHOLE tracked history — powers the custom range. */
+  timelineDaily: TimelineBucket[];
+  /** Group-vs-group consumption at today / month / all-time scopes. */
+  groupCompare: GroupCompare;
   /** Consumed tokens for today / this month / all-time. */
   usageTotals: UsageTotals;
   /** Per-day consumption ledger, newest first (whole history). */
@@ -366,13 +442,21 @@ export async function getLiveDashboard(
   };
 
   const emptyExtras = {
+    groupCatalog: [] as GroupCatalogEntry[],
     devices: [] as LiveDeviceUsage[],
+    deviceCatalog: [] as DeviceCatalogEntry[],
     sources: [] as LiveSourceUsage[],
     models: [] as ModelUsage[],
     timeline: [] as TimelineBucket[],
     timelineHourly: [] as TimelineBucket[],
     timeline30d: [] as TimelineBucket[],
     timelineMonthly: [] as TimelineBucket[],
+    timelineDaily: [] as TimelineBucket[],
+    groupCompare: {
+      today: [] as GroupCompareRow[],
+      month: [] as GroupCompareRow[],
+      allTime: [] as GroupCompareRow[],
+    },
     usageTotals: {
       today: { ...EMPTY_TOTALS },
       month: { ...EMPTY_TOTALS },
@@ -525,17 +609,53 @@ export async function getLiveDashboard(
   for (const r of aggRows) if (r.day < earliestDay) earliestDay = r.day;
   const monthStart = new Date(`${earliestDay.slice(0, 7)}-01T00:00:00.000Z`);
   const timelineMonthly = aggToMonthlyBuckets(aggRows, monthStart, now);
+  // All-time daily series — the client slices any custom [start, end] from it.
+  const timelineDaily = aggToDailyBuckets(
+    aggRows,
+    new Date(`${earliestDay}T00:00:00.000Z`),
+    now,
+  );
+
+  // Full group/device catalogs (every owned entity, window-independent) so the
+  // chart resolves names/colours even for groups/devices active only long ago.
+  const groupCatalog: GroupCatalogEntry[] = groupRows.map((g) => ({
+    id: g.id,
+    name: g.name,
+    color: g.color,
+  }));
+  const deviceCatalog: DeviceCatalogEntry[] = deviceRows.map((d) => ({
+    id: d.id,
+    name: d.name ?? "Unknown device",
+  }));
+  const catalogMeta = new Map(
+    groupRows.map((g) => [g.id, { name: g.name, color: g.color }]),
+  );
+  const groupCompare: GroupCompare = {
+    today: groupCompareRows(
+      groupTotals(aggRows, (r) => r.day === todayK),
+      catalogMeta,
+    ),
+    month: groupCompareRows(
+      groupTotals(aggRows, (r) => r.day.startsWith(monthK)),
+      catalogMeta,
+    ),
+    allTime: groupCompareRows(groupTotals(aggRows), catalogMeta),
+  };
 
   return {
     connected: true,
     groups: groupUsages,
+    groupCatalog,
     devices: deviceUsages,
+    deviceCatalog,
     sources: sourceUsages,
     models,
     timeline,
     timelineHourly,
     timeline30d,
     timelineMonthly,
+    timelineDaily,
+    groupCompare,
     usageTotals,
     dailyLedger: dailyLedger(aggRows),
     monthlyLedger: monthlyLedger(aggRows),
@@ -561,13 +681,17 @@ export interface DashboardDTO {
   fiveHourResetsAt: string | null;
   sevenDayResetsAt: string | null;
   groups: LiveGroupUsage[];
+  groupCatalog: GroupCatalogEntry[];
   devices: DeviceUsageDTO[];
+  deviceCatalog: DeviceCatalogEntry[];
   sources: LiveSourceUsage[];
   models: ModelUsage[];
   timeline: TimelineBucket[];
   timelineHourly: TimelineBucket[];
   timeline30d: TimelineBucket[];
   timelineMonthly: TimelineBucket[];
+  timelineDaily: TimelineBucket[];
+  groupCompare: GroupCompare;
   usageTotals: UsageTotals;
   dailyLedger: UsagePeriod[];
   monthlyLedger: UsagePeriod[];
@@ -586,16 +710,20 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
     fiveHourResetsAt: d.fiveHourResetsAt?.toISOString() ?? null,
     sevenDayResetsAt: d.sevenDayResetsAt?.toISOString() ?? null,
     groups: d.groups,
+    groupCatalog: d.groupCatalog,
     devices: d.devices.map((dev) => ({
       ...dev,
       lastSeenAt: dev.lastSeenAt?.toISOString() ?? null,
     })),
+    deviceCatalog: d.deviceCatalog,
     sources: d.sources,
     models: d.models,
     timeline: d.timeline,
     timelineHourly: d.timelineHourly,
     timeline30d: d.timeline30d,
     timelineMonthly: d.timelineMonthly,
+    timelineDaily: d.timelineDaily,
+    groupCompare: d.groupCompare,
     usageTotals: d.usageTotals,
     dailyLedger: d.dailyLedger,
     monthlyLedger: d.monthlyLedger,

@@ -5,6 +5,7 @@ import {
   type DailyAggRow,
   dailyLedger,
   dayKey,
+  groupTotals,
   monthKey,
   monthlyLedger,
   sumAgg,
@@ -17,6 +18,8 @@ function row(p: Partial<DailyAggRow> & { day: string }): DailyAggRow {
   return {
     groupId: null,
     model: "claude-sonnet-4-6",
+    source: "cli",
+    deviceId: "dev1",
     inputTokens: 0,
     outputTokens: 0,
     cacheCreationTokens: 0,
@@ -110,11 +113,46 @@ describe("daily-agg — chart buckets", () => {
 
   it("keys absent group/model as ungrouped/unknown", () => {
     const buckets = aggToDailyBuckets(
-      [row({ day: "2026-06-24", groupId: null, model: null, outputTokens: 4 })],
+      [row({ day: "2026-06-24", groupId: null, model: null, source: null, deviceId: null, outputTokens: 4 })],
       new Date("2026-06-24T00:00:00Z"),
       new Date("2026-06-24T12:00:00Z"),
     );
     expect(metricValue(buckets[0].byGroup.ungrouped, "billable")).toBe(4);
     expect(metricValue(buckets[0].byModel.unknown, "billable")).toBe(4);
+    // The cell falls back to "cli"/"unknown" for absent source/device.
+    const cell = buckets[0].cells[0];
+    expect([cell.g, cell.m, cell.s, cell.d]).toEqual(["ungrouped", "unknown", "cli", "unknown"]);
+  });
+
+  it("splits cells by source and device within a day", () => {
+    const buckets = aggToDailyBuckets(
+      [
+        row({ day: "2026-06-24", groupId: "g1", source: "cli", deviceId: "dA", outputTokens: 10 }),
+        row({ day: "2026-06-24", groupId: "g1", source: "desktop", deviceId: "dB", outputTokens: 4 }),
+      ],
+      new Date("2026-06-24T00:00:00Z"),
+      new Date("2026-06-24T12:00:00Z"),
+    );
+    const cells = buckets[0].cells;
+    expect(cells).toHaveLength(2);
+    // byGroup collapses both back into g1.
+    expect(metricValue(buckets[0].byGroup.g1, "billable")).toBe(14);
+    const cli = cells.find((c) => c.s === "cli")!;
+    const desk = cells.find((c) => c.s === "desktop")!;
+    expect([cli.d, metricValue(cli.totals, "billable")]).toEqual(["dA", 10]);
+    expect([desk.d, metricValue(desk.totals, "billable")]).toEqual(["dB", 4]);
+  });
+});
+
+describe("daily-agg — groupTotals", () => {
+  it("sums per group, keying null as ungrouped, honouring the predicate", () => {
+    const all = groupTotals(ROWS);
+    expect(metricValue(all.get("g1")!, "billable")).toBe(10 + 5 + 2 + 20 + 8);
+    expect(metricValue(all.get("g2")!, "billable")).toBe(3 + 1);
+    // Predicate-scoped (one day only).
+    const day = groupTotals(ROWS, (r) => r.day === "2026-06-24");
+    expect(metricValue(day.get("g1")!, "billable")).toBe(10 + 5 + 2);
+    expect(metricValue(day.get("g2")!, "billable")).toBe(3 + 1);
+    expect(day.get("g1")!.cacheReadTokens).toBe(100);
   });
 });

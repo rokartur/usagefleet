@@ -120,6 +120,18 @@ describe("timeline — daily", () => {
     expect(bill(day.byModel["claude-sonnet-4-6"])).toBe(4);
     const groupSum = Object.values(day.byGroup).reduce((s, t) => s + bill(t), 0);
     expect(groupSum).toBe(bill(day.totals));
+    // cells carry the full (group × model × source × device) split; absent
+    // source/device fall back to "cli"/"unknown" and the cell sum == the total.
+    expect(day.cells).toHaveLength(2);
+    const g1cell = day.cells.find((c) => c.g === "g1")!;
+    expect([g1cell.m, g1cell.s, g1cell.d, bill(g1cell.totals)]).toEqual([
+      "claude-opus-4-8",
+      "cli",
+      "unknown",
+      10,
+    ]);
+    const cellSum = day.cells.reduce((s, c) => s + bill(c.totals), 0);
+    expect(cellSum).toBe(bill(day.totals));
   });
 
   it("is deterministic — identical inputs produce deep-equal output", () => {

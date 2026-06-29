@@ -21,6 +21,24 @@ export type TimelineMetric =
   | "output"
   | "cacheRead";
 
+/**
+ * One fully-dimensioned slice of a bucket: the token totals for a single
+ * (group × model × source × device) combination. The chart re-aggregates these
+ * client-side so any dimension can be split or filtered without a server round
+ * trip. Keys are the same null-safe sentinels used everywhere else.
+ */
+export interface TimelineCell {
+  /** Group key: the groupId, or "ungrouped" when the device has no group. */
+  g: string;
+  /** Model key: the raw model id, or "unknown" when the row carried none. */
+  m: string;
+  /** Source key: "cli" (Claude Code) / "desktop" (Claude Desktop); absent → "cli". */
+  s: string;
+  /** Device key: the deviceId, or "unknown" when absent. */
+  d: string;
+  totals: TokenTotals;
+}
+
 export interface TimelineBucket {
   /** ISO timestamp of the bucket start (UTC day/hour start). */
   ts: string;
@@ -32,6 +50,14 @@ export interface TimelineBucket {
   byGroup: Record<string, TokenTotals>;
   /** Token totals per model key. Absent model is keyed "unknown". */
   byModel: Record<string, TokenTotals>;
+  /** Per (group × model × source × device) slices — the filterable raw form. */
+  cells: TimelineCell[];
+}
+
+/** Null-safe key for one record/row across the four chart dimensions. */
+const CELL_SEP = "\u0000";
+export function cellKey(g: string, m: string, s: string, d: string): string {
+  return g + CELL_SEP + m + CELL_SEP + s + CELL_SEP + d;
 }
 
 /** Extract one selectable metric from a {@link TokenTotals}. */
@@ -98,6 +124,9 @@ function bucketize(
   const first = floorBucket(s, bucketMs);
   const last = floorBucket(e, bucketMs);
   const buckets = new Map<number, TimelineBucket>();
+  // Per-bucket cell accumulators, keyed by bucket start then by the 4-dim cell
+  // key. Materialized into the bucket's `cells` array at the end.
+  const cellAcc = new Map<number, Map<string, TimelineCell>>();
   for (let b = first; b <= last; b += bucketMs) {
     buckets.set(b, {
       ts: new Date(b).toISOString(),
@@ -105,7 +134,9 @@ function bucketize(
       totals: emptyTotals(),
       byGroup: {},
       byModel: {},
+      cells: [],
     });
+    cellAcc.set(b, new Map());
   }
 
   for (const ev of folded) {
@@ -115,14 +146,24 @@ function bucketize(
     // emits with 0 of every token); rows that carry ONLY cache reads still count
     // toward the `cacheRead` / `total` metrics, so keep them.
     if (recordTotal(ev) === 0) continue;
-    const bucket = buckets.get(floorBucket(t, bucketMs));
+    const bs = floorBucket(t, bucketMs);
+    const bucket = buckets.get(bs);
     if (!bucket) continue; // defensive; in-window events always land in a bucket
     addInto(bucket.totals, ev);
     const gk = ev.groupId ?? "ungrouped";
     addInto((bucket.byGroup[gk] ??= emptyTotals()), ev);
     const mk = ev.model ?? "unknown";
     addInto((bucket.byModel[mk] ??= emptyTotals()), ev);
+    const sk = ev.source ?? "cli";
+    const dk = ev.deviceId ?? "unknown";
+    const acc = cellAcc.get(bs)!;
+    const ck = cellKey(gk, mk, sk, dk);
+    let cell = acc.get(ck);
+    if (!cell) acc.set(ck, (cell = { g: gk, m: mk, s: sk, d: dk, totals: emptyTotals() }));
+    addInto(cell.totals, ev);
   }
+
+  for (const [bs, acc] of cellAcc) buckets.get(bs)!.cells = [...acc.values()];
 
   return [...buckets.values()].sort((a, b) => a.ts.localeCompare(b.ts));
 }

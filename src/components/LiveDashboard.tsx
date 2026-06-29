@@ -180,7 +180,9 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
         timelineHourly={dash.timelineHourly}
         timeline30d={dash.timeline30d}
         timelineMonthly={dash.timelineMonthly}
-        groups={dash.groups}
+        timelineDaily={dash.timelineDaily}
+        groupCatalog={dash.groupCatalog}
+        deviceCatalog={dash.deviceCatalog}
         models={dash.models}
       />
 

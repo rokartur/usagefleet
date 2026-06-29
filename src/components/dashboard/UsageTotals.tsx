@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Tabs } from "@/components/dashboard/Tabs";
 import { formatTokens, formatUsd } from "@/lib/format";
-import type { DashboardDTO } from "@/lib/data";
+import type { DashboardDTO, GroupCompareRow } from "@/lib/data";
 import type { TokenTotals, UsagePeriod } from "@/lib/usage";
 
 const billable = (t: TokenTotals) =>
@@ -101,11 +101,62 @@ function LedgerTable({ rows }: { rows: UsagePeriod[] }) {
   );
 }
 
-/** "How much was used" panel: Today / This month / All-time cards plus a
- *  per-day / per-month ledger of the whole tracked history. */
+/** Group-vs-group consumption for one scope: a billable bar per group, sorted
+ *  biggest first, each labelled with its tokens and share of the scope total. */
+function GroupCompare({ rows }: { rows: GroupCompareRow[] }) {
+  const total = rows.reduce((s, r) => s + r.billableTokens, 0);
+  if (rows.length === 0 || total === 0) {
+    return (
+      <p className="px-1 py-6 text-center text-sm text-neutral-500">
+        No usage in this scope yet.
+      </p>
+    );
+  }
+  return (
+    <ul className="flex flex-col gap-3">
+      {rows.map((r) => {
+        const pct = (r.billableTokens / total) * 100;
+        return (
+          <li key={r.key} className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="flex min-w-0 items-center gap-1.5 text-neutral-300">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: r.color }}
+                />
+                <span className="truncate">{r.name}</span>
+              </span>
+              <span className="shrink-0 tabular-nums text-neutral-400">
+                {formatTokens(r.billableTokens)}
+                <span className="ml-2 text-neutral-500">
+                  {pct >= 0.5 ? Math.round(pct) : pct.toFixed(1)}%
+                </span>
+              </span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-white/5">
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.max(pct, 1.5)}%`,
+                  backgroundColor: r.color,
+                }}
+              />
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** "How much was used" panel: Today / This month / All-time cards, a
+ *  group-vs-group consumption compare, plus a per-day / per-month ledger of the
+ *  whole tracked history. */
 export function UsageTotals({ dash }: { dash: DashboardDTO }) {
   const [grain, setGrain] = useState<"day" | "month">("day");
+  const [scope, setScope] = useState<"today" | "month" | "allTime">("allTime");
   const ledger = grain === "day" ? dash.dailyLedger : dash.monthlyLedger;
+  const compareRows = dash.groupCompare[scope];
 
   return (
     <section className="flex flex-col gap-4">
@@ -115,6 +166,26 @@ export function UsageTotals({ dash }: { dash: DashboardDTO }) {
         <TotalCard title="Today" totals={dash.usageTotals.today} />
         <TotalCard title="This month" totals={dash.usageTotals.month} />
         <TotalCard title="All time" totals={dash.usageTotals.allTime} />
+      </div>
+
+      <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-sm font-medium text-neutral-400">
+            Group usage compare
+          </h3>
+          <Tabs
+            size="sm"
+            ariaLabel="Compare scope"
+            value={scope}
+            onChange={setScope}
+            options={[
+              { value: "today", label: "Today" },
+              { value: "month", label: "Month" },
+              { value: "allTime", label: "All time" },
+            ]}
+          />
+        </div>
+        <GroupCompare rows={compareRows} />
       </div>
 
       <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
