@@ -85,6 +85,7 @@ export function UsageTimelineChart({
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   // Dimension filters — an empty set means "all" (no restriction).
   const [groupSel, setGroupSel] = useState<Set<string>>(() => new Set());
+  const [modelSel, setModelSel] = useState<Set<string>>(() => new Set());
   const [sourceSel, setSourceSel] = useState<Set<string>>(() => new Set());
   const [deviceSel, setDeviceSel] = useState<Set<string>>(() => new Set());
   const [showFilters, setShowFilters] = useState(false);
@@ -102,6 +103,7 @@ export function UsageTimelineChart({
       });
   const toggleHidden = toggleIn(setHidden);
   const toggleGroup = toggleIn(setGroupSel);
+  const toggleModel = toggleIn(setModelSel);
   const toggleSource = toggleIn(setSourceSel);
   const toggleDevice = toggleIn(setDeviceSel);
 
@@ -150,16 +152,20 @@ export function UsageTimelineChart({
   const deviceName = (k: string) =>
     k === "unknown" ? "Unknown device" : (deviceMeta.get(k) ?? k);
   const sourceName = (k: string) => SOURCE_LABELS[k] ?? k;
+  const modelName = (k: string) =>
+    k === "unknown" ? "Unknown" : (modelMeta.get(k) ?? modelLabel(k));
 
   // Distinct filter options for the current range, from the UNFILTERED cells, so
   // toggling one filter never makes another's options disappear.
-  const { groupOpts, sourceOpts, deviceOpts } = useMemo(() => {
+  const { groupOpts, modelOpts, sourceOpts, deviceOpts } = useMemo(() => {
     const g = new Set<string>();
+    const m = new Set<string>();
     const s = new Set<string>();
     const d = new Set<string>();
     for (const b of buckets)
       for (const c of b.cells) {
         g.add(c.g);
+        m.add(c.m);
         s.add(c.s);
         d.add(c.d);
       }
@@ -167,12 +173,13 @@ export function UsageTimelineChart({
       label(a).localeCompare(label(b));
     return {
       groupOpts: [...g].sort(sortByLabel(groupName)),
+      modelOpts: [...m].sort(sortByLabel(modelName)),
       sourceOpts: [...s].sort(sortByLabel(sourceName)),
       deviceOpts: [...d].sort(sortByLabel(deviceName)),
     };
-    // groupName/deviceName/sourceName are pure over the memoized meta maps.
+    // groupName/modelName/deviceName/sourceName are pure over the memoized meta maps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buckets, groupMeta, deviceMeta]);
+  }, [buckets, groupMeta, modelMeta, deviceMeta]);
 
   // Stable color per series key: sorted distinct keys for the dimension over the
   // UNFILTERED range, so colors don't shuffle when the metric changes, the sort
@@ -188,6 +195,7 @@ export function UsageTimelineChart({
   const { rows, series } = useMemo(() => {
     const matches = (c: TimelineCell) =>
       (groupSel.size === 0 || groupSel.has(c.g)) &&
+      (modelSel.size === 0 || modelSel.has(c.m)) &&
       (sourceSel.size === 0 || sourceSel.has(c.s)) &&
       (deviceSel.size === 0 || deviceSel.has(c.d));
 
@@ -249,7 +257,7 @@ export function UsageTimelineChart({
     return { rows, series };
     // groupName/colors are pure over the memoized meta maps + colorOrder.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buckets, mode, metric, groupSel, sourceSel, deviceSel, groupMeta, modelMeta, colorOrder]);
+  }, [buckets, mode, metric, groupSel, modelSel, sourceSel, deviceSel, groupMeta, modelMeta, colorOrder]);
 
   // Series actually drawn (legend toggles applied here, not in the memo).
   const visible = series.filter((s) => !hidden.has(s.key));
@@ -257,9 +265,11 @@ export function UsageTimelineChart({
   const stackId = mode === "total" ? undefined : "u";
   const showLegend = mode !== "total" && series.length > 1;
 
-  const activeFilters = groupSel.size + sourceSel.size + deviceSel.size;
+  const activeFilters =
+    groupSel.size + modelSel.size + sourceSel.size + deviceSel.size;
   const clearFilters = () => {
     setGroupSel(new Set());
+    setModelSel(new Set());
     setSourceSel(new Set());
     setDeviceSel(new Set());
   };
@@ -380,6 +390,13 @@ export function UsageTimelineChart({
                 : (groupMeta.get(k)?.color ?? undefined)
             }
             onToggle={toggleGroup}
+          />
+          <FilterRow
+            label="Model"
+            options={modelOpts}
+            selected={modelSel}
+            nameOf={modelName}
+            onToggle={toggleModel}
           />
           <FilterRow
             label="Device"
