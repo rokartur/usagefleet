@@ -1,23 +1,80 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ShareDonut } from "@/components/charts/ShareDonut";
-import { TokenBarChart } from "@/components/charts/TokenBarChart";
-import { UsageTimelineChart } from "@/components/charts/UsageTimelineChart";
-import { colorAt } from "@/components/charts/chart-theme";
-import { DeviceTable } from "@/components/dashboard/DeviceTable";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ResetCountdown } from "@/components/ResetCountdown";
 import { GroupTable } from "@/components/dashboard/GroupTable";
-import { KpiRow } from "@/components/dashboard/KpiRow";
-import { ModelTable } from "@/components/dashboard/ModelTable";
-import { SourceTable } from "@/components/dashboard/SourceTable";
-import { Tabs } from "@/components/dashboard/Tabs";
-import { UsageTotals } from "@/components/dashboard/UsageTotals";
-import type { DashboardDTO } from "@/lib/data";
-import { formatRelative, formatTokens } from "@/lib/format";
+import { UsageBar } from "@/components/usage-ui";
+import type { DashboardDTO, SpendPeriod } from "@/lib/data";
+import { formatRelative, formatTokens, formatUsd } from "@/lib/format";
+import { billableTokens } from "@/lib/usage";
 
 const POLL_MS = 5000;
 
-type Tab = "group" | "device" | "source" | "model";
+/** One official limit card: Claude's own account utilization for a window. */
+function OfficialCard({
+  title,
+  pct,
+  resetsAt,
+}: {
+  title: string;
+  pct: number;
+  resetsAt: string | null;
+}) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-sm font-medium text-neutral-400">{title}</h3>
+        <span className="text-3xl font-semibold tabular-nums">
+          {Math.min(100, pct)}%
+        </span>
+      </div>
+      <p className="mb-3 text-xs text-neutral-500">
+        <ResetCountdown resetsAt={resetsAt} />
+      </p>
+      <UsageBar pct={pct} />
+    </div>
+  );
+}
+
+function SpendRow({ label, period }: { label: string; period: SpendPeriod }) {
+  return (
+    <tr className="border-t border-white/10 text-neutral-300">
+      <td className="py-3 pr-2 text-left text-neutral-400">{label}</td>
+      <td className="px-2 py-3 text-right tabular-nums">
+        {formatTokens(billableTokens(period.totals))}
+      </td>
+      <td className="px-2 py-3 text-right tabular-nums text-neutral-400">
+        {formatTokens(period.totals.totalTokens)}
+      </td>
+      <td
+        className="py-3 pl-2 text-right tabular-nums text-neutral-200"
+        title="At public API list prices"
+      >
+        {formatUsd(period.costUsd)}
+      </td>
+    </tr>
+  );
+}
+
+/** Money spent this week (weekly window) and this calendar month (UTC). */
+function SpendTable({ dash }: { dash: DashboardDTO }) {
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="text-xs uppercase tracking-wide text-neutral-500">
+          <th className="pb-2 pr-2 text-left font-medium">Period</th>
+          <th className="px-2 pb-2 text-right font-medium">Billable</th>
+          <th className="px-2 pb-2 text-right font-medium">Total</th>
+          <th className="pb-2 pl-2 text-right font-medium">Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        <SpendRow label="This week" period={dash.spend.week} />
+        <SpendRow label="This month" period={dash.spend.month} />
+      </tbody>
+    </table>
+  );
+}
 
 export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
   const [dash, setDash] = useState<DashboardDTO>(initial);
@@ -25,8 +82,7 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
   // `now` advances once a second (below) so the staleness check stays a pure
   // read of state during render.
   const [now, setNow] = useState(() => Date.now());
-  const [tab, setTab] = useState<Tab>("group");
-  // Which rows are expanded (group keys + `dev:<id>` keys share one Set).
+  // Which group rows are expanded (groupId or "ungrouped").
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const reqIdRef = useRef(0);
 
@@ -73,49 +129,6 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
     };
   }, [refresh]);
 
-  const weeklyTotalTokens = dash.weeklyTotals.totalTokens;
-
-  const groupDonut = useMemo(
-    () =>
-      dash.groups.map((g) => ({
-        key: g.groupId ?? "ungrouped",
-        name: g.name,
-        value: g.weeklyTokens,
-        color: g.color,
-      })),
-    [dash.groups],
-  );
-  const deviceDonut = useMemo(
-    () =>
-      dash.devices.map((d, i) => ({
-        key: d.deviceId,
-        name: d.name,
-        value: d.weeklyTokens,
-        color: colorAt(i),
-      })),
-    [dash.devices],
-  );
-  const modelDonut = useMemo(
-    () =>
-      dash.models.map((m, i) => ({
-        key: m.model,
-        name: m.label,
-        value: m.billableTokens,
-        color: colorAt(i),
-      })),
-    [dash.models],
-  );
-  const sourceDonut = useMemo(
-    () =>
-      dash.sources.map((s, i) => ({
-        key: s.source,
-        name: s.label,
-        value: s.weeklyTokens,
-        color: colorAt(i),
-      })),
-    [dash.sources],
-  );
-
   const stale = now - lastOk > 3 * POLL_MS;
 
   if (!dash.connected) {
@@ -142,15 +155,6 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
         ? "API key"
         : "—";
 
-  const donut =
-    tab === "group"
-      ? groupDonut
-      : tab === "device"
-        ? deviceDonut
-        : tab === "source"
-          ? sourceDonut
-          : modelDonut;
-
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -171,81 +175,40 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <KpiRow dash={dash} />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <OfficialCard
+          title="5-hour session"
+          resetsAt={dash.fiveHourResetsAt}
+          pct={dash.fiveHourPct}
+        />
+        <OfficialCard
+          title="Weekly"
+          resetsAt={dash.sevenDayResetsAt}
+          pct={dash.sevenDayPct}
+        />
       </div>
 
-      <UsageTimelineChart
-        timeline={dash.timeline}
-        timelineHourly={dash.timelineHourly}
-        timeline30d={dash.timeline30d}
-        timelineMonthly={dash.timelineMonthly}
-        timelineDaily={dash.timelineDaily}
-        groupCatalog={dash.groupCatalog}
-        deviceCatalog={dash.deviceCatalog}
-        models={dash.models}
-      />
-
-      <UsageTotals dash={dash} />
-
       <section className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-medium text-neutral-400">Breakdown</h2>
-          <Tabs
-            ariaLabel="Breakdown dimension"
-            value={tab}
-            onChange={setTab}
-            options={[
-              { value: "group", label: "By group", count: dash.groups.length },
-              { value: "device", label: "By device", count: dash.devices.length },
-              { value: "source", label: "By source", count: dash.sources.length },
-              { value: "model", label: "By model", count: dash.models.length },
-            ]}
+        <h2 className="text-sm font-medium text-neutral-400">Groups</h2>
+        <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
+          <GroupTable
+            groups={dash.groups}
+            expanded={expanded}
+            onToggle={toggleRow}
           />
         </div>
+      </section>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,260px)_1fr]">
-          <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
-            <ShareDonut
-              data={donut}
-              centerLabel="weekly"
-              centerValue={formatTokens(weeklyTotalTokens)}
-            />
-          </div>
-          <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
-            {tab === "group" && (
-              <GroupTable
-                groups={dash.groups}
-                expanded={expanded}
-                onToggle={toggleRow}
-              />
-            )}
-            {tab === "device" && (
-              <DeviceTable
-                devices={dash.devices}
-                expanded={expanded}
-                onToggle={toggleRow}
-              />
-            )}
-            {tab === "source" && (
-              <SourceTable
-                sources={dash.sources}
-                expanded={expanded}
-                onToggle={toggleRow}
-              />
-            )}
-            {tab === "model" && <ModelTable models={dash.models} />}
-          </div>
+      <section className="flex flex-col gap-4">
+        <h2 className="text-sm font-medium text-neutral-400">Spend</h2>
+        <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
+          <SpendTable dash={dash} />
+          <p className="mt-3 text-xs text-neutral-500">
+            &quot;This week&quot; follows the weekly limit window;
+            &quot;this month&quot; is the UTC calendar month. Cost is estimated
+            at public API list prices, priced per model.
+          </p>
         </div>
-
-        {tab === "model" && dash.models.length > 0 && (
-          <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
-            <h3 className="mb-3 text-sm font-medium text-neutral-400">
-              Models by billable tokens · weekly
-            </h3>
-            <TokenBarChart data={modelDonut} />
-          </div>
-        )}
       </section>
 
       <p className="text-xs text-neutral-500">
@@ -253,8 +216,7 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
         utilization (reported by the collector). Each group is budgeted half the
         account limit, so a group&apos;s percentage is measured against that
         half — a group can read 100% while the account is at 50%, warning you not
-        to starve the other group. Per-device numbers distribute the account
-        total by local token activity (billable tokens, excluding cache reads).
+        to starve the other group.
       </p>
     </div>
   );
