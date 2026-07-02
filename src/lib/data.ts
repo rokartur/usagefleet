@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { devices, groups, usageEvents, userSettings } from "@/db/schema";
+import {
+  devices,
+  groups,
+  type StoredModelLimit,
+  usageEvents,
+  userSettings,
+} from "@/db/schema";
 import {
   billableTokens,
   computeDashboardUsage,
@@ -14,6 +20,7 @@ import {
   foldAndSum,
   foldEvents,
   modelBreakdown,
+  modelLabel,
   type ModelUsage,
   monthKey,
   sumAgg,
@@ -204,6 +211,32 @@ const emptySpend = (): Spend => ({
   month: { totals: { ...EMPTY_TOTALS }, costUsd: 0 },
 });
 
+/** One group's slice of a per-model official limit. */
+export interface LiveModelLimitGroup {
+  groupId: string | null;
+  name: string;
+  color: string;
+  /** Against the group's budget slice (1/MAX_GROUPS), like sessionPct. */
+  pct: number;
+  /** Billable tokens of this model family in the limit's window. */
+  tokens: number;
+}
+
+/** A per-model official limit (e.g. the Fable weekly cap) with the same
+ *  local-token-share group split as the session/weekly limits. */
+export interface LiveModelLimit {
+  /** Model family key from the rate-limit header ("fable", "opus"). */
+  model: string;
+  /** Friendly label ("Fable"). */
+  label: string;
+  /** Window key from the header ("5h", "7d"). */
+  window: string;
+  /** Claude's official utilization for this model limit. */
+  pct: number;
+  resetsAt: Date | null;
+  groups: LiveModelLimitGroup[];
+}
+
 export interface LiveDashboard {
   /** True once the collector has reported real utilization at least once. */
   connected: boolean;
@@ -214,12 +247,26 @@ export interface LiveDashboard {
   fiveHourResetsAt: Date | null;
   sevenDayResetsAt: Date | null;
   groups: LiveGroupUsage[];
+  /** Per-model official limits (e.g. Fable weekly), group-split like above. */
+  modelLimits: LiveModelLimit[];
   /** Money spent this week (weekly window) and this calendar month. */
   spend: Spend;
 }
 
-const FIVE_H_MS = 5 * 60 * 60 * 1000;
-const SEVEN_D_MS = 7 * 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const FIVE_H_MS = 5 * HOUR_MS;
+const SEVEN_D_MS = 7 * 24 * HOUR_MS;
+
+/** Duration of a rate-limit window key ("5h", "7d", …); null when unparseable.
+ *  Months are approximated as 30 days — only the split window, not limit math. */
+function windowDurationMs(window: string): number | null {
+  const m = window.match(/^(\d+)([hdwm])$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  const unit =
+    m[2] === "h" ? HOUR_MS : m[2] === "d" ? 24 * HOUR_MS : m[2] === "w" ? 7 * 24 * HOUR_MS : 30 * 24 * HOUR_MS;
+  return n * unit;
+}
 
 /** An account may have at most this many groups. Each group is budgeted an equal
  *  slice of the account limit (1/MAX_GROUPS), so a group's percentage is measured
@@ -318,7 +365,13 @@ export async function getLiveDashboard(
   };
 
   if (!hasLimits) {
-    return { connected: false, groups: [], spend: emptySpend(), ...base };
+    return {
+      connected: false,
+      groups: [],
+      modelLimits: [],
+      spend: emptySpend(),
+      ...base,
+    };
   }
 
   // Clamp each window to exactly its nominal duration ending at `now`, so a
@@ -336,9 +389,32 @@ export async function getLiveDashboard(
     ),
   );
 
+  // Per-model limit windows (e.g. Fable weekly), clamped the same way. Entries
+  // with no reported pct can't be split — drop them up front.
+  const modelWindows = (settings.modelLimits ?? [])
+    .filter((m): m is StoredModelLimit & { pct: number } => m.pct != null)
+    .map((m) => {
+      const dur = windowDurationMs(m.window) ?? SEVEN_D_MS;
+      const parsed = m.resetsAt ? new Date(m.resetsAt) : null;
+      const resetsAt =
+        parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+      const start = new Date(
+        Math.max(
+          (resetsAt ?? new Date(now.getTime() - dur)).getTime() - dur,
+          now.getTime() - dur,
+        ),
+      );
+      return { entry: m, start, resetsAt };
+    });
+
   // Load only what the windows need (covers a future reset too), not a fixed 8d.
   const earliest = new Date(
-    Math.min(weekStart.getTime(), fiveStart.getTime()) - 5 * 60 * 1000,
+    Math.min(
+      weekStart.getTime(),
+      fiveStart.getTime(),
+      ...modelWindows.map((w) => w.start.getTime()),
+    ) -
+      5 * 60 * 1000,
   );
   // Events, the group list and the all-time daily aggregates are independent —
   // one round-trip.
@@ -376,6 +452,37 @@ export async function getLiveDashboard(
   }));
   groupUsages.sort((a, b) => b.weeklyTokens - a.weeklyTokens);
 
+  // Per-model official limits: split each model cap across groups by that model
+  // family's local billable-token share within the limit's own window — the
+  // same Hamilton split (and per-group budget scaling) as the session/weekly
+  // limits above.
+  const modelLimits: LiveModelLimit[] = modelWindows.map(
+    ({ entry, start, resetsAt }) => {
+      const familyEvents = events.filter((e) =>
+        (e.model ?? "").toLowerCase().includes(entry.model),
+      );
+      const split = splitByShare(familyEvents, start, now, entry.pct);
+      const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(
+        ([id, s]) => ({
+          groupId: id,
+          name: nameFor(id),
+          color: colorFor(id),
+          pct: groupBudgetPct(s.pct),
+          tokens: s.tokens,
+        }),
+      );
+      groupRowsFor.sort((a, b) => b.tokens - a.tokens);
+      return {
+        model: entry.model,
+        label: modelLabel(entry.model),
+        window: entry.window,
+        pct: Math.min(100, Math.max(0, entry.pct)),
+        resetsAt,
+        groups: groupRowsFor,
+      };
+    },
+  );
+
   // Weekly-window spend: fold once, then price each logical message by its own
   // model. Monthly spend comes from the pre-folded daily aggregates, priced per
   // (day × group × model) cell the same way.
@@ -393,7 +500,12 @@ export async function getLiveDashboard(
     },
   };
 
-  return { connected: true, groups: groupUsages, spend, ...base };
+  return { connected: true, groups: groupUsages, modelLimits, spend, ...base };
+}
+
+/** DTO form of a per-model limit (resetsAt → ISO). */
+export interface ModelLimitDTO extends Omit<LiveModelLimit, "resetsAt"> {
+  resetsAt: string | null;
 }
 
 /** JSON-serializable form of LiveDashboard (Dates → ISO) for the client poll. */
@@ -406,6 +518,7 @@ export interface DashboardDTO {
   fiveHourResetsAt: string | null;
   sevenDayResetsAt: string | null;
   groups: LiveGroupUsage[];
+  modelLimits: ModelLimitDTO[];
   spend: Spend;
 }
 
@@ -419,6 +532,10 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
     fiveHourResetsAt: d.fiveHourResetsAt?.toISOString() ?? null,
     sevenDayResetsAt: d.sevenDayResetsAt?.toISOString() ?? null,
     groups: d.groups,
+    modelLimits: d.modelLimits.map((m) => ({
+      ...m,
+      resetsAt: m.resetsAt?.toISOString() ?? null,
+    })),
     spend: d.spend,
   };
 }

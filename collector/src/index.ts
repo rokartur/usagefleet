@@ -28,6 +28,18 @@ function ts(): string {
   return new Date().toISOString().replace("T", " ").slice(0, 19);
 }
 
+/** "5h 2% · weekly 13% · fable(7d) 24%" — the shared limits log line. */
+function limitsSummary(limits: {
+  fiveHourPct: number | null;
+  sevenDayPct: number | null;
+  modelLimits: Array<{ model: string; window: string; pct: number | null }>;
+}): string {
+  const models = limits.modelLimits
+    .map((m) => ` · ${m.model}(${m.window}) ${m.pct ?? "?"}%`)
+    .join("");
+  return `5h ${limits.fiveHourPct ?? "?"}% · weekly ${limits.sevenDayPct ?? "?"}%${models}`;
+}
+
 async function cmdRun(): Promise<void> {
   const cfg = loadConfig();
   const r = await runOnce(cfg, (m) => console.log(`[${ts()}] ${m}`));
@@ -36,9 +48,7 @@ async function cmdRun(): Promise<void> {
   );
   const limits = await reportLimitsOnce(cfg, (m) => console.log(`[${ts()}] ${m}`));
   if (limits) {
-    console.log(
-      `[${ts()}] limits (${limits.source}): 5h ${limits.fiveHourPct ?? "?"}% · weekly ${limits.sevenDayPct ?? "?"}%`,
-    );
+    console.log(`[${ts()}] limits (${limits.source}): ${limitsSummary(limits)}`);
   }
   if (r.failed) process.exitCode = 1;
 }
@@ -50,9 +60,7 @@ async function cmdLimits(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  console.log(
-    `[${ts()}] reported ${limits.source}: 5h ${limits.fiveHourPct ?? "?"}% · weekly ${limits.sevenDayPct ?? "?"}%`,
-  );
+  console.log(`[${ts()}] reported ${limits.source}: ${limitsSummary(limits)}`);
 }
 
 async function cmdWatch(): Promise<void> {
@@ -85,9 +93,7 @@ async function cmdWatch(): Promise<void> {
         lastLimitsAt = nowMs;
         const limits = await reportLimitsOnce(cfg, (m) => console.log(`[${ts()}] ${m}`));
         if (limits) {
-          console.log(
-            `[${ts()}] limits (${limits.source}): 5h ${limits.fiveHourPct ?? "?"}% · weekly ${limits.sevenDayPct ?? "?"}%`,
-          );
+          console.log(`[${ts()}] limits (${limits.source}): ${limitsSummary(limits)}`);
         }
       }
     } catch (err) {

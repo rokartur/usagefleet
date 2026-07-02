@@ -8,6 +8,7 @@ import {
   bigint,
   boolean,
   index,
+  jsonb,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
@@ -101,6 +102,17 @@ export const usageEvents = pgTable(
   ],
 );
 
+/** One collector-reported per-model limit, stored verbatim in jsonb. */
+export interface StoredModelLimit {
+  /** Model family key from the rate-limit header, e.g. "fable" / "opus". */
+  model: string;
+  /** Window key from the header, e.g. "5h" / "7d". */
+  window: string;
+  pct: number | null;
+  /** ISO timestamp, or null when the reset header was absent. */
+  resetsAt: string | null;
+}
+
 // Per-user limit configuration. Defaults mirror the `max5` plan preset; the
 // numbers approximate Anthropic's (opaque) limits and are editable in Settings.
 export const userSettings = pgTable("user_settings", {
@@ -127,6 +139,10 @@ export const userSettings = pgTable("user_settings", {
   sevenDayPct: integer("seven_day_pct"),
   fiveHourResetsAt: timestamp("five_hour_resets_at", { withTimezone: true }),
   sevenDayResetsAt: timestamp("seven_day_resets_at", { withTimezone: true }),
+  // Per-model limits (e.g. the Fable/Opus weekly cap) as reported by the
+  // collector from Anthropic's per-model rate-limit headers. Small array; the
+  // set of models is dynamic, so jsonb instead of dedicated columns.
+  modelLimits: jsonb("model_limits").$type<StoredModelLimit[]>(),
   limitsReportedAt: timestamp("limits_reported_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

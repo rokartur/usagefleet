@@ -2,12 +2,25 @@ import type { ClaudeCreds } from "./claude-creds.js";
 
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 
+/** One per-model limit (e.g. the Fable/Opus weekly cap) read from headers like
+ *  `anthropic-ratelimit-unified-7d-fable-utilization`. */
+export interface ModelLimit {
+  /** Model family key from the header name, e.g. "fable" or "opus". */
+  model: string;
+  /** Window key from the header name, e.g. "5h" or "7d". */
+  window: string;
+  pct: number | null;
+  resetsAt: string | null;
+}
+
 export interface LimitsReport {
   source: "sub" | "api";
   fiveHourPct: number | null;
   sevenDayPct: number | null;
   fiveHourResetsAt: string | null;
   sevenDayResetsAt: string | null;
+  /** Per-model limits, in header order. Empty when the account has none. */
+  modelLimits: ModelLimit[];
 }
 
 export function parsePct(v: string | null): number | null {
@@ -31,17 +44,146 @@ export function parseReset(v: string | null): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+/** Per-model utilization header: `anthropic-ratelimit-unified-<window>-<model>-utilization`
+ *  (the account-wide headers have no `<model>` segment and don't match). */
+const MODEL_UTIL_RE =
+  /^anthropic-ratelimit-unified-(\d+[hdwm])-([a-z0-9][a-z0-9_.-]*)-utilization$/;
+
 export function parseLimitsHeaders(
   source: "sub" | "api",
   get: (name: string) => string | null,
+  names: Iterable<string> = [],
 ): LimitsReport {
+  const modelLimits: ModelLimit[] = [];
+  for (const raw of names) {
+    const m = raw.toLowerCase().match(MODEL_UTIL_RE);
+    if (!m) continue;
+    const [, window, model] = m;
+    modelLimits.push({
+      model,
+      window,
+      pct: parsePct(get(raw)),
+      resetsAt: parseReset(
+        get(`anthropic-ratelimit-unified-${window}-${model}-reset`),
+      ),
+    });
+  }
   return {
     source,
     fiveHourPct: parsePct(get("anthropic-ratelimit-unified-5h-utilization")),
     sevenDayPct: parsePct(get("anthropic-ratelimit-unified-7d-utilization")),
     fiveHourResetsAt: parseReset(get("anthropic-ratelimit-unified-5h-reset")),
     sevenDayResetsAt: parseReset(get("anthropic-ratelimit-unified-7d-reset")),
+    modelLimits,
   };
+}
+
+const OAUTH_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
+
+/**
+ * Per-model limits for subscription logins. The Messages ping only returns the
+ * account-wide 5h/7d headers; the per-model caps Claude's own UI shows (e.g.
+ * "Fable · 24% used") come from the OAuth usage endpoint Claude Code queries
+ * for /usage. Undocumented — parse defensively and return [] on any surprise.
+ */
+async function fetchOauthModelLimits(token: string): Promise<ModelLimit[]> {
+  const res = await fetch(OAUTH_USAGE_URL, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      "anthropic-beta": "oauth-2025-04-20",
+      "user-agent": "claude-code/2.1.5 (claude-track)",
+    },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) return [];
+  const body: unknown = await res.json().catch(() => null);
+  if (process.env.CLAUDE_TRACK_DEBUG_HEADERS) {
+    console.error(`[debug] oauth/usage: ${JSON.stringify(body)}`);
+  }
+  return parseOauthUsage(body);
+}
+
+/** oauth/usage values are already 0–100 percentages (unlike the 0–1 header
+ *  fractions) — clamp without the fraction heuristic so 1% never reads as 100%. */
+function clampPct(n: number): number {
+  return Math.min(100, Math.max(0, Math.round(n)));
+}
+
+/** Normalize a scope's model name to a header-safe key ("Fable" → "fable"). */
+function modelKeyOf(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
+}
+
+/**
+ * Extract per-model entries from an oauth/usage payload.
+ *
+ * Preferred source: the `limits[]` array — model-scoped entries (e.g.
+ * `{kind: "weekly_scoped", group: "weekly", percent, resets_at,
+ * scope: {model: {display_name: "Fable"}}}`) are exactly the per-model bars
+ * Claude's own UI renders. Account-wide entries have `scope: null` and are
+ * skipped (the header ping covers them).
+ *
+ * Fallback: legacy top-level `seven_day_<model>` objects with a `utilization`
+ * number (all null on current accounts, but cheap to keep).
+ */
+export function parseOauthUsage(body: unknown): ModelLimit[] {
+  if (typeof body !== "object" || body === null) return [];
+  const root = body as Record<string, unknown>;
+  const out: ModelLimit[] = [];
+  const seen = new Set<string>();
+
+  if (Array.isArray(root.limits)) {
+    for (const item of root.limits) {
+      if (typeof item !== "object" || item === null) continue;
+      const l = item as {
+        group?: unknown;
+        percent?: unknown;
+        resets_at?: unknown;
+        scope?: unknown;
+      };
+      const scope = (
+        typeof l.scope === "object" && l.scope !== null ? l.scope : {}
+      ) as { model?: unknown };
+      const model = (
+        typeof scope.model === "object" && scope.model !== null
+          ? scope.model
+          : null
+      ) as { id?: unknown; display_name?: unknown } | null;
+      const name =
+        (typeof model?.id === "string" && model.id) ||
+        (typeof model?.display_name === "string" && model.display_name) ||
+        null;
+      if (!name || typeof l.percent !== "number") continue;
+      const window =
+        l.group === "session" ? "5h" : l.group === "weekly" ? "7d" : "7d";
+      const key = modelKeyOf(name);
+      out.push({
+        model: key,
+        window,
+        pct: clampPct(l.percent),
+        resetsAt:
+          typeof l.resets_at === "string" ? parseReset(l.resets_at) : null,
+      });
+      seen.add(`${window}:${key}`);
+    }
+  }
+
+  for (const [key, val] of Object.entries(root)) {
+    const m = key.match(/^(five_hour|seven_day)_([a-z0-9_]+)$/);
+    if (!m || typeof val !== "object" || val === null) continue;
+    const entry = val as { utilization?: unknown; resets_at?: unknown };
+    if (typeof entry.utilization !== "number") continue;
+    const window = m[1] === "five_hour" ? "5h" : "7d";
+    if (seen.has(`${window}:${m[2]}`)) continue;
+    out.push({
+      model: m[2],
+      window,
+      pct: clampPct(entry.utilization),
+      resetsAt:
+        typeof entry.resets_at === "string" ? parseReset(entry.resets_at) : null,
+    });
+  }
+  return out;
 }
 
 /**
@@ -77,14 +219,36 @@ export async function fetchLimits(creds: ClaudeCreds): Promise<LimitsReport> {
   // Messages endpoint is undocumented and may break without notice. If a
   // rejected response ALSO lacks the headers, the feature is unavailable; throw
   // so the caller logs it instead of POSTing an all-null report silently.
-  const report = parseLimitsHeaders(creds.source, (n) => res.headers.get(n));
+  // Diagnostic: dump every rate-limit header so unrecognized per-model names
+  // can be discovered in the field (CLAUDE_TRACK_DEBUG_HEADERS=1).
+  if (process.env.CLAUDE_TRACK_DEBUG_HEADERS) {
+    for (const [k, v] of res.headers.entries()) {
+      if (k.includes("ratelimit")) console.error(`[debug] ${k}: ${v}`);
+    }
+  }
+  const report = parseLimitsHeaders(
+    creds.source,
+    (n) => res.headers.get(n),
+    res.headers.keys(),
+  );
   const gotHeaders =
     report.fiveHourPct != null ||
     report.sevenDayPct != null ||
     report.fiveHourResetsAt != null ||
-    report.sevenDayResetsAt != null;
+    report.sevenDayResetsAt != null ||
+    report.modelLimits.length > 0;
   if (!res.ok && !gotHeaders) {
     throw new Error(`limits unavailable: HTTP ${res.status} with no rate-limit headers`);
+  }
+  // Subscription logins: merge in the per-model caps from the OAuth usage
+  // endpoint (the ping headers never include them). Best-effort — keep the
+  // header-derived report on any failure.
+  if (creds.source === "sub" && report.modelLimits.length === 0) {
+    try {
+      report.modelLimits = await fetchOauthModelLimits(creds.token);
+    } catch {
+      /* endpoint unavailable — report account-wide limits only */
+    }
   }
   return report;
 }

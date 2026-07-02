@@ -14,6 +14,19 @@ const LimitsSchema = z.object({
   sevenDayPct: z.number().int().min(0).max(100).nullish(),
   fiveHourResetsAt: z.string().nullish(),
   sevenDayResetsAt: z.string().nullish(),
+  // Per-model limits from the dynamic rate-limit headers (e.g. Fable weekly).
+  // Keys are constrained to header-safe charsets so junk can't land in jsonb.
+  modelLimits: z
+    .array(
+      z.object({
+        model: z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,63}$/),
+        window: z.string().regex(/^\d{1,3}[hdwm]$/),
+        pct: z.number().int().min(0).max(100).nullish(),
+        resetsAt: z.string().nullish(),
+      }),
+    )
+    .max(16)
+    .nullish(),
 });
 
 function tokenFrom(req: Request): string | null {
@@ -59,30 +72,30 @@ export async function POST(req: Request) {
   const b = parsed.data;
   const now = new Date();
 
+  const set = {
+    limitSource: b.source,
+    fiveHourPct: b.fiveHourPct ?? null,
+    sevenDayPct: b.sevenDayPct ?? null,
+    fiveHourResetsAt: toDate(b.fiveHourResetsAt),
+    sevenDayResetsAt: toDate(b.sevenDayResetsAt),
+    limitsReportedAt: now,
+    updatedAt: now,
+    // Only overwrite the stored per-model limits when the collector actually
+    // sent the field — an older collector that omits it must not wipe them.
+    // Reset strings are normalized to ISO (unparseable → null) before storing.
+    ...(b.modelLimits != null && {
+      modelLimits: b.modelLimits.map((m) => ({
+        model: m.model,
+        window: m.window,
+        pct: m.pct ?? null,
+        resetsAt: toDate(m.resetsAt)?.toISOString() ?? null,
+      })),
+    }),
+  };
   await db
     .insert(userSettings)
-    .values({
-      userId: device.userId,
-      limitSource: b.source,
-      fiveHourPct: b.fiveHourPct ?? null,
-      sevenDayPct: b.sevenDayPct ?? null,
-      fiveHourResetsAt: toDate(b.fiveHourResetsAt),
-      sevenDayResetsAt: toDate(b.sevenDayResetsAt),
-      limitsReportedAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: userSettings.userId,
-      set: {
-        limitSource: b.source,
-        fiveHourPct: b.fiveHourPct ?? null,
-        sevenDayPct: b.sevenDayPct ?? null,
-        fiveHourResetsAt: toDate(b.fiveHourResetsAt),
-        sevenDayResetsAt: toDate(b.sevenDayResetsAt),
-        limitsReportedAt: now,
-        updatedAt: now,
-      },
-    });
+    .values({ userId: device.userId, ...set })
+    .onConflictDoUpdate({ target: userSettings.userId, set });
 
   // Touch the device so the Devices list shows an accurate last-seen time.
   await db.update(devices).set({ lastSeenAt: now }).where(eq(devices.id, device.id));

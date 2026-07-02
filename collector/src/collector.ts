@@ -16,7 +16,7 @@ import type { Config, UsageSource } from "./types.js";
  *  avoids re-uploading every desktop record twice. */
 const PROJECTS_SUBPATH = `${sep}.claude${sep}projects${sep}`;
 
-export const COLLECTOR_VERSION = "1.0.0";
+export const COLLECTOR_VERSION = "1.1.0";
 
 export interface CycleResult {
   files: number;

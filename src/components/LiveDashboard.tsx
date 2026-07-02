@@ -4,9 +4,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ResetCountdown } from "@/components/ResetCountdown";
 import { GroupTable } from "@/components/dashboard/GroupTable";
 import { UsageBar } from "@/components/usage-ui";
-import type { DashboardDTO, SpendPeriod } from "@/lib/data";
+import type { DashboardDTO, ModelLimitDTO, SpendPeriod } from "@/lib/data";
 import { formatRelative, formatTokens, formatUsd } from "@/lib/format";
 import { billableTokens } from "@/lib/usage";
+
+/** Display label for a limit-window key: "5h" → "5-hour", "7d" → "weekly". */
+function windowLabel(window: string): string {
+  if (window === "5h") return "5-hour";
+  if (window === "7d") return "weekly";
+  return window;
+}
 
 const POLL_MS = 5000;
 
@@ -32,6 +39,52 @@ function OfficialCard({
         <ResetCountdown resetsAt={resetsAt} />
       </p>
       <UsageBar pct={pct} />
+    </div>
+  );
+}
+
+/** One per-model official limit: Claude's own utilization bar up top, then the
+ *  per-group split underneath — same presentation as the session split. */
+function ModelLimitCard({ limit }: { limit: ModelLimitDTO }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-sm font-medium text-neutral-400">
+          {limit.label}
+          <span className="ml-2 text-xs text-neutral-600">
+            {windowLabel(limit.window)} limit
+          </span>
+        </h3>
+        <span className="text-3xl font-semibold tabular-nums">{limit.pct}%</span>
+      </div>
+      <p className="mb-3 text-xs text-neutral-500">
+        <ResetCountdown resetsAt={limit.resetsAt} />
+      </p>
+      <UsageBar pct={limit.pct} />
+      {limit.groups.length > 0 && (
+        <ul className="mt-4 flex flex-col gap-2 border-t border-white/5 pt-3">
+          {limit.groups.map((g) => (
+            <li
+              key={g.groupId ?? "ungrouped"}
+              className="flex items-center gap-3 text-sm"
+            >
+              <span className="flex w-32 min-w-0 items-center gap-1.5 text-neutral-300">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: g.color }}
+                />
+                <span className="truncate">{g.name}</span>
+              </span>
+              <div className="w-28">
+                <UsageBar pct={g.pct} />
+              </div>
+              <span className="tabular-nums text-neutral-400">
+                ~{g.pct}% · {formatTokens(g.tokens)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -188,6 +241,17 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
         />
       </div>
 
+      {dash.modelLimits.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <h2 className="text-sm font-medium text-neutral-400">Model limits</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {dash.modelLimits.map((m) => (
+              <ModelLimitCard key={`${m.model}-${m.window}`} limit={m} />
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="flex flex-col gap-4">
         <h2 className="text-sm font-medium text-neutral-400">Groups</h2>
         <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
@@ -212,11 +276,11 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
       </section>
 
       <p className="text-xs text-neutral-500">
-        The 5-hour and weekly percentages up top are Claude&apos;s own account
-        utilization (reported by the collector). Each group is budgeted half the
-        account limit, so a group&apos;s percentage is measured against that
-        half — a group can read 100% while the account is at 50%, warning you not
-        to starve the other group.
+        The 5-hour, weekly and per-model percentages up top are Claude&apos;s own
+        account utilization (reported by the collector). Each group is budgeted
+        half the account limit, so a group&apos;s percentage is measured against
+        that half — a group can read 100% while the account is at 50%, warning
+        you not to starve the other group.
       </p>
     </div>
   );
