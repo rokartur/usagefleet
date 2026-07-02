@@ -80,10 +80,13 @@ export async function POST(req: Request) {
     sevenDayResetsAt: toDate(b.sevenDayResetsAt),
     limitsReportedAt: now,
     updatedAt: now,
-    // Only overwrite the stored per-model limits when the collector actually
-    // sent the field — an older collector that omits it must not wipe them.
+    // Only overwrite the stored per-model limits when the collector sent a
+    // non-empty set. The per-model caps come from a flaky best-effort OAuth
+    // endpoint that returns [] on any timeout/hiccup; an empty array must not
+    // wipe the last-known-good limits (that's what made the section flicker).
+    // An older collector that omits the field entirely is preserved the same way.
     // Reset strings are normalized to ISO (unparseable → null) before storing.
-    ...(b.modelLimits != null && {
+    ...(b.modelLimits != null && b.modelLimits.length > 0 && {
       modelLimits: b.modelLimits.map((m) => ({
         model: m.model,
         window: m.window,
