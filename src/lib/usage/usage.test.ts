@@ -142,9 +142,9 @@ describe("pricing", () => {
     expect(costForTotals(mtok({ cacheCreationTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(3.75);
     expect(costForTotals(mtok({ cacheReadTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(0.3);
   });
-  it("skips synthetic fable entries", () => {
-    expect(priceFor("claude-fable-5")).toBeNull();
-    expect(costUsd(rec({ uuid: "f", ts: "2026-06-18T10:00:00Z", model: "claude-fable-5", outputTokens: 9999 }))).toBe(0);
+  it("prices fable at the frontier tier ($10/$50, cache 12.5/1)", () => {
+    expect(priceFor("claude-fable-5")).toEqual({ input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 });
+    expect(costUsd(rec({ uuid: "f", ts: "2026-06-18T10:00:00Z", model: "claude-fable-5", outputTokens: 1_000_000 }))).toBeCloseTo(50);
   });
 });
 

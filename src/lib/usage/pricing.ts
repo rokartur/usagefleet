@@ -14,6 +14,8 @@ interface Price {
   cacheRead: number;
 }
 
+// Fable 5 / Mythos 5: the frontier tier ($10/$50 per MTok).
+const FABLE: Price = { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 };
 // Opus 4.5 and later (4.5 / 4.6 / 4.7 / 4.8): the current Opus tier.
 const OPUS_CURRENT: Price = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 };
 // Opus 4.0 / 4.1 (deprecated/retired): the legacy Opus tier.
@@ -32,10 +34,10 @@ function versionOf(m: string): number | null {
   return v ? Number(v[1]) + Number(v[2]) / 10 : null;
 }
 
-export function priceFor(model: string | null | undefined): Price | null {
+export function priceFor(model: string | null | undefined): Price {
   if (!model) return SONNET; // unknown → sonnet-tier fallback
   const m = model.toLowerCase();
-  if (m.includes("fable") || m.includes("mythos")) return null; // synthetic test models — not billable
+  if (m.includes("fable") || m.includes("mythos")) return FABLE;
   const v = versionOf(m);
   if (m.includes("opus")) return v !== null && v < 4.5 ? OPUS_LEGACY : OPUS_CURRENT;
   if (m.includes("haiku")) return v !== null && v < 4.5 ? HAIKU_LEGACY : HAIKU_CURRENT;
@@ -52,7 +54,6 @@ type TokenCounts = Pick<
 /** USD cost of a set of token counts under one model's list price. */
 export function costForTokens(t: TokenCounts, model: string | null): number {
   const p = priceFor(model);
-  if (!p) return 0;
   return (
     (t.inputTokens * p.input +
       t.outputTokens * p.output +

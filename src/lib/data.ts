@@ -17,7 +17,6 @@ import {
   type DashboardUsage,
   EMPTY_TOTALS,
   filterByWindow,
-  foldAndSum,
   foldEvents,
   type GroupDailySpend,
   groupDailySpend,
@@ -289,7 +288,10 @@ const groupBudgetPct = (sharePct: number) =>
   Math.min(100, sharePct * MAX_GROUPS);
 
 /** Split an official account-wide percentage across an arbitrary key (group or
- *  device) by each key's share of local billable tokens within the window. */
+ *  device) by each key's share of estimated cost (API list prices) within the
+ *  window — weights buckets (output 5×, cache write 1.25×, cache read 0.1×) and
+ *  models (Fable > Opus > Sonnet > Haiku) like Anthropic's cost-based limit
+ *  accounting. Token fields stay billable/total for display. */
 interface ShareEntry {
   pct: number;
   tokens: number;
@@ -318,15 +320,18 @@ function splitByShare(
   }
   const tokensByKey = new Map<string | null, number>();
   const totalByKey = new Map<string | null, number>();
+  const costByKey = new Map<string | null, number>();
   const modelsByKey = new Map<string | null, ModelUsage[]>();
-  let total = 0;
+  let totalCost = 0;
   for (const [k, evs] of byKey) {
-    const totals = foldAndSum(evs);
-    const tok = billableTokens(totals);
-    tokensByKey.set(k, tok);
+    const folded = foldEvents(evs);
+    const totals = sumRecords(folded);
+    tokensByKey.set(k, billableTokens(totals));
     totalByKey.set(k, totals.totalTokens);
+    const cost = folded.reduce((s, e) => s + costUsd(e), 0);
+    costByKey.set(k, cost);
     modelsByKey.set(k, modelBreakdown(evs));
-    total += tok;
+    totalCost += cost;
   }
   const models = (k: string | null) => modelsByKey.get(k) ?? [];
   const out = new Map<string | null, ShareEntry>();
@@ -334,7 +339,7 @@ function splitByShare(
   // Largest-remainder (Hamilton) apportionment so per-key pcts sum EXACTLY to
   // the integer official pct (avoids the rounding drift of independent rounds).
   const target = Math.max(0, Math.round(officialPct));
-  if (total <= 0 || target === 0) {
+  if (totalCost <= 0 || target === 0) {
     for (const [k, tok] of tokensByKey) {
       out.set(k, {
         tokens: tok,
@@ -346,7 +351,7 @@ function splitByShare(
     return out;
   }
   const rows = [...tokensByKey].map(([k, tok]) => {
-    const exact = target * (tok / total);
+    const exact = target * ((costByKey.get(k) ?? 0) / totalCost);
     const floor = Math.floor(exact);
     return { k, tok, floor, frac: exact - floor };
   });
@@ -482,9 +487,8 @@ export async function getLiveDashboard(
   groupUsages.sort((a, b) => b.weeklyTokens - a.weeklyTokens);
 
   // Per-model official limits: split each model cap across groups by that model
-  // family's local billable-token share within the limit's own window — the
-  // same Hamilton split (and per-group budget scaling) as the session/weekly
-  // limits above.
+  // family's local cost share within the limit's own window — the same Hamilton
+  // split (and per-group budget scaling) as the session/weekly limits above.
   const modelLimits: LiveModelLimit[] = modelWindows.map(
     ({ entry, start, resetsAt }) => {
       const familyEvents = events.filter((e) =>

@@ -48,8 +48,8 @@ export function foldAndSum(events: UsageRecord[]): TokenTotals {
 }
 
 /** "Billable" tokens = input + output + cache_creation (EXCLUDES cache_read,
- *  which is replayed context and ~97% of raw totals — see usage.test.ts). Used
- *  for proportional group splits so cache reads don't distort the share. */
+ *  which is replayed context and ~97% of raw totals — see usage.test.ts).
+ *  Display metric only; group splits weigh by estimated cost (pricing.ts). */
 export function billableTokens(t: TokenTotals): number {
   return t.inputTokens + t.outputTokens + t.cacheCreationTokens;
 }
