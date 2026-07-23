@@ -53,10 +53,28 @@ function ModelCompare({
               {r.label}
             </td>
             <td className="px-2 py-1.5 text-right tabular-nums text-neutral-300">
-              {r.session ? formatTokens(r.session.billableTokens) : "—"}
+              {r.session ? (
+                <>
+                  {formatTokens(r.session.billableTokens)}
+                  <span className="text-neutral-600">
+                    {" "}· {formatTokens(r.session.totals.totalTokens)}
+                  </span>
+                </>
+              ) : (
+                "—"
+              )}
             </td>
             <td className="px-2 py-1.5 text-right tabular-nums text-neutral-300">
-              {r.weekly ? formatTokens(r.weekly.billableTokens) : "—"}
+              {r.weekly ? (
+                <>
+                  {formatTokens(r.weekly.billableTokens)}
+                  <span className="text-neutral-600">
+                    {" "}· {formatTokens(r.weekly.totals.totalTokens)}
+                  </span>
+                </>
+              ) : (
+                "—"
+              )}
             </td>
           </tr>
         ))}
@@ -131,6 +149,12 @@ export function GroupTable({
                     </div>
                     <span className="tabular-nums text-neutral-400">
                       ~{g.sessionPct}% · {formatTokens(g.sessionTokens)}
+                      <span
+                        className="text-neutral-600"
+                        title="Total incl. cache reads (ccusage-comparable)"
+                      >
+                        {" "}· {formatTokens(g.sessionTotalTokens)} total
+                      </span>
                     </span>
                   </div>
                 </td>
@@ -141,6 +165,12 @@ export function GroupTable({
                     </div>
                     <span className="tabular-nums text-neutral-400">
                       ~{g.weeklyPct}% · {formatTokens(g.weeklyTokens)}
+                      <span
+                        className="text-neutral-600"
+                        title="Total incl. cache reads (ccusage-comparable)"
+                      >
+                        {" "}· {formatTokens(g.weeklyTotalTokens)} total
+                      </span>
                     </span>
                   </div>
                 </td>

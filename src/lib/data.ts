@@ -187,6 +187,9 @@ export interface LiveGroupUsage {
   weeklyPct: number;
   sessionTokens: number;
   weeklyTokens: number;
+  /** All-bucket totals (incl. cache_read) — comparable with ccusage's Total. */
+  sessionTotalTokens: number;
+  weeklyTotalTokens: number;
   /** Which models the group used (and precise token counts) over the 5h
    *  session window. */
   sessionModels: ModelUsage[];
@@ -290,6 +293,8 @@ const groupBudgetPct = (sharePct: number) =>
 interface ShareEntry {
   pct: number;
   tokens: number;
+  /** All-bucket total (incl. cache_read); display only, never used for splits. */
+  totalTokens: number;
   models: ModelUsage[];
 }
 
@@ -312,11 +317,14 @@ function splitByShare(
     else byKey.set(k, [e]);
   }
   const tokensByKey = new Map<string | null, number>();
+  const totalByKey = new Map<string | null, number>();
   const modelsByKey = new Map<string | null, ModelUsage[]>();
   let total = 0;
   for (const [k, evs] of byKey) {
-    const tok = billableTokens(foldAndSum(evs));
+    const totals = foldAndSum(evs);
+    const tok = billableTokens(totals);
     tokensByKey.set(k, tok);
+    totalByKey.set(k, totals.totalTokens);
     modelsByKey.set(k, modelBreakdown(evs));
     total += tok;
   }
@@ -328,7 +336,12 @@ function splitByShare(
   const target = Math.max(0, Math.round(officialPct));
   if (total <= 0 || target === 0) {
     for (const [k, tok] of tokensByKey) {
-      out.set(k, { tokens: tok, pct: 0, models: models(k) });
+      out.set(k, {
+        tokens: tok,
+        totalTokens: totalByKey.get(k) ?? 0,
+        pct: 0,
+        models: models(k),
+      });
     }
     return out;
   }
@@ -343,7 +356,12 @@ function splitByShare(
     rows[i].floor += 1;
   }
   for (const r of rows) {
-    out.set(r.k, { tokens: r.tok, pct: r.floor, models: models(r.k) });
+    out.set(r.k, {
+      tokens: r.tok,
+      totalTokens: totalByKey.get(r.k) ?? 0,
+      pct: r.floor,
+      models: models(r.k),
+    });
   }
   return out;
 }
@@ -455,6 +473,8 @@ export async function getLiveDashboard(
     weeklyPct: groupBudgetPct(weeklySplit.get(id)?.pct ?? 0),
     sessionTokens: sessionSplit.get(id)?.tokens ?? 0,
     weeklyTokens: weeklySplit.get(id)?.tokens ?? 0,
+    sessionTotalTokens: sessionSplit.get(id)?.totalTokens ?? 0,
+    weeklyTotalTokens: weeklySplit.get(id)?.totalTokens ?? 0,
     // Model breakdowns per window (each matches that window's token figure).
     sessionModels: sessionSplit.get(id)?.models ?? [],
     models: weeklySplit.get(id)?.models ?? [],
