@@ -5,6 +5,7 @@ import {
   type DailyAggRow,
   dailyLedger,
   dayKey,
+  groupDailySpend,
   groupTotals,
   monthKey,
   monthlyLedger,
@@ -154,5 +155,25 @@ describe("daily-agg — groupTotals", () => {
     expect(metricValue(day.get("g1")!, "billable")).toBe(10 + 5 + 2);
     expect(metricValue(day.get("g2")!, "billable")).toBe(3 + 1);
     expect(day.get("g1")!.cacheReadTokens).toBe(100);
+  });
+});
+
+describe("daily-agg — groupDailySpend", () => {
+  it("collapses to (day × group), pricing each row by its own model", () => {
+    const cells = groupDailySpend(ROWS);
+    // 4 rows → 4 distinct (day, group) cells here except the two on 06-24
+    // belong to different groups, so all 4 survive.
+    expect(cells).toHaveLength(4);
+    const g1 = cells.find((c) => c.day === "2026-06-24" && c.groupId === "g1")!;
+    expect(g1.totals.inputTokens).toBe(10);
+    expect(g1.totals.totalTokens).toBe(10 + 5 + 2 + 100);
+    // Opus 4.8 list price: 10×$5 + 5×$25 + 2×$6.25 + 100×$0.5 per 1M.
+    expect(g1.costUsd).toBeCloseTo((10 * 5 + 5 * 25 + 2 * 6.25 + 100 * 0.5) / 1e6, 12);
+    // Same-model rows on the same (day, group) merge and sum cost.
+    const merged = groupDailySpend([...ROWS, ...ROWS]).find(
+      (c) => c.day === "2026-06-24" && c.groupId === "g1",
+    )!;
+    expect(merged.totals.inputTokens).toBe(20);
+    expect(merged.costUsd).toBeCloseTo(2 * g1.costUsd, 12);
   });
 });

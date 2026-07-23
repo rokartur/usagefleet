@@ -234,6 +234,31 @@ function fillBucket(
   return { ts, label, totals, byGroup, byModel, cells: [...cellAcc.values()] };
 }
 
+/** One (UTC day × group) cell with cost pre-priced per model — the compact
+ *  series the panel's period picker filters and sums client-side. */
+export interface GroupDailySpend {
+  day: string;
+  groupId: string | null;
+  totals: TokenTotals;
+  costUsd: number;
+}
+
+/** Collapse (day × group × model × …) rows to (day × group), pricing each row
+ *  by its own model before summing so mixed-model days cost correctly. */
+export function groupDailySpend(rows: DailyAggRow[]): GroupDailySpend[] {
+  const acc = new Map<string, GroupDailySpend>();
+  for (const r of rows) {
+    const k = `${r.day}|${r.groupId ?? ""}`;
+    let e = acc.get(k);
+    if (!e) {
+      acc.set(k, (e = { day: r.day, groupId: r.groupId, totals: emptyTotals(), costUsd: 0 }));
+    }
+    addInto(e.totals, r);
+    e.costUsd += costForTokens(r, r.model);
+  }
+  return [...acc.values()];
+}
+
 /** Per-group token totals over the rows matching `pred` (all rows when omitted),
  *  keyed by groupId (null → "ungrouped"). Feeds the group-vs-group compare. */
 export function groupTotals(

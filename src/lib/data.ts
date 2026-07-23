@@ -19,6 +19,8 @@ import {
   filterByWindow,
   foldAndSum,
   foldEvents,
+  type GroupDailySpend,
+  groupDailySpend,
   modelBreakdown,
   modelLabel,
   type ModelUsage,
@@ -251,6 +253,11 @@ export interface LiveDashboard {
   modelLimits: LiveModelLimit[];
   /** Money spent this week (weekly window) and this calendar month. */
   spend: Spend;
+  /** All-time (UTC day × group) tokens+cost — the period picker's raw series. */
+  groupDaily: GroupDailySpend[];
+  /** Every group the user has (for labeling historical groupDaily rows — a
+   *  group idle this week still appears in past periods). */
+  groupCatalog: { id: string; name: string; color: string }[];
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -370,6 +377,8 @@ export async function getLiveDashboard(
       groups: [],
       modelLimits: [],
       spend: emptySpend(),
+      groupDaily: [],
+      groupCatalog: [],
       ...base,
     };
   }
@@ -500,7 +509,15 @@ export async function getLiveDashboard(
     },
   };
 
-  return { connected: true, groups: groupUsages, modelLimits, spend, ...base };
+  return {
+    connected: true,
+    groups: groupUsages,
+    modelLimits,
+    spend,
+    groupDaily: groupDailySpend(aggRows),
+    groupCatalog: groupRows.map((g) => ({ id: g.id, name: g.name, color: g.color })),
+    ...base,
+  };
 }
 
 /** DTO form of a per-model limit (resetsAt → ISO). */
@@ -520,6 +537,8 @@ export interface DashboardDTO {
   groups: LiveGroupUsage[];
   modelLimits: ModelLimitDTO[];
   spend: Spend;
+  groupDaily: GroupDailySpend[];
+  groupCatalog: { id: string; name: string; color: string }[];
 }
 
 export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
@@ -537,6 +556,8 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
       resetsAt: m.resetsAt?.toISOString() ?? null,
     })),
     spend: d.spend,
+    groupDaily: d.groupDaily,
+    groupCatalog: d.groupCatalog,
   };
 }
 
