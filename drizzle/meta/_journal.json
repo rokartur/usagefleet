@@ -43,6 +43,13 @@
       "when": 1782991886208,
       "tag": "0005_cultured_vector",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784807878071,
+      "tag": "0006_neat_logan",
+      "breakpoints": true
     }
   ]
 }

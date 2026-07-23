@@ -167,8 +167,8 @@ describe("daily-agg — groupDailySpend", () => {
     const g1 = cells.find((c) => c.day === "2026-06-24" && c.groupId === "g1")!;
     expect(g1.totals.inputTokens).toBe(10);
     expect(g1.totals.totalTokens).toBe(10 + 5 + 2 + 100);
-    // Opus 4.8 list price: 10×$5 + 5×$25 + 2×$6.25 + 100×$0.5 per 1M.
-    expect(g1.costUsd).toBeCloseTo((10 * 5 + 5 * 25 + 2 * 6.25 + 100 * 0.5) / 1e6, 12);
+    // Opus 4.8 list price: 10×$5 + 5×$25 + 2×$10 (1h cache write) + 100×$0.5 per 1M.
+    expect(g1.costUsd).toBeCloseTo((10 * 5 + 5 * 25 + 2 * 10 + 100 * 0.5) / 1e6, 12);
     // Same-model rows on the same (day, group) merge and sum cost.
     const merged = groupDailySpend([...ROWS, ...ROWS]).find(
       (c) => c.day === "2026-06-24" && c.groupId === "g1",

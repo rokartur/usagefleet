@@ -128,6 +128,8 @@ export const userSettings = pgTable("user_settings", {
     .default(2_200_000),
   weekResetWeekday: integer("week_reset_weekday").notNull().default(1), // 0=Sun
   weekResetHourUtc: integer("week_reset_hour_utc").notNull().default(0),
+  // Cache-write TTL used for pricing ('5m' | '1h'). Claude Code writes 1h caches.
+  cacheWriteTtl: text("cache_write_ttl").notNull().default("1h"),
   // Deprecated (manual sessionKey flow, replaced by collector-reported limits).
   // Kept as nullable no-op columns to avoid a destructive migration.
   claudeSessionKey: text("claude_session_key"),

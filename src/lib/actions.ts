@@ -4,8 +4,8 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { devices, groups } from "@/db/schema";
-import { ensureDefaultGroup, MAX_GROUPS } from "@/lib/data";
+import { devices, groups, userSettings } from "@/db/schema";
+import { ensureDefaultGroup, ensureSettings, MAX_GROUPS } from "@/lib/data";
 import { generateDeviceToken } from "@/lib/device-token";
 import { requireUser } from "@/lib/session";
 
@@ -22,6 +22,18 @@ async function groupCount(userId: string): Promise<number> {
     .from(groups)
     .where(eq(groups.ownerId, userId));
   return rows[0]?.n ?? 0;
+}
+
+/** Set the cache-write TTL used for pricing ('5m' | '1h'). */
+export async function updateCacheTtl(formData: FormData) {
+  const user = await requireUser();
+  const ttl = formData.get("cacheWriteTtl") === "5m" ? "5m" : "1h";
+  await ensureSettings(user.id);
+  await db
+    .update(userSettings)
+    .set({ cacheWriteTtl: ttl })
+    .where(eq(userSettings.userId, user.id));
+  revalidatePath("/dashboard");
 }
 
 export async function createGroup(formData: FormData) {

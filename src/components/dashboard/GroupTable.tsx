@@ -148,7 +148,14 @@ export function GroupTable({
                       <UsageBar pct={g.sessionPct} />
                     </div>
                     <span className="tabular-nums text-neutral-400">
-                      ~{g.sessionPct}% · {formatTokens(g.sessionTokens)}
+                      ~{g.sessionPct}%
+                      <span
+                        className="text-neutral-600"
+                        title="Measured against this group's half of the account limit"
+                      >
+                        {" "}(budget {g.sessionBudgetPct}%)
+                      </span>{" "}
+                      · {formatTokens(g.sessionTokens)}
                       <span
                         className="text-neutral-600"
                         title="Total incl. cache reads (ccusage-comparable)"
@@ -164,7 +171,14 @@ export function GroupTable({
                       <UsageBar pct={g.weeklyPct} />
                     </div>
                     <span className="tabular-nums text-neutral-400">
-                      ~{g.weeklyPct}% · {formatTokens(g.weeklyTokens)}
+                      ~{g.weeklyPct}%
+                      <span
+                        className="text-neutral-600"
+                        title="Measured against this group's half of the account limit"
+                      >
+                        {" "}(budget {g.weeklyBudgetPct}%)
+                      </span>{" "}
+                      · {formatTokens(g.weeklyTokens)}
                       <span
                         className="text-neutral-600"
                         title="Total incl. cache reads (ccusage-comparable)"

@@ -4,9 +4,10 @@ import type { TokenTotals, UsageRecord } from "./types";
  *  https://platform.claude.com/docs/en/about-claude/pricing — used only for the
  *  optional $ column, not for limit math.
  *
- *  `cacheWrite` uses the 5-minute write rate (1.25× base input); we don't retain
- *  the 5m/1h split, and Claude Code writes 5m caches, so 1h-at-2× is approximated.
- *  `cacheRead` is the cache-hit rate (0.1× base input). */
+ *  `cacheWrite` is the 1-hour write rate (2× base input) — Claude Code writes
+ *  1h caches exclusively (verified 100% ephemeral_1h across real JSONL history).
+ *  The 5m rate is derived as 1.25× base input when the user picks "5m" in
+ *  Settings. `cacheRead` is the cache-hit rate (0.1× base input). */
 interface Price {
   input: number;
   output: number;
@@ -15,17 +16,17 @@ interface Price {
 }
 
 // Fable 5 / Mythos 5: the frontier tier ($10/$50 per MTok).
-const FABLE: Price = { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 };
+const FABLE: Price = { input: 10, output: 50, cacheWrite: 20, cacheRead: 1 };
 // Opus 4.5 and later (4.5 / 4.6 / 4.7 / 4.8): the current Opus tier.
-const OPUS_CURRENT: Price = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 };
+const OPUS_CURRENT: Price = { input: 5, output: 25, cacheWrite: 10, cacheRead: 0.5 };
 // Opus 4.0 / 4.1 (deprecated/retired): the legacy Opus tier.
-const OPUS_LEGACY: Price = { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 };
+const OPUS_LEGACY: Price = { input: 15, output: 75, cacheWrite: 30, cacheRead: 1.5 };
 // Sonnet 3.5 / 4 / 4.5 / 4.6 all share one rate.
-const SONNET: Price = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 };
+const SONNET: Price = { input: 3, output: 15, cacheWrite: 6, cacheRead: 0.3 };
 // Haiku 4.5 (current tier).
-const HAIKU_CURRENT: Price = { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 };
+const HAIKU_CURRENT: Price = { input: 1, output: 5, cacheWrite: 2, cacheRead: 0.1 };
 // Haiku 3.5 (legacy tier).
-const HAIKU_LEGACY: Price = { input: 0.8, output: 4, cacheWrite: 1.0, cacheRead: 0.08 };
+const HAIKU_LEGACY: Price = { input: 0.8, output: 4, cacheWrite: 1.6, cacheRead: 0.08 };
 
 /** First major.minor pair after the family word ("opus-4-8" → 4.8). Minor is a
  *  single digit in practice, so major + minor/10 orders versions correctly. */
@@ -51,27 +52,37 @@ type TokenCounts = Pick<
   "inputTokens" | "outputTokens" | "cacheCreationTokens" | "cacheReadTokens"
 >;
 
+/** Cache-write TTL the user's tool writes: prices differ (5m = 1.25× input,
+ *  1h = 2× input). Claude Code writes 1h caches, so that's the default. */
+export type CacheTtl = "5m" | "1h";
+
 /** USD cost of a set of token counts under one model's list price. */
-export function costForTokens(t: TokenCounts, model: string | null): number {
+export function costForTokens(
+  t: TokenCounts,
+  model: string | null,
+  ttl: CacheTtl = "1h",
+): number {
   const p = priceFor(model);
+  const cacheWrite = ttl === "5m" ? p.input * 1.25 : p.cacheWrite;
   return (
     (t.inputTokens * p.input +
       t.outputTokens * p.output +
-      t.cacheCreationTokens * p.cacheWrite +
+      t.cacheCreationTokens * cacheWrite +
       t.cacheReadTokens * p.cacheRead) /
     1_000_000
   );
 }
 
 /** Cost of one record in USD. */
-export function costUsd(e: UsageRecord): number {
-  return costForTokens(e, e.model);
+export function costUsd(e: UsageRecord, ttl: CacheTtl = "1h"): number {
+  return costForTokens(e, e.model, ttl);
 }
 
 /** Cost of pre-summed totals, assuming a single representative model. */
 export function costForTotals(
   totals: TokenTotals,
   model: string | null,
+  ttl: CacheTtl = "1h",
 ): number {
-  return costForTokens(totals, model);
+  return costForTokens(totals, model, ttl);
 }

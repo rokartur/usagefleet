@@ -79,7 +79,14 @@ function ModelLimitCard({ limit }: { limit: ModelLimitDTO }) {
                 <UsageBar pct={g.pct} />
               </div>
               <span className="tabular-nums text-neutral-400">
-                ~{g.pct}% · {formatTokens(g.tokens)}
+                ~{g.pct}%
+                <span
+                  className="text-neutral-600"
+                  title="Measured against this group's half of the account limit"
+                >
+                  {" "}(budget {g.budgetPct}%)
+                </span>{" "}
+                · {formatTokens(g.tokens)}
               </span>
             </li>
           ))}
@@ -439,10 +446,12 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
 
       <p className="text-xs text-neutral-500">
         The 5-hour, weekly and per-model percentages up top are Claude&apos;s own
-        account utilization (reported by the collector). Each group is budgeted
-        half the account limit, so a group&apos;s percentage is measured against
-        that half — a group can read 100% while the account is at 50%, warning
-        you not to starve the other group.
+        account utilization (reported by the collector). A group&apos;s main
+        percentage is its true share of that account figure (group shares sum to
+        the account value), split by estimated cost at API list prices. The
+        muted &quot;budget&quot; percentage measures the same usage against the
+        group&apos;s half of the account limit — it hits 100% when the group has
+        eaten its half, warning you not to starve the other group.
       </p>
     </div>
   );

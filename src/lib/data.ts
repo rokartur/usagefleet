@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import {
   billableTokens,
+  type CacheTtl,
   computeDashboardUsage,
   costForTokens,
   costUsd,
@@ -182,8 +183,13 @@ export interface LiveGroupUsage {
   groupId: string | null;
   name: string;
   color: string;
+  /** TRUE share of the official account % (group pcts sum to the account pct). */
   sessionPct: number;
   weeklyPct: number;
+  /** Same usage measured against the group's budget slice (1/MAX_GROUPS of the
+   *  account limit) — the "am I eating the other group's half?" view. */
+  sessionBudgetPct: number;
+  weeklyBudgetPct: number;
   sessionTokens: number;
   weeklyTokens: number;
   /** All-bucket totals (incl. cache_read) — comparable with ccusage's Total. */
@@ -220,8 +226,10 @@ export interface LiveModelLimitGroup {
   groupId: string | null;
   name: string;
   color: string;
-  /** Against the group's budget slice (1/MAX_GROUPS), like sessionPct. */
+  /** TRUE share of the official model % (group pcts sum to the model pct). */
   pct: number;
+  /** Against the group's budget slice (1/MAX_GROUPS), like sessionBudgetPct. */
+  budgetPct: number;
   /** Billable tokens of this model family in the limit's window. */
   tokens: number;
 }
@@ -305,6 +313,7 @@ function splitByShare(
   windowStart: Date,
   now: Date,
   officialPct: number,
+  ttl: CacheTtl = "1h",
   keyOf: (e: UsageRecord) => string | null = (e) => e.groupId ?? null,
 ): Map<string | null, ShareEntry> {
   const inWin = events.filter((e) => {
@@ -328,7 +337,7 @@ function splitByShare(
     const totals = sumRecords(folded);
     tokensByKey.set(k, billableTokens(totals));
     totalByKey.set(k, totals.totalTokens);
-    const cost = folded.reduce((s, e) => s + costUsd(e), 0);
+    const cost = folded.reduce((s, e) => s + costUsd(e, ttl), 0);
     costByKey.set(k, cost);
     modelsByKey.set(k, modelBreakdown(evs));
     totalCost += cost;
@@ -456,8 +465,9 @@ export async function getLiveDashboard(
     loadDailyAggregates(userId),
   ]);
 
-  const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct);
-  const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct);
+  const ttl: CacheTtl = settings.cacheWriteTtl === "5m" ? "5m" : "1h";
+  const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, ttl);
+  const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct, ttl);
 
   const keys = new Set<string | null>([
     ...sessionSplit.keys(),
@@ -472,10 +482,12 @@ export async function getLiveDashboard(
     groupId: id,
     name: nameFor(id),
     color: colorFor(id),
-    // Measured against the group's slice of the account limit (1/MAX_GROUPS), so
-    // a group filling its budget reads 100% while the account is below 100%.
-    sessionPct: groupBudgetPct(sessionSplit.get(id)?.pct ?? 0),
-    weeklyPct: groupBudgetPct(weeklySplit.get(id)?.pct ?? 0),
+    sessionPct: sessionSplit.get(id)?.pct ?? 0,
+    weeklyPct: weeklySplit.get(id)?.pct ?? 0,
+    // Same usage against the group's budget slice (1/MAX_GROUPS): a group
+    // filling its half reads 100% while the account is at 50%.
+    sessionBudgetPct: groupBudgetPct(sessionSplit.get(id)?.pct ?? 0),
+    weeklyBudgetPct: groupBudgetPct(weeklySplit.get(id)?.pct ?? 0),
     sessionTokens: sessionSplit.get(id)?.tokens ?? 0,
     weeklyTokens: weeklySplit.get(id)?.tokens ?? 0,
     sessionTotalTokens: sessionSplit.get(id)?.totalTokens ?? 0,
@@ -494,13 +506,14 @@ export async function getLiveDashboard(
       const familyEvents = events.filter((e) =>
         (e.model ?? "").toLowerCase().includes(entry.model),
       );
-      const split = splitByShare(familyEvents, start, now, entry.pct);
+      const split = splitByShare(familyEvents, start, now, entry.pct, ttl);
       const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(
         ([id, s]) => ({
           groupId: id,
           name: nameFor(id),
           color: colorFor(id),
-          pct: groupBudgetPct(s.pct),
+          pct: s.pct,
+          budgetPct: groupBudgetPct(s.pct),
           tokens: s.tokens,
         }),
       );
@@ -525,11 +538,11 @@ export async function getLiveDashboard(
   const spend: Spend = {
     week: {
       totals: sumRecords(weeklyFolded),
-      costUsd: weeklyFolded.reduce((s, e) => s + costUsd(e), 0),
+      costUsd: weeklyFolded.reduce((s, e) => s + costUsd(e, ttl), 0),
     },
     month: {
       totals: sumAgg(monthRows),
-      costUsd: monthRows.reduce((s, r) => s + costForTokens(r, r.model), 0),
+      costUsd: monthRows.reduce((s, r) => s + costForTokens(r, r.model, ttl), 0),
     },
   };
 
@@ -538,7 +551,7 @@ export async function getLiveDashboard(
     groups: groupUsages,
     modelLimits,
     spend,
-    groupDaily: groupDailySpend(aggRows),
+    groupDaily: groupDailySpend(aggRows, ttl),
     groupCatalog: groupRows.map((g) => ({ id: g.id, name: g.name, color: g.color })),
     ...base,
   };

@@ -137,13 +137,13 @@ describe("pricing", () => {
     // Haiku 4.5 ($1/$5) vs Haiku 3.5 legacy ($0.80/$4).
     expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-haiku-4-5")).toBeCloseTo(1);
     expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-3-5-haiku")).toBeCloseTo(0.8);
-    // Sonnet flat $3 in / $15 out; cache write 1.25x, cache read 0.1x.
+    // Sonnet flat $3 in / $15 out; cache write 2x (1h TTL), cache read 0.1x.
     expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(3);
-    expect(costForTotals(mtok({ cacheCreationTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(3.75);
+    expect(costForTotals(mtok({ cacheCreationTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(6);
     expect(costForTotals(mtok({ cacheReadTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(0.3);
   });
-  it("prices fable at the frontier tier ($10/$50, cache 12.5/1)", () => {
-    expect(priceFor("claude-fable-5")).toEqual({ input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 });
+  it("prices fable at the frontier tier ($10/$50, cache 20/1)", () => {
+    expect(priceFor("claude-fable-5")).toEqual({ input: 10, output: 50, cacheWrite: 20, cacheRead: 1 });
     expect(costUsd(rec({ uuid: "f", ts: "2026-06-18T10:00:00Z", model: "claude-fable-5", outputTokens: 1_000_000 }))).toBeCloseTo(50);
   });
 });

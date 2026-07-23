@@ -1,4 +1,4 @@
-import { costForTokens } from "./pricing";
+import { type CacheTtl, costForTokens } from "./pricing";
 import { cellKey, type TimelineBucket, type TimelineCell } from "./timeline";
 import { EMPTY_TOTALS, type TokenTotals } from "./types";
 
@@ -245,7 +245,10 @@ export interface GroupDailySpend {
 
 /** Collapse (day × group × model × …) rows to (day × group), pricing each row
  *  by its own model before summing so mixed-model days cost correctly. */
-export function groupDailySpend(rows: DailyAggRow[]): GroupDailySpend[] {
+export function groupDailySpend(
+  rows: DailyAggRow[],
+  ttl: CacheTtl = "1h",
+): GroupDailySpend[] {
   const acc = new Map<string, GroupDailySpend>();
   for (const r of rows) {
     const k = `${r.day}|${r.groupId ?? ""}`;
@@ -254,7 +257,7 @@ export function groupDailySpend(rows: DailyAggRow[]): GroupDailySpend[] {
       acc.set(k, (e = { day: r.day, groupId: r.groupId, totals: emptyTotals(), costUsd: 0 }));
     }
     addInto(e.totals, r);
-    e.costUsd += costForTokens(r, r.model);
+    e.costUsd += costForTokens(r, r.model, ttl);
   }
   return [...acc.values()];
 }
