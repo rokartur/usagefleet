@@ -1,3 +1,4 @@
+import { versionParts } from "./models";
 import type { TokenTotals, UsageRecord } from "./types";
 
 /** USD per 1M tokens. Public Claude API list prices from
@@ -28,11 +29,11 @@ const HAIKU_CURRENT: Price = { input: 1, output: 5, cacheWrite: 2, cacheRead: 0.
 // Haiku 3.5 (legacy tier).
 const HAIKU_LEGACY: Price = { input: 0.8, output: 4, cacheWrite: 1.6, cacheRead: 0.08 };
 
-/** First major.minor pair after the family word ("opus-4-8" → 4.8). Minor is a
- *  single digit in practice, so major + minor/10 orders versions correctly. */
+/** Comparable version number ("opus-4-8" → 4.8, "opus-5" → 5). Minor is a single
+ *  digit in practice, so major + minor/10 orders versions correctly. */
 function versionOf(m: string): number | null {
-  const v = m.match(/(\d+)[._-](\d+)/);
-  return v ? Number(v[1]) + Number(v[2]) / 10 : null;
+  const [major, minor] = versionParts(m);
+  return major ? Number(major) + Number(minor ?? 0) / 10 : null;
 }
 
 /** Anthropic publishes no pricing API, so we read LiteLLM's community-maintained

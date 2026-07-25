@@ -151,6 +151,11 @@ describe("pricing", () => {
 describe("model breakdown", () => {
   it("labels model families with a major.minor version", () => {
     expect(modelLabel("claude-opus-4-8-20251101")).toBe("Opus 4.8");
+    // Single-number versions and the "[1m]" / dated-snapshot suffixes.
+    expect(modelLabel("claude-opus-5")).toBe("Opus 5");
+    expect(modelLabel("claude-opus-5[1m]")).toBe("Opus 5");
+    expect(modelLabel("claude-opus-5-20260601")).toBe("Opus 5");
+    expect(modelLabel("claude-3-5-sonnet-20241022")).toBe("Sonnet 3.5");
     expect(modelLabel("claude-sonnet-4-6")).toBe("Sonnet 4.6");
     expect(modelLabel("claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
     expect(modelLabel(null)).toBe("Unknown");

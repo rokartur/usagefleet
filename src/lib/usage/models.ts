@@ -2,6 +2,20 @@ import { billableTokens, foldEvents, sumRecords } from "./fold";
 import { type TokenTotals, type UsageRecord } from "./types";
 
 /**
+ * Version digits of a raw model id, ignoring the "[1m]" context-variant tag and a
+ * -YYYYMMDD snapshot date, so single-number versions work as well as major.minor:
+ * "opus-5[1m]" → ["5"], "opus-4-8-20251101" → ["4","8"], "3-5-sonnet-…" → ["3","5"].
+ */
+export function versionParts(model: string): string[] {
+  return (
+    model
+      .replace(/\[.*$/, "")
+      .replace(/-\d{8}$/, "")
+      .match(/\d+/g) ?? []
+  );
+}
+
+/**
  * Friendly display label for a raw Claude model id
  * (e.g. "claude-opus-4-8-20251101" → "Opus 4.8"). Unknown families fall back to
  * the raw id so nothing is silently hidden.
@@ -21,10 +35,9 @@ export function modelLabel(model: string | null | undefined): string {
             ? "Mythos"
             : null;
   if (!family) return model;
-  // Pull a version like 4-8 / 4.6 / 3_5 → "4.8". Avoids matching the date suffix
-  // by taking the FIRST major-minor pair after the family word.
-  const ver = m.match(/(\d+)[._-](\d+)/);
-  return ver ? `${family} ${ver[1]}.${ver[2]}` : family;
+  const [major, minor] = versionParts(m);
+  if (!major) return family;
+  return `${family} ${minor ? `${major}.${minor}` : major}`;
 }
 
 /** Per-model token totals for a group/window. */
