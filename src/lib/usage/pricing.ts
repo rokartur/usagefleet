@@ -60,12 +60,13 @@ export async function refreshPrices(): Promise<void> {
       const output = m?.output_cost_per_token;
       if (m?.litellm_provider !== "anthropic") continue;
       if (typeof input !== "number" || typeof output !== "number") continue;
-      const write = m.cache_creation_input_token_cost;
+      // The feed's bare cache_creation cost is the 5m rate; cacheWrite here is 1h.
+      const write = m.cache_creation_input_token_cost_above_1hr;
       const read = m.cache_read_input_token_cost;
       fetched.set(id.toLowerCase(), {
         input: input * 1e6,
         output: output * 1e6,
-        cacheWrite: (typeof write === "number" ? write : input * 1.25) * 1e6,
+        cacheWrite: (typeof write === "number" ? write : input * 2) * 1e6,
         cacheRead: (typeof read === "number" ? read : input * 0.1) * 1e6,
       });
     }
@@ -74,17 +75,18 @@ export async function refreshPrices(): Promise<void> {
   }
 }
 
-export function priceFor(model: string | null | undefined): Price | null {
+export function priceFor(model: string | null | undefined): Price {
   if (!model) return SONNET; // unknown → sonnet-tier fallback
   const m = model.toLowerCase();
-  if (m.includes("fable") || m.includes("mythos")) return null; // synthetic test models — not billable
-  // Exact id first (dated snapshots included); "claude-opus-5[1m]" → "claude-opus-5".
-  const live = fetched.get(m) ?? fetched.get(m.replace(/\[.*$/, ""));
+  // Exact id first, then progressively looser: "claude-opus-5[1m]" → "claude-opus-5",
+  // "claude-opus-4-8-20251101" → "claude-opus-4-8" (dated snapshots the feed omits).
+  const base = m.replace(/\[.*$/, "");
+  const live = fetched.get(m) ?? fetched.get(base) ?? fetched.get(base.replace(/-\d{8}$/, ""));
   if (live) return live;
   const v = versionOf(m);
+  if (m.includes("fable") || m.includes("mythos")) return FABLE;
   if (m.includes("opus")) return v !== null && v < 4.5 ? OPUS_LEGACY : OPUS_CURRENT;
   if (m.includes("haiku")) return v !== null && v < 4.5 ? HAIKU_LEGACY : HAIKU_CURRENT;
-  if (m.includes("sonnet")) return SONNET;
   return SONNET;
 }
 

@@ -17,7 +17,9 @@ export function modelLabel(model: string | null | undefined): string {
         ? "Haiku"
         : m.includes("fable")
           ? "Fable"
-          : null;
+          : m.includes("mythos")
+            ? "Mythos"
+            : null;
   if (!family) return model;
   // Pull a version like 4-8 / 4.6 / 3_5 → "4.8". Avoids matching the date suffix
   // by taking the FIRST major-minor pair after the family word.
