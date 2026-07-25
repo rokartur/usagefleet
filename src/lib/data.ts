@@ -25,6 +25,7 @@ import {
   modelLabel,
   type ModelUsage,
   monthKey,
+  refreshPrices,
   sumAgg,
   sumRecords,
   type TokenTotals,
@@ -160,6 +161,7 @@ export async function getDashboard(
   userId: string,
   now: Date,
 ): Promise<DashboardUsage> {
+  await refreshPrices();
   const cutoff = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000);
   const [settings, groupRows, events] = await Promise.all([
     ensureSettings(userId),
@@ -532,6 +534,7 @@ export async function getLiveDashboard(
   // Weekly-window spend: fold once, then price each logical message by its own
   // model. Monthly spend comes from the pre-folded daily aggregates, priced per
   // (day × group × model) cell the same way.
+  await refreshPrices();
   const weeklyFolded = foldEvents(filterByWindow(events, weekStart, now));
   const monthK = monthKey(now);
   const monthRows = aggRows.filter((r) => r.day.startsWith(monthK));

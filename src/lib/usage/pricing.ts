@@ -35,10 +35,52 @@ function versionOf(m: string): number | null {
   return v ? Number(v[1]) + Number(v[2]) / 10 : null;
 }
 
-export function priceFor(model: string | null | undefined): Price {
+/** Anthropic publishes no pricing API, so we read LiteLLM's community-maintained
+ *  price map (per-token, incl. cache rates) and fall back to the tiers above for
+ *  ids it doesn't list or when the fetch fails. */
+const PRICE_SOURCE =
+  "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
+
+/** model id (lowercase) → list price, populated by refreshPrices(). */
+const fetched = new Map<string, Price>();
+let fetchedAt = 0;
+
+/** Refresh the fetched price map, at most once a day per process. Never throws:
+ *  a failure leaves whatever we already have (or the hardcoded tiers) in place.
+ *  Call before pricing anything; the priceFor() callers are all sync. */
+export async function refreshPrices(): Promise<void> {
+  if (Date.now() - fetchedAt < 86_400_000) return;
+  fetchedAt = Date.now(); // claim the slot first so parallel loads don't stampede
+  try {
+    const res = await fetch(PRICE_SOURCE, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return;
+    const data = (await res.json()) as Record<string, Record<string, unknown>>;
+    for (const [id, m] of Object.entries(data)) {
+      const input = m?.input_cost_per_token;
+      const output = m?.output_cost_per_token;
+      if (m?.litellm_provider !== "anthropic") continue;
+      if (typeof input !== "number" || typeof output !== "number") continue;
+      const write = m.cache_creation_input_token_cost;
+      const read = m.cache_read_input_token_cost;
+      fetched.set(id.toLowerCase(), {
+        input: input * 1e6,
+        output: output * 1e6,
+        cacheWrite: (typeof write === "number" ? write : input * 1.25) * 1e6,
+        cacheRead: (typeof read === "number" ? read : input * 0.1) * 1e6,
+      });
+    }
+  } catch {
+    // offline / rate-limited / malformed — keep the previous prices
+  }
+}
+
+export function priceFor(model: string | null | undefined): Price | null {
   if (!model) return SONNET; // unknown → sonnet-tier fallback
   const m = model.toLowerCase();
-  if (m.includes("fable") || m.includes("mythos")) return FABLE;
+  if (m.includes("fable") || m.includes("mythos")) return null; // synthetic test models — not billable
+  // Exact id first (dated snapshots included); "claude-opus-5[1m]" → "claude-opus-5".
+  const live = fetched.get(m) ?? fetched.get(m.replace(/\[.*$/, ""));
+  if (live) return live;
   const v = versionOf(m);
   if (m.includes("opus")) return v !== null && v < 4.5 ? OPUS_LEGACY : OPUS_CURRENT;
   if (m.includes("haiku")) return v !== null && v < 4.5 ? HAIKU_LEGACY : HAIKU_CURRENT;
