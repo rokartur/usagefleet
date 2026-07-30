@@ -1,7 +1,7 @@
 {
   "name": "claude-track-collector",
-  "version": "1.1.0",
-  "description": "Tails Claude Code JSONL logs and reports token usage to a Claude Track server.",
+  "version": "1.2.0",
+  "description": "Tails Claude Code, Claude Desktop, and pi agent JSONL logs and reports token usage to a Claude Track server.",
   "type": "module",
   "bin": {
     "claude-track": "dist/index.js"

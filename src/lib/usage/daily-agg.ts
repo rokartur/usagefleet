@@ -22,7 +22,7 @@ export interface DailyAggRow {
   groupId: string | null;
   /** Raw model id, or null ("unknown" key). */
   model: string | null;
-  /** Originating app: "cli" / "desktop", or null (read as "cli"). */
+  /** Originating app: "cli" / "desktop" / "pi", or null (read as "cli"). */
   source: string | null;
   /** Device that produced the rows, or null ("unknown" key). */
   deviceId: string | null;

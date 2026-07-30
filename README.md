@@ -6,8 +6,10 @@ share of your **5-hour session** and **weekly** limits.
 
 - **Server** — Next.js 16 (App Router) + better-auth + Drizzle + PostgreSQL,
   shipped as two Docker containers (`web` + `db`).
-- **Collector** — a tiny Node CLI that tails Claude Code's local JSONL logs
-  (`~/.claude/projects/**/*.jsonl`) and pushes token usage to the server.
+- **Collector** — a tiny Node CLI that tails the local JSONL logs of Claude Code
+  (`~/.claude/projects/**/*.jsonl`), Claude Desktop agent-mode, and the
+  [pi](https://github.com/badlogic/pi-mono) coding agent (Anthropic-provider
+  records only) and pushes token usage to the server.
 
 > Phones are out of scope: the Claude mobile app keeps no local usage logs.
 

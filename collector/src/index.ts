@@ -75,7 +75,7 @@ async function cmdWatch(): Promise<void> {
     Math.max(interval / 1000, Number.isFinite(rawLimits) && rawLimits > 0 ? rawLimits : 300) * 1000;
   let lastLimitsAt = 0;
   console.log(
-    `[${ts()}] claude-track watching ${cfg.projectsDir}${cfg.desktopDir ? ` + ${cfg.desktopDir}` : ""} every ${interval / 1000}s → ${cfg.endpoint}`,
+    `[${ts()}] claude-track watching ${cfg.projectsDir}${cfg.desktopDir ? ` + ${cfg.desktopDir}` : ""}${cfg.piDir ? ` + ${cfg.piDir}` : ""} every ${interval / 1000}s → ${cfg.endpoint}`,
   );
   let stopping = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -149,6 +149,7 @@ function cmdStatus(): void {
   console.log(`token:     ${cfg.token.slice(0, 8)}…`);
   console.log(`projects:  ${cfg.projectsDir}`);
   console.log(`desktop:   ${cfg.desktopDir ?? "(disabled)"}`);
+  console.log(`pi:        ${cfg.piDir ?? "(disabled)"}`);
   console.log(`deviceId:  ${state.deviceId}`);
   console.log(`tracked:   ${tracked} files, ${bytes} bytes consumed`);
   console.log(`updated:   ${state.updatedAt}`);

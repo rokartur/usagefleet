@@ -34,11 +34,56 @@ function cacheCreation(u: RawUsage): number {
   return 0;
 }
 
+/** pi agent session line: `{type:"message", id, timestamp, message:{role:"assistant",
+ *  provider, model, responseId, usage:{input, output, cacheRead, cacheWrite}}}`.
+ *  Only provider "anthropic" hits the user's Claude account — other providers
+ *  (openai-codex, openrouter, …) are skipped. `output` already includes reasoning
+ *  tokens (totalTokens = input + output + cacheRead + cacheWrite). */
+function parsePiLine(o: Record<string, unknown>): UsageRecord | null {
+  if (o.type !== "message") return null;
+  const m = o.message as
+    | {
+        role?: string;
+        provider?: string;
+        model?: string;
+        responseId?: string;
+        usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number };
+      }
+    | undefined;
+  if (!m || m.role !== "assistant" || m.provider !== "anthropic") return null;
+  const u = m.usage;
+  if (typeof u !== "object" || u === null) return null;
+  // Idempotency key: the Anthropic response id is globally unique; the line's own
+  // short id needs the timestamp to be collision-safe across sessions.
+  const rid = str(m.responseId);
+  const lid = str(o.id);
+  const uuid = rid ? `pi:${rid}` : lid ? `pi:${lid}:${validTimestamp(o.timestamp)}` : null;
+  if (!uuid) return null;
+  return {
+    uuid,
+    messageId: rid,
+    requestId: null,
+    model: str(m.model),
+    sessionId: null,
+    timestamp: validTimestamp(o.timestamp),
+    cwd: null,
+    gitBranch: null,
+    version: null,
+    inputTokens: u.input ?? 0,
+    outputTokens: u.output ?? 0,
+    cacheCreationTokens: u.cacheWrite ?? 0,
+    cacheReadTokens: u.cacheRead ?? 0,
+    serviceTier: null,
+    source: "pi",
+  };
+}
+
 /**
  * Parse a single JSONL line. Returns a UsageRecord only for assistant messages
  * that carry a usage object; everything else (user/system/summary/tool/…) → null.
  * `uuid` is the per-line idempotency key the server dedups on. `source` tags which
- * Claude app the file came from (the line itself carries no app identifier).
+ * app the file came from (the line itself carries no app identifier) and selects
+ * the format: `pi` files use pi's own schema, everything else Claude Code's.
  */
 export function parseLine(
   line: string,
@@ -52,6 +97,7 @@ export function parseLine(
   } catch {
     return null;
   }
+  if (source === "pi") return parsePiLine(o);
   if (o.type !== "assistant") return null;
   const message = o.message as
     | { id?: string; model?: string; usage?: RawUsage }

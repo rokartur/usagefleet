@@ -7,6 +7,8 @@ const cfg: Config = {
   token: "ctk_test",
   statePath: "",
   projectsDir: "",
+  desktopDir: null,
+  piDir: null,
   batchSize: 100,
 };
 const payload: BatchPayload = {

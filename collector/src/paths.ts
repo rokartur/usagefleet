@@ -29,6 +29,12 @@ export function defaultDesktopSessionsDir(): string {
   return join(claudeDesktopUserData(), "local-agent-mode-sessions");
 }
 
+/** Root under which the pi coding agent writes its per-project session JSONLs
+ *  (`~/.pi/agent/sessions/<project>/<timestamp>_<uuid>.jsonl`). */
+export function defaultPiSessionsDir(): string {
+  return join(homedir(), ".pi", "agent", "sessions");
+}
+
 export function defaultStatePath(): string {
   return process.env.CLAUDE_TRACK_STATE ?? join(homedir(), ".claude-track-state.json");
 }

@@ -32,7 +32,7 @@ export interface TimelineCell {
   g: string;
   /** Model key: the raw model id, or "unknown" when the row carried none. */
   m: string;
-  /** Source key: "cli" (Claude Code) / "desktop" (Claude Desktop); absent → "cli". */
+  /** Source key: "cli" (Claude Code) / "desktop" (Claude Desktop) / "pi"; absent → "cli". */
   s: string;
   /** Device key: the deviceId, or "unknown" when absent. */
   d: string;

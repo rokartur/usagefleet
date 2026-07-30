@@ -31,8 +31,8 @@ const RecordSchema = z.object({
   cacheCreationTokens: z.number().int().nonnegative().max(2_000_000_000).default(0),
   cacheReadTokens: z.number().int().nonnegative().max(2_000_000_000).default(0),
   serviceTier: z.string().nullish(),
-  // Which Claude app produced the record. Older collectors omit it → 'cli'.
-  source: z.enum(["cli", "desktop"]).nullish(),
+  // Which app produced the record. Older collectors omit it → 'cli'.
+  source: z.enum(["cli", "desktop", "pi"]).nullish(),
 });
 
 const BatchSchema = z.object({

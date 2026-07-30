@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   defaultConfigPath,
   defaultDesktopSessionsDir,
+  defaultPiSessionsDir,
   defaultProjectsDir,
   defaultStatePath,
 } from "./paths.js";
@@ -14,6 +15,7 @@ interface FileConfig {
   deviceId?: string;
   projectsDir?: string;
   desktopDir?: string;
+  piDir?: string;
 }
 
 export function readFileConfig(): FileConfig {
@@ -41,18 +43,17 @@ export function loadConfig(): Config {
     token,
     statePath: defaultStatePath(),
     projectsDir: process.env.CLAUDE_TRACK_PROJECTS || file.projectsDir || defaultProjectsDir(),
-    desktopDir: resolveDesktopDir(file.desktopDir),
+    desktopDir: resolveOptionalDir(process.env.CLAUDE_TRACK_DESKTOP, file.desktopDir, defaultDesktopSessionsDir()),
+    piDir: resolveOptionalDir(process.env.CLAUDE_TRACK_PI, file.piDir, defaultPiSessionsDir()),
     batchSize,
   };
 }
 
-/** Claude Desktop agent-mode sessions root, or null when disabled. Set
- *  CLAUDE_TRACK_DESKTOP to "off"/"0" to turn off desktop collection, or to a
- *  path to override the auto-detected location. */
-function resolveDesktopDir(fromFile?: string): string | null {
-  const env = process.env.CLAUDE_TRACK_DESKTOP;
+/** Optional scan root (CLAUDE_TRACK_DESKTOP / CLAUDE_TRACK_PI): env "off"/"0"
+ *  disables, env or config-file path overrides, else the auto-detected default. */
+function resolveOptionalDir(env: string | undefined, fromFile: string | undefined, fallback: string): string | null {
   if (env === "0" || env?.toLowerCase() === "off") return null;
-  return env || fromFile || defaultDesktopSessionsDir();
+  return env || fromFile || fallback;
 }
 
 /** Stable per-install device id, persisted in the state file's deviceId. */

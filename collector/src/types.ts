@@ -1,9 +1,11 @@
 export type OsName = "mac" | "linux" | "windows" | string;
 
-/** Which Claude app produced a record. `cli` = Claude Code (`~/.claude/projects`);
+/** Which app produced a record. `cli` = Claude Code (`~/.claude/projects`);
  *  `desktop` = Claude Desktop agent-mode/Cowork sessions (same JSONL format under
- *  the app's `local-agent-mode-sessions/<session>/.claude/projects`). */
-export type UsageSource = "cli" | "desktop";
+ *  the app's `local-agent-mode-sessions/<session>/.claude/projects`);
+ *  `pi` = the pi coding agent (`~/.pi/agent/sessions`, its own JSONL format —
+ *  only records with provider "anthropic" count against Claude limits). */
+export type UsageSource = "cli" | "desktop" | "pi";
 
 /** Wire record sent to POST /api/v1/usage. Field names match the server's
  *  zod schema (src/app/api/v1/usage/route.ts). */
@@ -55,5 +57,7 @@ export interface Config {
   projectsDir: string;
   /** Claude Desktop agent-mode sessions root to also scan, or null to disable. */
   desktopDir: string | null;
+  /** pi agent sessions root to also scan, or null to disable. */
+  piDir: string | null;
   batchSize: number;
 }

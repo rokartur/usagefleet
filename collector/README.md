@@ -1,8 +1,10 @@
 # claude-track collector
 
-Tails the local JSONL logs of Claude Code **and** Claude Desktop's agent-mode
-(Cowork) sessions, reporting token usage to a Claude Track server. Read-only on
-the log files. Zero runtime dependencies (Node ≥ 18).
+Tails the local JSONL logs of Claude Code, Claude Desktop's agent-mode
+(Cowork) sessions, **and** the [pi](https://github.com/badlogic/pi-mono) coding
+agent (`~/.pi/agent/sessions`; only its Anthropic-provider records — usage via
+other providers doesn't touch Claude limits), reporting token usage to a Claude
+Track server. Read-only on the log files. Zero runtime dependencies (Node ≥ 18).
 
 ## Install (recommended)
 
@@ -48,6 +50,7 @@ or set env vars (they override the config file):
 | `CLAUDE_TRACK_TOKEN` | device token |
 | `CLAUDE_TRACK_PROJECTS` | override `~/.claude/projects` (Claude Code logs) |
 | `CLAUDE_TRACK_DESKTOP` | override the Claude Desktop agent-mode sessions dir (auto-detected per-OS); set `off`/`0` to skip desktop collection |
+| `CLAUDE_TRACK_PI` | override the pi agent sessions dir (default `~/.pi/agent/sessions`); set `off`/`0` to skip pi collection |
 | `CLAUDE_TRACK_INTERVAL` | watch poll seconds (default 15) |
 | `CLAUDE_TRACK_LIMITS_INTERVAL` | how often to ping for real 5h/weekly limits, seconds (default 300; decoupled from the faster usage poll so the 1-token ping doesn't run every cycle) |
 | `CLAUDE_TRACK_NOTIFY` | desktop notifications on/off (default **on**; set `0`/`false`/`off` to disable) |

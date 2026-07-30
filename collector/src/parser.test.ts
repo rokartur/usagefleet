@@ -62,6 +62,46 @@ describe("parseLine", () => {
     expect(parseLine(line)!.cacheCreationTokens).toBe(300);
   });
 
+  it("parses pi agent lines, keeping only anthropic-provider usage", () => {
+    const piLine = (provider: string) =>
+      JSON.stringify({
+        type: "message",
+        id: "0f442440",
+        timestamp: "2026-07-19T14:03:18.826Z",
+        message: {
+          role: "assistant",
+          api: "anthropic-messages",
+          provider,
+          model: "claude-opus-5",
+          responseId: "msg_pi_abc123",
+          usage: { input: 2332, output: 781, cacheRead: 12800, cacheWrite: 50 },
+        },
+      });
+    const r = parseLine(piLine("anthropic"), "pi")!;
+    expect(r.uuid).toBe("pi:msg_pi_abc123");
+    expect(r.messageId).toBe("msg_pi_abc123");
+    expect(r.model).toBe("claude-opus-5");
+    expect(r.inputTokens).toBe(2332);
+    expect(r.outputTokens).toBe(781);
+    expect(r.cacheCreationTokens).toBe(50);
+    expect(r.cacheReadTokens).toBe(12800);
+    expect(r.source).toBe("pi");
+    // other providers don't touch the Claude account
+    expect(parseLine(piLine("openai-codex"), "pi")).toBeNull();
+    // a Claude Code line read with source "pi" must not parse (wrong schema)
+    expect(parseLine(assistantLine, "pi")).toBeNull();
+  });
+
+  it("falls back to id+timestamp for the pi uuid when responseId is missing", () => {
+    const line = JSON.stringify({
+      type: "message",
+      id: "abcd1234",
+      timestamp: "2026-07-19T14:03:18.826Z",
+      message: { role: "assistant", provider: "anthropic", usage: { input: 1 } },
+    });
+    expect(parseLine(line, "pi")!.uuid).toBe("pi:abcd1234:2026-07-19T14:03:18.826Z");
+  });
+
   it("ignores non-assistant and usage-less lines", () => {
     expect(parseLine(JSON.stringify({ type: "user", uuid: "x" }))).toBeNull();
     expect(parseLine(JSON.stringify({ type: "assistant", uuid: "y", message: { id: "m" } }))).toBeNull();
