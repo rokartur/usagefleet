@@ -57,7 +57,7 @@ export interface Config {
   projectsDir: string;
   /** Claude Desktop agent-mode sessions root to also scan, or null to disable. */
   desktopDir: string | null;
-  /** pi agent sessions root to also scan, or null to disable. */
-  piDir: string | null;
+  /** pi agent sessions roots to also scan (empty to disable). */
+  piDirs: string[];
   batchSize: number;
 }

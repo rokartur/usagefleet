@@ -16,7 +16,7 @@ import type { Config, UsageSource } from "./types.js";
  *  avoids re-uploading every desktop record twice. */
 const PROJECTS_SUBPATH = `${sep}.claude${sep}projects${sep}`;
 
-export const COLLECTOR_VERSION = "1.2.0";
+export const COLLECTOR_VERSION = "1.2.1";
 
 export interface CycleResult {
   files: number;
@@ -48,8 +48,8 @@ export async function runOnce(
   if (cfg.desktopDir) {
     roots.push({ dir: cfg.desktopDir, source: "desktop", onlyProjects: true });
   }
-  if (cfg.piDir) {
-    roots.push({ dir: cfg.piDir, source: "pi", onlyProjects: false });
+  for (const dir of cfg.piDirs) {
+    roots.push({ dir, source: "pi", onlyProjects: false });
   }
   const files: { fp: string; source: UsageSource }[] = [];
   for (const root of roots) {

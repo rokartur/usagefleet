@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   defaultConfigPath,
   defaultDesktopSessionsDir,
-  defaultPiSessionsDir,
+  defaultPiSessionsDirs,
   defaultProjectsDir,
   defaultStatePath,
 } from "./paths.js";
@@ -15,7 +15,8 @@ interface FileConfig {
   deviceId?: string;
   projectsDir?: string;
   desktopDir?: string;
-  piDir?: string;
+  /** One path, or several (pi's session root moves with PI_CODING_AGENT_DIR). */
+  piDir?: string | string[];
 }
 
 export function readFileConfig(): FileConfig {
@@ -44,9 +45,18 @@ export function loadConfig(): Config {
     statePath: defaultStatePath(),
     projectsDir: process.env.CLAUDE_TRACK_PROJECTS || file.projectsDir || defaultProjectsDir(),
     desktopDir: resolveOptionalDir(process.env.CLAUDE_TRACK_DESKTOP, file.desktopDir, defaultDesktopSessionsDir()),
-    piDir: resolveOptionalDir(process.env.CLAUDE_TRACK_PI, file.piDir, defaultPiSessionsDir()),
+    piDirs: resolvePiDirs(process.env.CLAUDE_TRACK_PI, file.piDir),
     batchSize,
   };
+}
+
+/** pi scan roots: env "off"/"0" disables, else a comma-separated env list, else
+ *  the config file's string-or-array, else every auto-detected default. */
+export function resolvePiDirs(env: string | undefined, fromFile: string | string[] | undefined): string[] {
+  if (env === "0" || env?.toLowerCase() === "off") return [];
+  const raw = env ? env.split(",") : Array.isArray(fromFile) ? fromFile : fromFile ? [fromFile] : null;
+  if (!raw) return defaultPiSessionsDirs();
+  return [...new Set(raw.map((d) => d.trim()).filter((d) => d.length > 0))];
 }
 
 /** Optional scan root (CLAUDE_TRACK_DESKTOP / CLAUDE_TRACK_PI): env "off"/"0"

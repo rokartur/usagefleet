@@ -29,10 +29,18 @@ export function defaultDesktopSessionsDir(): string {
   return join(claudeDesktopUserData(), "local-agent-mode-sessions");
 }
 
-/** Root under which the pi coding agent writes its per-project session JSONLs
- *  (`~/.pi/agent/sessions/<project>/<timestamp>_<uuid>.jsonl`). */
-export function defaultPiSessionsDir(): string {
-  return join(homedir(), ".pi", "agent", "sessions");
+/** Roots under which the pi coding agent writes its per-project session JSONLs
+ *  (`<root>/<project>/<timestamp>_<uuid>.jsonl`). pi relocates them via
+ *  PI_CODING_AGENT_SESSION_DIR / PI_CODING_AGENT_DIR — but those live in the
+ *  user's shell, which a launchd/systemd service never inherits, so the default
+ *  is every plausible root at once (missing ones scan to nothing). */
+export function defaultPiSessionsDirs(): string[] {
+  const dirs = [join(homedir(), ".pi", "agent", "sessions")];
+  const session = process.env.PI_CODING_AGENT_SESSION_DIR;
+  const agent = process.env.PI_CODING_AGENT_DIR;
+  if (session) dirs.push(session);
+  if (agent) dirs.push(join(agent, "sessions"));
+  return [...new Set(dirs)];
 }
 
 export function defaultStatePath(): string {

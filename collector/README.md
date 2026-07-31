@@ -50,7 +50,7 @@ or set env vars (they override the config file):
 | `CLAUDE_TRACK_TOKEN` | device token |
 | `CLAUDE_TRACK_PROJECTS` | override `~/.claude/projects` (Claude Code logs) |
 | `CLAUDE_TRACK_DESKTOP` | override the Claude Desktop agent-mode sessions dir (auto-detected per-OS); set `off`/`0` to skip desktop collection |
-| `CLAUDE_TRACK_PI` | override the pi agent sessions dir (default `~/.pi/agent/sessions`); set `off`/`0` to skip pi collection |
+| `CLAUDE_TRACK_PI` | override the pi agent sessions dirs, comma-separated (default `~/.pi/agent/sessions` plus whatever `PI_CODING_AGENT_DIR`/`PI_CODING_AGENT_SESSION_DIR` point at — a service inherits neither, so set this if you relocated pi's agent dir); set `off`/`0` to skip pi collection |
 | `CLAUDE_TRACK_INTERVAL` | watch poll seconds (default 15) |
 | `CLAUDE_TRACK_LIMITS_INTERVAL` | how often to ping for real 5h/weekly limits, seconds (default 300; decoupled from the faster usage poll so the 1-token ping doesn't run every cycle) |
 | `CLAUDE_TRACK_NOTIFY` | desktop notifications on/off (default **on**; set `0`/`false`/`off` to disable) |
