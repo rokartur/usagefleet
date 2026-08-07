@@ -1,17 +1,67 @@
 "use client";
 
 import { useState } from "react";
+import { CheckIcon, CopyIcon, PlusIcon } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { createDevice } from "@/lib/actions";
+
+/** The one-time token step: the plaintext token is never retrievable again, so
+ *  it stays on screen (with a copy button) until the user dismisses it. */
+function TokenReveal({ token }: { token: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-start gap-2">
+        <code className="min-w-0 flex-1 break-all rounded-lg bg-muted p-3 font-mono text-xs">
+          {token}
+        </code>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label="Copy token"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(token);
+              setCopied(true);
+              toast.success("Token copied to clipboard");
+            } catch {
+              toast.error("Couldn't copy — select the token and copy manually");
+            }
+          }}
+        >
+          {copied ? <CheckIcon /> : <CopyIcon />}
+        </Button>
+      </div>
+      <FieldDescription>
+        Configure the collector with{" "}
+        <code className="font-mono">CLAUDE_TRACK_TOKEN=&lt;token&gt;</code>
+      </FieldDescription>
+    </div>
+  );
+}
 
 export function AddDeviceForm({
   groups,
   atCap,
-  maxDevices,
 }: {
   groups: { id: string; name: string }[];
   atCap: boolean;
-  maxDevices: number;
 }) {
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   // Default to the first group so a new device is never left ungrouped.
   const [groupId, setGroupId] = useState(groups[0]?.id ?? "");
@@ -37,67 +87,85 @@ export function AddDeviceForm({
   }
 
   return (
-    <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
-      <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-neutral-200">Device name</span>
-          <input
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. work-macbook"
-            className="rounded-md border border-white/15 bg-[#0a0a0a] text-white placeholder:text-neutral-600 px-3 py-2 outline-none focus:border-white/30"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-neutral-200">Group</span>
-          <select
-            value={groupId}
-            onChange={(e) => setGroupId(e.target.value)}
-            className="rounded-md border border-white/15 bg-[#0a0a0a] text-white placeholder:text-neutral-600 px-3 py-2 outline-none focus:border-white/30"
-          >
-            {groups.length === 0 && (
-              <option value="">Default (created automatically)</option>
-            )}
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="submit"
-          disabled={loading || atCap}
-          className="rounded-md bg-white px-4 py-2 font-medium text-black hover:bg-neutral-200 disabled:opacity-50"
-        >
-          {loading ? "Creating…" : "Add device"}
-        </button>
-      </form>
-
-      {atCap && (
-        <p className="mt-3 text-sm text-amber-400">
-          You&apos;ve reached the limit of {maxDevices} active device
-          {maxDevices === 1 ? "" : "s"}. Revoke one, or raise the limit above.
-        </p>
-      )}
-
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-
-      {token && (
-        <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
-          <p className="text-sm font-medium text-emerald-300">
-            Device token — copy it now, it won&apos;t be shown again:
-          </p>
-          <code className="mt-2 block break-all rounded-lg bg-black border border-white/10 p-3 font-mono text-sm text-neutral-200">
-            {token}
-          </code>
-          <p className="mt-2 text-xs text-emerald-400">
-            Configure the collector with{" "}
-            <code className="font-mono">CLAUDE_TRACK_TOKEN={token.slice(0, 12)}…</code>
-          </p>
-        </div>
-      )}
-    </div>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          setToken(null);
+          setError(null);
+        }
+      }}
+    >
+      <DialogTrigger render={<Button disabled={atCap} />}>
+        <PlusIcon />
+        Add device
+      </DialogTrigger>
+      <DialogContent>
+        {token ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Device token</DialogTitle>
+              <DialogDescription>Copy it now — it won&apos;t be shown again.</DialogDescription>
+            </DialogHeader>
+            <TokenReveal token={token} />
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>Done</DialogClose>
+            </DialogFooter>
+          </>
+        ) : (
+          <form onSubmit={onSubmit} className="grid gap-4">
+            <DialogHeader>
+              <DialogTitle>Add device</DialogTitle>
+              <DialogDescription>
+                Creates an API token for one machine running the collector.
+              </DialogDescription>
+            </DialogHeader>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="device-name">Device name</FieldLabel>
+                <Input
+                  id="device-name"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. work-macbook"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="device-group">Group</FieldLabel>
+                <NativeSelect
+                  id="device-group"
+                  className="w-full"
+                  value={groupId}
+                  onChange={(e) => setGroupId(e.target.value)}
+                >
+                  {groups.length === 0 && (
+                    <NativeSelectOption value="">
+                      Default (created automatically)
+                    </NativeSelectOption>
+                  )}
+                  {groups.map((g) => (
+                    <NativeSelectOption key={g.id} value={g.id}>
+                      {g.name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+                <FieldDescription>
+                  The group whose limit share this device counts against.
+                </FieldDescription>
+              </Field>
+              {error && <FieldDescription className="text-destructive">{error}</FieldDescription>}
+            </FieldGroup>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" type="button" />}>Cancel</DialogClose>
+              <Button type="submit" disabled={loading}>
+                {loading ? "Creating…" : "Create device"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

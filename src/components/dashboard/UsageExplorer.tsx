@@ -1,7 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { EmptyState } from "@/components/dashboard/EmptyState";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { HistoryDTO, HistoryRow } from "@/lib/data";
 import { formatTokens, formatUsd } from "@/lib/format";
 import { bucketKeys, bucketLabel, daySpan, modelLabel, utcDay } from "@/lib/usage";
@@ -42,8 +69,11 @@ type Metric = (typeof METRICS)[number]["key"];
 /** Series colors for dimensions that carry no color of their own (model /
  *  device / source); groups use their configured color. */
 const PALETTE = [
-  "#6366f1", "#22d3ee", "#f59e0b", "#10b981",
-  "#f472b6", "#a855f7", "#ef4444", "#84cc16",
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
 ];
 const SOURCE_LABEL: Record<string, string> = {
   cli: "Claude Code",
@@ -74,8 +104,7 @@ function periodBounds(key: PeriodKey, from: string, to: string): [string, string
   }
 }
 
-const billable = (r: HistoryRow) =>
-  r.inputTokens + r.outputTokens + r.cacheCreationTokens;
+const billable = (r: HistoryRow) => r.inputTokens + r.outputTokens + r.cacheCreationTokens;
 const total = (r: HistoryRow) => billable(r) + r.cacheReadTokens;
 
 function metricValue(r: HistoryRow, m: Metric): number {
@@ -109,63 +138,7 @@ function keyOf(r: HistoryRow, dim: Dim): string {
   }
 }
 
-const formatMetric = (v: number, m: Metric) =>
-  m === "cost" ? formatUsd(v) : formatTokens(v);
-
-/** Stacked columns, one per bucket, segments in `series` order. */
-function StackedBars({
-  buckets,
-  series,
-  metric,
-}: {
-  buckets: { key: string; label: string; parts: Map<string, number>; sum: number }[];
-  series: { key: string; label: string; color: string }[];
-  metric: Metric;
-}) {
-  const max = Math.max(...buckets.map((b) => b.sum), 0);
-  const labelEvery = Math.ceil(buckets.length / 8);
-  return (
-    <div>
-      <div className="flex h-44 items-end gap-px">
-        {buckets.map((b) => (
-          <div
-            key={b.key}
-            className="flex h-full flex-1 flex-col justify-end [&>*:first-child]:rounded-t-sm"
-            title={`${b.label} · ${formatMetric(b.sum, metric)}${series
-              .filter((s) => b.parts.get(s.key))
-              .map((s) => `\n${s.label}: ${formatMetric(b.parts.get(s.key) ?? 0, metric)}`)
-              .join("")}`}
-          >
-            {series.map((s) => {
-              const v = b.parts.get(s.key) ?? 0;
-              if (v <= 0) return null;
-              return (
-                <div
-                  key={s.key}
-                  style={{
-                    height: `max(1px, ${max > 0 ? (v / max) * 100 : 0}%)`,
-                    backgroundColor: s.color,
-                  }}
-                />
-              );
-            })}
-            {b.sum === 0 && <div className="h-px bg-white/10" />}
-          </div>
-        ))}
-      </div>
-      <div className="mt-1.5 flex gap-px text-[10px] text-neutral-600">
-        {buckets.map((b, i) => (
-          <span key={b.key} className="flex-1 truncate text-center">
-            {i % labelEvery === 0 ? b.label : ""}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const CONTROL_CLS =
-  "rounded border border-white/10 bg-transparent px-2 py-1 text-sm text-neutral-300 [color-scheme:dark]";
+const formatMetric = (v: number, m: Metric) => (m === "cost" ? formatUsd(v) : formatTokens(v));
 
 /** Charted, filterable view of the all-time usage history: pick a period, a
  *  metric, what to split the stack by, and which groups/models/devices/sources
@@ -188,13 +161,9 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
   const label = (d: Dim, key: string): string => {
     switch (d) {
       case "group":
-        return key === "ungrouped"
-          ? "Ungrouped"
-          : (groupName.get(key) ?? "Deleted group");
+        return key === "ungrouped" ? "Ungrouped" : (groupName.get(key) ?? "Deleted group");
       case "device":
-        return key === "unknown"
-          ? "Unknown device"
-          : (deviceName.get(key) ?? "Deleted device");
+        return key === "unknown" ? "Unknown device" : (deviceName.get(key) ?? "Deleted device");
       case "model":
         return modelLabel(key === "unknown" ? null : key);
       case "source":
@@ -206,8 +175,8 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
   // chips don't disappear as soon as you filter something out.
   const dimValues: Record<Dim, string[]> = { group: [], model: [], device: [], source: [] };
   for (const d of DIMENSIONS) {
-    dimValues[d.key] = [...new Set(history.rows.map((r) => keyOf(r, d.key)))].sort(
-      (a, b) => label(d.key, a).localeCompare(label(d.key, b)),
+    dimValues[d.key] = [...new Set(history.rows.map((r) => keyOf(r, d.key)))].sort((a, b) =>
+      label(d.key, a).localeCompare(label(d.key, b)),
     );
   }
 
@@ -218,8 +187,7 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
         r.day >= lo &&
         r.day <= hi &&
         DIMENSIONS.every(
-          (d) =>
-            filters[d.key].length === 0 || filters[d.key].includes(keyOf(r, d.key)),
+          (d) => filters[d.key].length === 0 || filters[d.key].includes(keyOf(r, d.key)),
         ),
     );
     if (rows.length === 0) return null;
@@ -227,13 +195,15 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
     // "All time" / an open-ended custom range starts at the first active day,
     // and no range draws empty columns past today.
     const today = utcDay(new Date());
-    const start =
-      lo === "0000-01-01" ? rows.reduce((m, r) => (r.day < m ? r.day : m), hi) : lo;
+    const start = lo === "0000-01-01" ? rows.reduce((m, r) => (r.day < m ? r.day : m), hi) : lo;
     const end = hi < today ? hi : today;
     const monthly = daySpan(start, end) > MAX_DAILY_COLUMNS;
 
     const parts = new Map<string, Map<string, number>>();
-    const totals = new Map<string, { billable: number; total: number; cost: number; metric: number }>();
+    const totals = new Map<
+      string,
+      { billable: number; total: number; cost: number; metric: number }
+    >();
     for (const r of rows) {
       const k = keyOf(r, dim);
       const bk = monthly ? r.day.slice(0, 7) : r.day;
@@ -257,19 +227,17 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
         // keeps its color when you change the metric or period.
         color:
           dim === "group"
-            ? (history.groups.find((g) => g.id === key)?.color ?? "#94a3b8")
+            ? (history.groups.find((g) => g.id === key)?.color ?? "var(--chart-1)")
             : PALETTE[Math.max(0, dimValues[dim].indexOf(key)) % PALETTE.length],
         ...t,
       }));
 
-    const buckets = bucketKeys(start, end, monthly).map((key) => {
+    // One row per column, series values flattened onto it — recharts' shape.
+    const data = bucketKeys(start, end, monthly).map((key) => {
       const p = parts.get(key) ?? new Map<string, number>();
-      return {
-        key,
-        label: bucketLabel(key),
-        parts: p,
-        sum: [...p.values()].reduce((s, v) => s + v, 0),
-      };
+      const row: Record<string, string | number> = { bucket: bucketLabel(key) };
+      for (const s of series) row[s.key] = p.get(s.key) ?? 0;
+      return row;
     });
 
     const sum = series.reduce(
@@ -280,178 +248,267 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
       }),
       { billable: 0, total: 0, cost: 0 },
     );
-    const peak = Math.max(...buckets.map((b) => b.sum), 0);
-    return { series, buckets, sum, peak, monthly };
+    const config: ChartConfig = Object.fromEntries(
+      series.map((s) => [s.key, { label: s.label, color: s.color }]),
+    );
+    return { series, data, sum, config, monthly };
   })();
 
-  const toggle = (d: Dim, key: string) =>
-    setFilters((f) => ({
-      ...f,
-      [d]: f[d].includes(key) ? f[d].filter((k) => k !== key) : [...f[d], key],
-    }));
+  const metricLabel = METRICS.find((m) => m.key === metric)?.label ?? "";
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <select
-          value={period}
-          onChange={(e) => setPeriod(e.target.value as PeriodKey)}
-          className={CONTROL_CLS}
-          aria-label="Period"
-        >
-          {PERIODS.map((p) => (
-            <option key={p.key} value={p.key} className="bg-[#0a0a0a]">
-              {p.label}
-            </option>
-          ))}
-        </select>
+    <Card>
+      {/* Flex instead of the default header grid so the controls drop below the
+          title on narrow viewports instead of squeezing it to one word a line. */}
+      <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-1">
+          <CardTitle>Usage over time</CardTitle>
+          <CardDescription>
+            {metricLabel.toLowerCase()} per {view?.monthly ? "month" : "day"} (UTC), split by{" "}
+            {DIMENSIONS.find((d) => d.key === dim)?.label.toLowerCase()}. Cost is estimated at
+            public API list prices, priced per model.
+          </CardDescription>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={period}
+            onValueChange={(v) => {
+              if (v) setPeriod(v);
+            }}
+            items={PERIODS.map((p) => ({ value: p.key, label: p.label }))}
+          >
+            <SelectTrigger size="sm" aria-label="Period">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PERIODS.map((p) => (
+                <SelectItem key={p.key} value={p.key}>
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={metric}
+            onValueChange={(v) => {
+              if (v) setMetric(v);
+            }}
+            items={METRICS.map((m) => ({ value: m.key, label: m.label }))}
+          >
+            <SelectTrigger size="sm" aria-label="Metric">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {METRICS.map((m) => (
+                <SelectItem key={m.key} value={m.key}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={dim}
+            onValueChange={(v) => {
+              if (v) setDim(v);
+            }}
+            items={DIMENSIONS.map((d) => ({
+              value: d.key,
+              label: `Split by ${d.label.toLowerCase()}`,
+            }))}
+          >
+            <SelectTrigger size="sm" aria-label="Split by">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DIMENSIONS.map((d) => (
+                <SelectItem key={d.key} value={d.key}>
+                  Split by {d.label.toLowerCase()}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </CardHeader>
+
+      <CardContent className="flex flex-col gap-4">
         {period === "custom" && (
-          <>
-            <input
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className={CONTROL_CLS}
               aria-label="From"
+              className="w-40"
             />
-            <span className="text-neutral-600">–</span>
-            <input
+            <span className="text-muted-foreground">–</span>
+            <Input
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              className={CONTROL_CLS}
               aria-label="To"
+              className="w-40"
             />
+          </div>
+        )}
+
+        {DIMENSIONS.filter((d) => dimValues[d.key].length > 1).map((d) => {
+          const all = dimValues[d.key];
+          const active = filters[d.key].length ? filters[d.key] : all;
+          return (
+            <div key={d.key} className="flex flex-wrap items-center gap-2">
+              <span className="w-14 shrink-0 text-xs text-muted-foreground">{d.label}</span>
+              <ToggleGroup
+                multiple
+                variant="outline"
+                size="sm"
+                value={active}
+                onValueChange={(next) =>
+                  setFilters((f) => ({
+                    ...f,
+                    // "nothing" and "everything" both mean no filter.
+                    [d.key]: next.length === 0 || next.length === all.length ? [] : next,
+                  }))
+                }
+                className="flex-wrap"
+                aria-label={`Filter by ${d.label.toLowerCase()}`}
+              >
+                {all.map((key) => (
+                  <ToggleGroupItem key={key} value={key}>
+                    {label(d.key, key)}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+              {filters[d.key].length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setFilters((f) => ({ ...f, [d.key]: [] }))}
+                >
+                  Reset
+                </Button>
+              )}
+            </div>
+          );
+        })}
+
+        {!view ? (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyTitle>Nothing to chart</EmptyTitle>
+              <EmptyDescription>
+                No activity matches the selected period and filters.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <>
+            <ChartContainer config={view.config} className="aspect-auto h-56 w-full">
+              <BarChart data={view.data} margin={{ left: 4, right: 4, top: 8 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="bucket"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  minTickGap={24}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={44}
+                  tickFormatter={(v: number) => formatMetric(v, metric)}
+                />
+                <ChartTooltip
+                  cursor={{ fill: "var(--muted)", opacity: 0.5 }}
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value, name) => (
+                        <>
+                          <span
+                            className="size-2.5 shrink-0 rounded-[2px]"
+                            style={{
+                              backgroundColor: view.config[String(name)]?.color,
+                            }}
+                            aria-hidden
+                          />
+                          <span className="flex-1 text-muted-foreground">
+                            {view.config[String(name)]?.label ?? name}
+                          </span>
+                          <span className="font-mono font-medium tabular-nums">
+                            {formatMetric(Number(value), metric)}
+                          </span>
+                        </>
+                      )}
+                    />
+                  }
+                />
+                {view.series.map((s, i) => (
+                  <Bar
+                    key={s.key}
+                    dataKey={s.key}
+                    stackId="usage"
+                    fill={s.color}
+                    radius={i === view.series.length - 1 ? [2, 2, 0, 0] : undefined}
+                  />
+                ))}
+              </BarChart>
+            </ChartContainer>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{DIMENSIONS.find((d) => d.key === dim)?.label}</TableHead>
+                  <TableHead className="text-right">Billable</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {view.series.map((s) => (
+                  <TableRow key={s.key}>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className="size-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: s.color }}
+                          aria-hidden
+                        />
+                        {s.label}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatTokens(s.billable)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {formatTokens(s.total)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {formatUsd(s.cost)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              {view.series.length > 1 && (
+                <TableFooter>
+                  <TableRow>
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatTokens(view.sum.billable)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatTokens(view.sum.total)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatUsd(view.sum.cost)}
+                    </TableCell>
+                  </TableRow>
+                </TableFooter>
+              )}
+            </Table>
           </>
         )}
-        <select
-          value={metric}
-          onChange={(e) => setMetric(e.target.value as Metric)}
-          className={CONTROL_CLS}
-          aria-label="Metric"
-        >
-          {METRICS.map((m) => (
-            <option key={m.key} value={m.key} className="bg-[#0a0a0a]">
-              {m.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={dim}
-          onChange={(e) => setDim(e.target.value as Dim)}
-          className={CONTROL_CLS}
-          aria-label="Split by"
-        >
-          {DIMENSIONS.map((d) => (
-            <option key={d.key} value={d.key} className="bg-[#0a0a0a]">
-              Split by {d.label.toLowerCase()}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {DIMENSIONS.filter((d) => dimValues[d.key].length > 1).map((d) => (
-        <div key={d.key} className="flex flex-wrap items-center gap-1.5">
-          <span className="w-14 text-xs text-neutral-500">{d.label}</span>
-          {dimValues[d.key].map((key) => {
-            const on = filters[d.key].length === 0 || filters[d.key].includes(key);
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => toggle(d.key, key)}
-                aria-pressed={on}
-                className={`rounded-full border px-2.5 py-0.5 text-xs ${
-                  on
-                    ? "border-white/20 bg-white/10 text-neutral-200"
-                    : "border-white/10 text-neutral-600 hover:text-neutral-400"
-                }`}
-              >
-                {label(d.key, key)}
-              </button>
-            );
-          })}
-          {filters[d.key].length > 0 && (
-            <button
-              type="button"
-              onClick={() => setFilters((f) => ({ ...f, [d.key]: [] }))}
-              className="px-1 text-xs text-neutral-500 underline hover:text-neutral-300"
-            >
-              all
-            </button>
-          )}
-        </div>
-      ))}
-
-      {!view ? (
-        <EmptyState>No activity for these filters.</EmptyState>
-      ) : (
-        <>
-          <div className="flex items-baseline justify-between text-xs text-neutral-500">
-            <span>
-              {view.monthly ? "Per month" : "Per day"} (UTC) ·{" "}
-              {METRICS.find((m) => m.key === metric)?.label.toLowerCase()}
-            </span>
-            <span className="tabular-nums">
-              peak {formatMetric(view.peak, metric)}
-            </span>
-          </div>
-          <StackedBars buckets={view.buckets} series={view.series} metric={metric} />
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs uppercase tracking-wide text-neutral-500">
-                <th className="pb-2 pr-2 text-left font-medium">
-                  {DIMENSIONS.find((d) => d.key === dim)?.label}
-                </th>
-                <th className="px-2 pb-2 text-right font-medium">Billable</th>
-                <th className="px-2 pb-2 text-right font-medium">Total</th>
-                <th className="pb-2 pl-2 text-right font-medium">Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {view.series.map((s) => (
-                <tr key={s.key} className="border-t border-white/10 text-neutral-300">
-                  <td className="py-2.5 pr-2">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: s.color }}
-                      />
-                      {s.label}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">
-                    {formatTokens(s.billable)}
-                  </td>
-                  <td className="px-2 py-2.5 text-right tabular-nums text-neutral-400">
-                    {formatTokens(s.total)}
-                  </td>
-                  <td
-                    className="py-2.5 pl-2 text-right tabular-nums text-neutral-200"
-                    title="At public API list prices"
-                  >
-                    {formatUsd(s.cost)}
-                  </td>
-                </tr>
-              ))}
-              {view.series.length > 1 && (
-                <tr className="border-t border-white/10 text-neutral-400">
-                  <td className="py-2.5 pr-2">Σ</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">
-                    {formatTokens(view.sum.billable)}
-                  </td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">
-                    {formatTokens(view.sum.total)}
-                  </td>
-                  <td className="py-2.5 pl-2 text-right tabular-nums">
-                    {formatUsd(view.sum.cost)}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -1,11 +1,37 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PlugZapIcon } from "lucide-react";
 import { ResetCountdown } from "@/components/ResetCountdown";
 import { GroupTable } from "@/components/dashboard/GroupTable";
 import { UsageBar } from "@/components/usage-ui";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { DashboardDTO, ModelLimitDTO, SpendPeriod } from "@/lib/data";
 import { formatRelative, formatTokens, formatUsd } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { billableTokens } from "@/lib/usage";
 
 /** Display label for a limit-window key: "5h" → "5-hour", "7d" → "weekly". */
@@ -16,6 +42,13 @@ function windowLabel(window: string): string {
 }
 
 const POLL_MS = 5000;
+
+/** Colored dot used for a group's identity across cards and tables. */
+function GroupDot({ color }: { color: string }) {
+  return (
+    <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />
+  );
+}
 
 /** One official limit card: Claude's own account utilization for a window. */
 function OfficialCard({
@@ -28,18 +61,20 @@ function OfficialCard({
   resetsAt: string | null;
 }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
-      <div className="flex items-baseline justify-between">
-        <h3 className="text-sm font-medium text-neutral-400">{title}</h3>
-        <span className="text-3xl font-semibold tabular-nums">
-          {Math.min(100, pct)}%
-        </span>
-      </div>
-      <p className="mb-3 text-xs text-neutral-500">
-        <ResetCountdown resetsAt={resetsAt} />
-      </p>
-      <UsageBar pct={pct} />
-    </div>
+    <Card>
+      <CardHeader>
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-3xl tabular-nums">{Math.min(100, pct)}%</CardTitle>
+        <CardAction>
+          <Badge variant="outline" className="font-normal">
+            <ResetCountdown resetsAt={resetsAt} />
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <UsageBar pct={pct} className="[&_[data-slot=progress-track]]:h-2" />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -48,93 +83,62 @@ function OfficialCard({
  *  account figure, which is not shown separately). */
 function ModelLimitCard({ limit }: { limit: ModelLimitDTO }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
-      <h3 className="text-sm font-medium text-neutral-400">
-        {limit.label}
-        <span className="ml-2 text-xs text-neutral-600">
-          {windowLabel(limit.window)} limit
-        </span>
-      </h3>
-      <p className="text-xs text-neutral-500">
-        <ResetCountdown resetsAt={limit.resetsAt} />
-      </p>
-      {limit.groups.length === 0 ? (
-        <p className="mt-4 text-sm text-neutral-500">
-          No group activity in this window.
-        </p>
-      ) : (
-        <ul className="mt-4 flex flex-col gap-3">
-          {limit.groups.map((g) => (
-            <li key={g.groupId ?? "ungrouped"} className="flex flex-col gap-1.5">
-              <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="flex min-w-0 items-center gap-1.5 text-neutral-300">
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: g.color }}
-                  />
-                  <span className="truncate">{g.name}</span>
-                </span>
-                <span className="shrink-0 tabular-nums text-neutral-300">
-                  <span className="text-lg font-semibold text-white">
-                    {g.pct}%
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          {limit.label}
+          <Badge variant="secondary" className="font-normal">
+            {windowLabel(limit.window)} limit
+          </Badge>
+        </CardTitle>
+        <CardDescription>
+          <ResetCountdown resetsAt={limit.resetsAt} />
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {limit.groups.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No group activity in this window.</p>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {limit.groups.map((g) => (
+              <li key={g.groupId ?? "ungrouped"} className="flex flex-col gap-1.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <GroupDot color={g.color} />
+                    <span className="truncate">{g.name}</span>
                   </span>
-                  <span
-                    className="text-neutral-600"
-                    title="Measured against this group's slice of the account limit"
-                  >
-                    {" "}(budget {g.budgetPct}%)
-                  </span>{" "}
-                  <span className="text-neutral-500">
-                    · {formatTokens(g.tokens)}
+                  <span className="shrink-0 tabular-nums">
+                    <span className="font-medium">{g.pct}%</span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · budget {g.budgetPct}% · {formatTokens(g.tokens)}
+                    </span>
                   </span>
-                </span>
-              </div>
-              <UsageBar pct={g.pct} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+                </div>
+                <UsageBar pct={g.pct} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
 function SpendRow({ label, period }: { label: string; period: SpendPeriod }) {
   return (
-    <tr className="border-t border-white/10 text-neutral-300">
-      <td className="py-3 pr-2 text-left text-neutral-400">{label}</td>
-      <td className="px-2 py-3 text-right tabular-nums">
+    <TableRow>
+      <TableCell className="text-muted-foreground">{label}</TableCell>
+      <TableCell className="text-right tabular-nums">
         {formatTokens(billableTokens(period.totals))}
-      </td>
-      <td className="px-2 py-3 text-right tabular-nums text-neutral-400">
+      </TableCell>
+      <TableCell className="text-right tabular-nums text-muted-foreground">
         {formatTokens(period.totals.totalTokens)}
-      </td>
-      <td
-        className="py-3 pl-2 text-right tabular-nums text-neutral-200"
-        title="At public API list prices"
-      >
+      </TableCell>
+      <TableCell className="text-right font-medium tabular-nums">
         {formatUsd(period.costUsd)}
-      </td>
-    </tr>
-  );
-}
-
-/** Money spent this week (weekly window) and this calendar month (UTC). */
-function SpendTable({ dash }: { dash: DashboardDTO }) {
-  return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="text-xs uppercase tracking-wide text-neutral-500">
-          <th className="pb-2 pr-2 text-left font-medium">Period</th>
-          <th className="px-2 pb-2 text-right font-medium">Billable</th>
-          <th className="px-2 pb-2 text-right font-medium">Total</th>
-          <th className="pb-2 pl-2 text-right font-medium">Cost</th>
-        </tr>
-      </thead>
-      <tbody>
-        <SpendRow label="This week" period={dash.spend.week} />
-        <SpendRow label="This month" period={dash.spend.month} />
-      </tbody>
-    </table>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -195,47 +199,43 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
 
   if (!dash.connected) {
     return (
-      <div className="flex flex-col gap-6">
-        <h1 className="text-2xl font-semibold">Usage</h1>
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-6">
-          <h2 className="font-medium text-white">No usage reported yet</h2>
-          <p className="mt-1 text-sm text-neutral-400">
-            Install the collector and run it on a machine where you&apos;re signed
-            into Claude Code. It auto-detects your subscription (or API key) and
-            reports your real 5-hour and weekly limit usage — no keys to paste
-            here. See <code>collector/README.md</code>.
-          </p>
-        </div>
-      </div>
+      <Card className="py-8">
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <PlugZapIcon />
+            </EmptyMedia>
+            <EmptyTitle>No usage reported yet</EmptyTitle>
+            <EmptyDescription>
+              Install the collector and run it on a machine where you&apos;re signed into Claude
+              Code. It auto-detects your subscription (or API key) and reports your real 5-hour and
+              weekly limit usage — no keys to paste here. See <code>collector/README.md</code>.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </Card>
     );
   }
 
   const sourceLabel =
-    dash.source === "sub"
-      ? "subscription"
-      : dash.source === "api"
-        ? "API key"
-        : "—";
+    dash.source === "sub" ? "subscription" : dash.source === "api" ? "API key" : "—";
 
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Usage</h1>
-        <p className="mt-1 text-sm text-neutral-400">
-          Live from Claude · {sourceLabel}
-          {dash.reportedAt
-            ? ` · updated ${formatRelative(new Date(dash.reportedAt))}`
-            : ""}
-          <span className="ml-2 inline-flex items-center gap-1 text-neutral-500">
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                stale ? "bg-amber-400" : "animate-pulse bg-emerald-400"
-              }`}
-            />
-            {stale ? "reconnecting…" : "live"}
-          </span>
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+        <Badge variant="secondary" className="font-normal">
+          <span
+            className={cn(
+              "size-1.5 rounded-full",
+              stale ? "bg-amber-500" : "animate-pulse bg-emerald-500",
+            )}
+            aria-hidden
+          />
+          {stale ? "reconnecting…" : "live"}
+        </Badge>
+        Live from Claude · {sourceLabel}
+        {dash.reportedAt ? ` · updated ${formatRelative(new Date(dash.reportedAt))}` : ""}
+      </p>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <OfficialCard
@@ -243,56 +243,62 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
           resetsAt={dash.fiveHourResetsAt}
           pct={dash.fiveHourPct}
         />
-        <OfficialCard
-          title="Weekly"
-          resetsAt={dash.sevenDayResetsAt}
-          pct={dash.sevenDayPct}
-        />
+        <OfficialCard title="Weekly" resetsAt={dash.sevenDayResetsAt} pct={dash.sevenDayPct} />
       </div>
 
       {dash.modelLimits.length > 0 && (
-        <section className="flex flex-col gap-4">
-          <h2 className="text-sm font-medium text-neutral-400">Model limits</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {dash.modelLimits.map((m) => (
-              <ModelLimitCard key={`${m.model}-${m.window}`} limit={m} />
-            ))}
-          </div>
-        </section>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {dash.modelLimits.map((m) => (
+            <ModelLimitCard key={`${m.model}-${m.window}`} limit={m} />
+          ))}
+        </div>
       )}
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-medium text-neutral-400">Groups</h2>
-        <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
-          <GroupTable
-            groups={dash.groups}
-            expanded={expanded}
-            onToggle={toggleRow}
-          />
-        </div>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Groups</CardTitle>
+          <CardDescription>
+            Each group&apos;s share of the current 5-hour and weekly windows.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <GroupTable groups={dash.groups} expanded={expanded} onToggle={toggleRow} />
+        </CardContent>
+      </Card>
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-medium text-neutral-400">Spend</h2>
-        <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
-          <SpendTable dash={dash} />
-          <p className="mt-3 text-xs text-neutral-500">
-            &quot;This week&quot; follows the weekly limit window;
-            &quot;this month&quot; is the UTC calendar month. Cost is estimated
-            at public API list prices, priced per model.
-          </p>
-        </div>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Spend</CardTitle>
+          <CardDescription>
+            &quot;This week&quot; follows the weekly limit window; &quot;this month&quot; is the UTC
+            calendar month. Cost is estimated at public API list prices, priced per model.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Period</TableHead>
+                <TableHead className="text-right">Billable</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">Cost</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <SpendRow label="This week" period={dash.spend.week} />
+              <SpendRow label="This month" period={dash.spend.month} />
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
-      <p className="text-xs text-neutral-500">
-        The 5-hour and weekly percentages up top are Claude&apos;s own account
-        utilization (reported by the collector). Under a model limit, each group
-        shows only its own share of that model&apos;s official figure (the group
-        shares sum to it), split by estimated cost at API list prices. The
-        muted &quot;budget&quot; percentage measures the same usage against the
-        group&apos;s equal slice of the account limit (1 / your groups-per-account
-        setting) — it hits 100% when the group has eaten its slice, warning you
-        not to starve the other groups.
+      <p className="max-w-3xl text-xs text-muted-foreground">
+        The 5-hour and weekly percentages up top are Claude&apos;s own account utilization (reported
+        by the collector). Under a model limit, each group shows only its own share of that
+        model&apos;s official figure (the group shares sum to it), split by estimated cost at API
+        list prices. The &quot;budget&quot; percentage measures the same usage against the
+        group&apos;s equal slice of the account limit (1 / your groups-per-account setting) — it
+        hits 100% when the group has eaten its slice, warning you not to starve the other groups.
       </p>
     </div>
   );

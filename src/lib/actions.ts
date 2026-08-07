@@ -29,10 +29,8 @@ export async function updateCacheTtl(formData: FormData) {
   const user = await requireUser();
   const ttl = formData.get("cacheWriteTtl") === "5m" ? "5m" : "1h";
   await ensureSettings(user.id);
-  await db
-    .update(userSettings)
-    .set({ cacheWriteTtl: ttl })
-    .where(eq(userSettings.userId, user.id));
+  await db.update(userSettings).set({ cacheWriteTtl: ttl }).where(eq(userSettings.userId, user.id));
+  revalidatePath("/settings");
   revalidatePath("/dashboard");
 }
 
@@ -47,6 +45,7 @@ export async function updateMaxGroups(formData: FormData) {
     .update(userSettings)
     .set({ maxGroups: Math.min(10, Math.max(1, Math.round(n))) })
     .where(eq(userSettings.userId, user.id));
+  revalidatePath("/settings");
   revalidatePath("/groups");
   revalidatePath("/dashboard");
 }
@@ -62,6 +61,7 @@ export async function updateMaxDevices(formData: FormData) {
     .update(userSettings)
     .set({ maxDevices: Math.min(50, Math.max(1, Math.round(n))) })
     .where(eq(userSettings.userId, user.id));
+  revalidatePath("/settings");
   revalidatePath("/devices");
 }
 
@@ -138,10 +138,7 @@ export async function deleteGroup(formData: FormData) {
 
 /** Returns groupId only if it belongs to the user; null otherwise. Prevents
  *  attaching a device to another tenant's group (IDOR). */
-async function ownedGroupId(
-  userId: string,
-  groupId: string | null,
-): Promise<string | null> {
+async function ownedGroupId(userId: string, groupId: string | null): Promise<string | null> {
   if (!groupId) return null;
   const owned = await db
     .select({ id: groups.id })
@@ -184,8 +181,7 @@ export async function createDevice(
   }
   // Devices are always grouped — fall back to the default when none is chosen.
   const safeGroupId =
-    (await ownedGroupId(user.id, groupId || null)) ??
-    (await ensureDefaultGroup(user.id)).id;
+    (await ownedGroupId(user.id, groupId || null)) ?? (await ensureDefaultGroup(user.id)).id;
   const { token, tokenHash, tokenPrefix } = generateDeviceToken();
   const id = randomUUID();
   await db.insert(devices).values({

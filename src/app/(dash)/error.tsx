@@ -1,6 +1,17 @@
 "use client";
 
 import { useEffect } from "react";
+import { TriangleAlertIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 
 // Error boundary for the dashboard/devices/groups subtree. Catches a thrown
 // render (e.g. a transient DB failure) and offers a retry instead of dropping
@@ -19,19 +30,21 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="flex flex-1 items-center justify-center p-8">
-      <div className="max-w-md rounded-xl border border-white/10 bg-[#0a0a0a] p-6 text-center">
-        <h2 className="text-lg font-semibold text-white">Something went wrong</h2>
-        <p className="mt-2 text-sm text-neutral-400">
-          We couldn&apos;t load this page. This is usually temporary.
-        </p>
-        <button
-          onClick={() => unstable_retry()}
-          className="mt-4 rounded-md bg-white px-4 py-2 font-medium text-black hover:bg-neutral-200"
-        >
-          Try again
-        </button>
-      </div>
-    </div>
+    <Card className="py-8">
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <TriangleAlertIcon />
+          </EmptyMedia>
+          <EmptyTitle>Something went wrong</EmptyTitle>
+          <EmptyDescription>
+            We couldn&apos;t load this page. This is usually temporary.
+          </EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button onClick={() => unstable_retry()}>Try again</Button>
+        </EmptyContent>
+      </Empty>
+    </Card>
   );
 }

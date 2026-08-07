@@ -1,5 +1,24 @@
+import { LayersIcon, Trash2 } from "lucide-react";
 import { AutoRefresh } from "@/components/AutoRefresh";
-import { createGroup, deleteGroup, updateGroup, updateMaxGroups } from "@/lib/actions";
+import { ConfirmAction } from "@/components/ConfirmAction";
+import { GroupFormDialog } from "@/components/groups/GroupFormDialog";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { deleteGroup } from "@/lib/actions";
 import { backfillUngroupedDevices, ensureSettings, listGroups } from "@/lib/data";
 import { requireUser } from "@/lib/session";
 
@@ -13,129 +32,88 @@ export default async function GroupsPage() {
   const atCap = groups.length >= maxGroups;
 
   return (
-    <div className="flex flex-col gap-6">
+    <>
       <AutoRefresh />
-      <div className="flex items-baseline justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Groups</h1>
-        <span className="text-sm text-neutral-500 tabular-nums">
-          {groups.length} / {maxGroups}
-        </span>
-      </div>
-
-      <form
-        action={updateMaxGroups}
-        className="flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-[#0a0a0a] p-5 text-sm"
-      >
-        <label htmlFor="maxGroups" className="font-medium text-neutral-200">
-          Groups per account
-        </label>
-        <input
-          id="maxGroups"
-          name="maxGroups"
-          type="number"
-          min={1}
-          max={10}
-          defaultValue={maxGroups}
-          className="w-20 rounded border border-white/15 bg-transparent px-2 py-1 text-neutral-200 [color-scheme:dark]"
-        />
-        <button className="rounded-md border border-white/15 px-3 py-1.5 text-neutral-200 hover:bg-white/5">
-          Save
-        </button>
-        <span className="text-xs text-neutral-500">
-          Each group is budgeted 1/{maxGroups} of the account limit.
-        </span>
-      </form>
-
-      {atCap ? (
-        <p className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm text-neutral-400">
-          You&apos;ve reached the limit of {maxGroups} group
-          {maxGroups === 1 ? "" : "s"}. Delete one, or raise the limit above.
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          <span className="tabular-nums">
+            {groups.length} / {maxGroups}
+          </span>{" "}
+          groups · each is measured against a 1/{maxGroups} slice of the account limit
+          {atCap && (
+            <span className="text-amber-600 dark:text-amber-500">
+              {" "}
+              · limit reached, delete one or raise it in Settings
+            </span>
+          )}
         </p>
-      ) : (
-        <form
-          action={createGroup}
-          className="flex flex-wrap items-end gap-3 rounded-lg border border-white/10 bg-[#0a0a0a] p-5"
-        >
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-neutral-200">Name</span>
-            <input
-              name="name"
-              required
-              placeholder="e.g. Laptops"
-              className="rounded-md border border-white/15 bg-[#0a0a0a] text-white placeholder:text-neutral-600 px-3 py-2 outline-none focus:border-white/30"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-neutral-200">Color</span>
-            <input
-              name="color"
-              type="color"
-              defaultValue="#6366f1"
-              className="h-10 w-16 rounded-md border border-white/15"
-            />
-          </label>
-          <button
-            type="submit"
-            className="rounded-md bg-white px-4 py-2 font-medium text-black hover:bg-neutral-200"
-          >
-            Add group
-          </button>
-        </form>
-      )}
-
-      <div className="rounded-lg border border-white/10 bg-[#0a0a0a]">
-        {groups.length === 0 ? (
-          <p className="p-5 text-sm text-neutral-500">No groups yet.</p>
-        ) : (
-          <ul className="divide-y divide-white/10">
-            {groups.map((g) => (
-              <li
-                key={g.id}
-                className="flex flex-wrap items-center justify-between gap-3 p-4"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <span
-                    className="h-3 w-3 rounded-full"
-                    style={{ backgroundColor: g.color }}
-                  />
-                  <span className="font-medium">{g.name}</span>
-                  <span className="text-sm text-neutral-500">
-                    {g.deviceCount} device{g.deviceCount === 1 ? "" : "s"}
-                  </span>
-                </span>
-                <div className="flex items-center gap-2">
-                  {/* Edit color (and keep the name) inline. */}
-                  <form action={updateGroup} className="flex items-center gap-2">
-                    <input type="hidden" name="id" value={g.id} />
-                    <input type="hidden" name="name" value={g.name} />
-                    <input
-                      name="color"
-                      type="color"
-                      defaultValue={g.color}
-                      aria-label={`Color for ${g.name}`}
-                      className="h-8 w-10 rounded-md border border-white/15"
-                    />
-                    <button className="rounded-md border border-white/15 px-3 py-1.5 text-sm text-neutral-200 hover:bg-white/5">
-                      Save
-                    </button>
-                  </form>
-                  <form action={deleteGroup}>
-                    <input type="hidden" name="id" value={g.id} />
-                    <button className="rounded-md px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/10">
-                      Delete
-                    </button>
-                  </form>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        <GroupFormDialog atCap={atCap} />
       </div>
-      <p className="text-xs text-neutral-500">
-        Up to {maxGroups} groups per account; each is measured against a
-        1/{maxGroups} slice of the account limit. Deleting a group moves its
-        devices to another group.
-      </p>
-    </div>
+
+      {groups.length === 0 ? (
+        <Card className="py-8">
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <LayersIcon />
+              </EmptyMedia>
+              <EmptyTitle>No groups yet</EmptyTitle>
+              <EmptyDescription>
+                Create a group (e.g. &quot;Laptops&quot;) and assign devices to it to see its share
+                of your limits.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Group</TableHead>
+                  <TableHead>Devices</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {groups.map((g) => (
+                  <TableRow key={g.id}>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className="size-2.5 rounded-full"
+                          style={{ backgroundColor: g.color }}
+                          aria-hidden
+                        />
+                        <span className="font-medium">{g.name}</span>
+                      </span>
+                    </TableCell>
+                    <TableCell className="tabular-nums text-muted-foreground">
+                      {g.deviceCount}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <GroupFormDialog group={{ id: g.id, name: g.name, color: g.color }} />
+                        <ConfirmAction
+                          action={deleteGroup}
+                          id={g.id}
+                          title={`Delete ${g.name}?`}
+                          description="Its devices move to another group (a fresh Default is created if this was the last one). Reported usage is kept."
+                          confirmLabel="Delete"
+                        >
+                          <Trash2 />
+                          Delete
+                        </ConfirmAction>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+    </>
   );
 }

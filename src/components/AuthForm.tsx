@@ -2,6 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { signIn, signUp } from "@/lib/auth-client";
 
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {
@@ -30,53 +33,50 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-4">
-      {mode === "signup" && (
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-neutral-300">Name</span>
-          <input
-            className="rounded-md border border-white/15 bg-[#0a0a0a] px-3 py-2 text-white outline-none placeholder:text-neutral-600 focus:border-white/30"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Your name"
+    <form onSubmit={onSubmit}>
+      <FieldGroup>
+        {mode === "signup" && (
+          <Field>
+            <FieldLabel htmlFor="name">Name</FieldLabel>
+            <Input
+              id="name"
+              autoComplete="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+            />
+          </Field>
+        )}
+        <Field>
+          <FieldLabel htmlFor="email">Email</FieldLabel>
+          <Input
+            id="email"
+            type="email"
+            required
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
           />
-        </label>
-      )}
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-neutral-300">Email</span>
-        <input
-          type="email"
-          required
-          className="rounded-md border border-white/15 bg-[#0a0a0a] px-3 py-2 text-white outline-none placeholder:text-neutral-600 focus:border-white/30"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-neutral-300">Password</span>
-        <input
-          type="password"
-          required
-          minLength={8}
-          className="rounded-md border border-white/15 bg-[#0a0a0a] px-3 py-2 text-white outline-none placeholder:text-neutral-600 focus:border-white/30"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="At least 8 characters"
-        />
-      </label>
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      <button
-        type="submit"
-        disabled={loading}
-        className="mt-2 rounded-md bg-white px-4 py-2 font-medium text-black hover:bg-neutral-200 disabled:opacity-50"
-      >
-        {loading
-          ? "Please wait…"
-          : mode === "signup"
-            ? "Create account"
-            : "Sign in"}
-      </button>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="password">Password</FieldLabel>
+          <Input
+            id="password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 8 characters"
+          />
+        </Field>
+        {error && <FieldError>{error}</FieldError>}
+        <Button type="submit" size="lg" disabled={loading}>
+          {loading ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
+        </Button>
+      </FieldGroup>
     </form>
   );
 }

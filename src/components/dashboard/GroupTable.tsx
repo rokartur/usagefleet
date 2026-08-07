@@ -1,25 +1,29 @@
 import { Fragment } from "react";
+import { ChevronRightIcon } from "lucide-react";
 import { UsageBar } from "@/components/usage-ui";
+import { Badge } from "@/components/ui/badge";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatTokens } from "@/lib/format";
 import type { LiveGroupUsage } from "@/lib/data";
 import type { ModelUsage } from "@/lib/usage";
-import { EmptyState } from "./EmptyState";
 
 /** One group's per-model tokens, session (5h) and weekly side by side. Models
  *  active in either window appear; a window with no activity reads "—". */
-function ModelCompare({
-  session,
-  weekly,
-}: {
-  session: ModelUsage[];
-  weekly: ModelUsage[];
-}) {
+function ModelCompare({ session, weekly }: { session: ModelUsage[]; weekly: ModelUsage[] }) {
   const byKey = new Map<
     string,
     { model: string; label: string; session?: ModelUsage; weekly?: ModelUsage }
   >();
-  for (const m of weekly)
-    byKey.set(m.model, { model: m.model, label: m.label, weekly: m });
+  for (const m of weekly) byKey.set(m.model, { model: m.model, label: m.label, weekly: m });
   for (const m of session) {
     const cur = byKey.get(m.model);
     if (cur) cur.session = m;
@@ -32,54 +36,79 @@ function ModelCompare({
   );
   if (rows.length === 0) {
     return (
-      <p className="px-2 text-xs text-neutral-500">
-        No model activity in the current windows yet.
-      </p>
+      <p className="text-xs text-muted-foreground">No model activity in the current windows yet.</p>
     );
   }
+  const cell = (u: ModelUsage | undefined) =>
+    u ? (
+      <>
+        <span className="text-foreground">{formatTokens(u.billableTokens)}</span>
+        {" / "}
+        {formatTokens(u.totals.totalTokens)}
+      </>
+    ) : (
+      "—"
+    );
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="text-left text-[10px] uppercase tracking-wide text-neutral-600">
-          <th className="px-2 pb-1.5 font-medium">Model</th>
-          <th className="px-2 pb-1.5 text-right font-medium">Session (5h)</th>
-          <th className="px-2 pb-1.5 text-right font-medium">Weekly</th>
-        </tr>
-      </thead>
-      <tbody>
+    <div className="flex flex-col gap-1.5">
+      <p className="text-[11px] text-muted-foreground">Per model — billable / total tokens</p>
+      <dl className="grid gap-x-8 text-xs sm:grid-cols-2">
         {rows.map((r) => (
-          <tr key={r.model} className="border-t border-white/5">
-            <td className="px-2 py-1.5 font-medium text-neutral-200">
-              {r.label}
-            </td>
-            <td className="px-2 py-1.5 text-right tabular-nums text-neutral-300">
-              {r.session ? (
-                <>
-                  {formatTokens(r.session.billableTokens)}
-                  <span className="text-neutral-600">
-                    {" "}· {formatTokens(r.session.totals.totalTokens)}
-                  </span>
-                </>
-              ) : (
-                "—"
-              )}
-            </td>
-            <td className="px-2 py-1.5 text-right tabular-nums text-neutral-300">
-              {r.weekly ? (
-                <>
-                  {formatTokens(r.weekly.billableTokens)}
-                  <span className="text-neutral-600">
-                    {" "}· {formatTokens(r.weekly.totals.totalTokens)}
-                  </span>
-                </>
-              ) : (
-                "—"
-              )}
-            </td>
-          </tr>
+          <div
+            key={r.model}
+            className="flex items-baseline justify-between gap-3 border-b border-dashed py-1 last:border-0"
+          >
+            <dt className="truncate font-medium">{r.label}</dt>
+            <dd className="shrink-0 tabular-nums text-muted-foreground">
+              5h {cell(r.session)} · 7d {cell(r.weekly)}
+            </dd>
+          </div>
         ))}
-      </tbody>
-    </table>
+      </dl>
+    </div>
+  );
+}
+
+/** "~42% · 1.2M (3.4M total)" — a group's usage in one window. */
+function WindowCell({
+  pct,
+  tokens,
+  totalTokens,
+}: {
+  pct: number;
+  tokens: number;
+  totalTokens: number;
+}) {
+  return (
+    <div className="flex min-w-48 items-center gap-3">
+      <UsageBar pct={pct} className="w-20 shrink-0" />
+      <span className="tabular-nums">
+        <span className="font-medium">~{pct}%</span>
+        <span className="text-muted-foreground">
+          {" "}
+          · {formatTokens(tokens)} ({formatTokens(totalTokens)} total)
+        </span>
+      </span>
+    </div>
+  );
+}
+
+/** Column header with a tooltip explaining what the percentage measures. */
+function WindowHead({ label }: { label: string }) {
+  return (
+    <TableHead>
+      <Tooltip>
+        <TooltipTrigger
+          render={<span className="underline decoration-dotted underline-offset-4" />}
+        >
+          {label}
+        </TooltipTrigger>
+        <TooltipContent>
+          Percentage of this group&apos;s own slice of the account limit; tokens are billable, with
+          the cache-read-inclusive total in brackets.
+        </TooltipContent>
+      </Tooltip>
+    </TableHead>
   );
 }
 
@@ -96,104 +125,82 @@ export function GroupTable({
   onToggle: (key: string) => void;
 }) {
   if (groups.length === 0) {
-    return <EmptyState>No device activity in the current windows yet.</EmptyState>;
+    return (
+      <Empty className="border">
+        <EmptyHeader>
+          <EmptyTitle>No activity yet</EmptyTitle>
+          <EmptyDescription>No device has reported usage in the current windows.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
   }
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="text-left text-xs uppercase tracking-wide text-neutral-500">
-          <th className="pb-2 font-medium">Group</th>
-          <th className="pb-2 font-medium">Session (5h)</th>
-          <th className="pb-2 font-medium">Weekly</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Group</TableHead>
+          <WindowHead label="Session (5h)" />
+          <WindowHead label="Weekly" />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {groups.map((g) => {
           const key = g.groupId ?? "ungrouped";
           const isOpen = expanded.has(key);
-          const modelCount = new Set(
-            [...g.models, ...g.sessionModels].map((m) => m.model),
-          ).size;
+          const modelCount = new Set([...g.models, ...g.sessionModels].map((m) => m.model)).size;
           return (
             <Fragment key={key}>
-              <tr className="border-t border-white/10">
-                <td className="py-3">
+              <TableRow>
+                <TableCell>
                   <button
                     type="button"
                     onClick={() => onToggle(key)}
                     aria-expanded={isOpen}
-                    className="inline-flex items-center gap-2 text-left hover:text-white"
+                    className="inline-flex items-center gap-2 rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
-                    <span
-                      className={`text-[10px] text-neutral-500 transition-transform ${
+                    <ChevronRightIcon
+                      className={`size-3.5 text-muted-foreground transition-transform ${
                         isOpen ? "rotate-90" : ""
                       }`}
                       aria-hidden
-                    >
-                      ▶
-                    </span>
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: g.color }}
                     />
-                    {g.name}
-                    <span className="text-xs text-neutral-600">
+                    <span
+                      className="size-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: g.color }}
+                      aria-hidden
+                    />
+                    <span className="font-medium">{g.name}</span>
+                    <Badge variant="secondary" className="font-normal">
                       {modelCount} model{modelCount === 1 ? "" : "s"}
-                    </span>
+                    </Badge>
                   </button>
-                </td>
-                <td className="py-3 pr-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-28">
-                      <UsageBar pct={g.sessionBudgetPct} />
-                    </div>
-                    <span
-                      className="tabular-nums text-neutral-400"
-                      title="Measured against this group's slice of the account limit"
-                    >
-                      ~{g.sessionBudgetPct}%{" "}
-                      · {formatTokens(g.sessionTokens)}
-                      <span
-                        className="text-neutral-600"
-                        title="Total incl. cache reads (ccusage-comparable)"
-                      >
-                        {" "}· {formatTokens(g.sessionTotalTokens)} total
-                      </span>
-                    </span>
-                  </div>
-                </td>
-                <td className="py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-28">
-                      <UsageBar pct={g.weeklyBudgetPct} />
-                    </div>
-                    <span
-                      className="tabular-nums text-neutral-400"
-                      title="Measured against this group's slice of the account limit"
-                    >
-                      ~{g.weeklyBudgetPct}%{" "}
-                      · {formatTokens(g.weeklyTokens)}
-                      <span
-                        className="text-neutral-600"
-                        title="Total incl. cache reads (ccusage-comparable)"
-                      >
-                        {" "}· {formatTokens(g.weeklyTotalTokens)} total
-                      </span>
-                    </span>
-                  </div>
-                </td>
-              </tr>
+                </TableCell>
+                <TableCell>
+                  <WindowCell
+                    pct={g.sessionBudgetPct}
+                    tokens={g.sessionTokens}
+                    totalTokens={g.sessionTotalTokens}
+                  />
+                </TableCell>
+                <TableCell>
+                  <WindowCell
+                    pct={g.weeklyBudgetPct}
+                    tokens={g.weeklyTokens}
+                    totalTokens={g.weeklyTotalTokens}
+                  />
+                </TableCell>
+              </TableRow>
               {isOpen && (
-                <tr className="border-t border-white/5 bg-white/[0.015]">
-                  <td colSpan={3} className="px-2 py-3">
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableCell colSpan={3} className="whitespace-normal py-3">
                     <ModelCompare session={g.sessionModels} weekly={g.models} />
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )}
             </Fragment>
           );
         })}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }

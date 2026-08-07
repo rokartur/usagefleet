@@ -1,44 +1,29 @@
-import Link from "next/link";
-import { SignOutButton } from "@/components/SignOutButton";
+import { cookies } from "next/headers";
+import { AppSidebar, PageTitle } from "@/components/app-sidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Separator } from "@/components/ui/separator";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { requireUser } from "@/lib/session";
 
-const NAV = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/groups", label: "Groups" },
-  { href: "/devices", label: "Devices" },
-];
-
-export default async function DashLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function DashLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
+  // Restore the collapsed/expanded sidebar across reloads (cookie set client-side
+  // by SidebarProvider) so the first paint doesn't flip.
+  const open = (await cookies()).get("sidebar_state")?.value !== "false";
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="border-b border-white/10 bg-[#0a0a0a]">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
-          <div className="flex items-center gap-6">
-            <span className="font-semibold tracking-tight">◢ Claude Track</span>
-            <nav className="flex items-center gap-1">
-              {NAV.map((n) => (
-                <Link
-                  key={n.href}
-                  href={n.href}
-                  className="rounded-md px-3 py-1.5 text-sm text-neutral-400 hover:text-white hover:bg-white/5"
-                >
-                  {n.label}
-                </Link>
-              ))}
-            </nav>
+    <SidebarProvider defaultOpen={open}>
+      <AppSidebar email={user.email} />
+      <SidebarInset>
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-1 h-4" />
+          <PageTitle />
+          <div className="ml-auto flex items-center gap-1">
+            <ThemeToggle />
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-neutral-400">{user.email}</span>
-            <SignOutButton />
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
-    </div>
+        </header>
+        <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">{children}</div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
