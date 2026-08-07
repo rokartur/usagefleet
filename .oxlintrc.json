@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y", "nextjs", "import"],
+  "ignorePatterns": [".next", "drizzle", "next-env.d.ts"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {},
+  "env": {
+    "builtin": true
+  },
+  "overrides": [
+    {
+      // Vendored shadcn registry components: kept re-installable by the CLI,
+      // so they are not edited to satisfy rules the registry doesn't follow.
+      "files": ["src/components/ui/**"],
+      "rules": {
+        "jsx-a11y/label-has-associated-control": "off",
+        "jsx-a11y/prefer-tag-over-role": "off"
+      }
+    }
+  ]
+}
