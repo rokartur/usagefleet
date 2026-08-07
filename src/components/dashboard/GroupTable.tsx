@@ -145,16 +145,13 @@ export function GroupTable({
                 <td className="py-3 pr-6">
                   <div className="flex items-center gap-3">
                     <div className="w-28">
-                      <UsageBar pct={g.sessionPct} />
+                      <UsageBar pct={g.sessionBudgetPct} />
                     </div>
-                    <span className="tabular-nums text-neutral-400">
-                      ~{g.sessionPct}%
-                      <span
-                        className="text-neutral-600"
-                        title="Measured against this group's slice of the account limit"
-                      >
-                        {" "}(budget {g.sessionBudgetPct}%)
-                      </span>{" "}
+                    <span
+                      className="tabular-nums text-neutral-400"
+                      title="Measured against this group's slice of the account limit"
+                    >
+                      ~{g.sessionBudgetPct}%{" "}
                       · {formatTokens(g.sessionTokens)}
                       <span
                         className="text-neutral-600"
@@ -168,16 +165,13 @@ export function GroupTable({
                 <td className="py-3">
                   <div className="flex items-center gap-3">
                     <div className="w-28">
-                      <UsageBar pct={g.weeklyPct} />
+                      <UsageBar pct={g.weeklyBudgetPct} />
                     </div>
-                    <span className="tabular-nums text-neutral-400">
-                      ~{g.weeklyPct}%
-                      <span
-                        className="text-neutral-600"
-                        title="Measured against this group's slice of the account limit"
-                      >
-                        {" "}(budget {g.weeklyBudgetPct}%)
-                      </span>{" "}
+                    <span
+                      className="tabular-nums text-neutral-400"
+                      title="Measured against this group's slice of the account limit"
+                    >
+                      ~{g.weeklyBudgetPct}%{" "}
                       · {formatTokens(g.weeklyTokens)}
                       <span
                         className="text-neutral-600"

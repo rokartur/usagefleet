@@ -185,10 +185,7 @@ export interface LiveGroupUsage {
   groupId: string | null;
   name: string;
   color: string;
-  /** TRUE share of the official account % (group pcts sum to the account pct). */
-  sessionPct: number;
-  weeklyPct: number;
-  /** Same usage measured against the group's budget slice (1/maxGroups of the
+  /** Usage measured against the group's budget slice (1/maxGroups of the
    *  account limit) — the "am I eating the other group's half?" view. */
   sessionBudgetPct: number;
   weeklyBudgetPct: number;
@@ -487,10 +484,8 @@ export async function getLiveDashboard(
     groupId: id,
     name: nameFor(id),
     color: colorFor(id),
-    sessionPct: sessionSplit.get(id)?.pct ?? 0,
-    weeklyPct: weeklySplit.get(id)?.pct ?? 0,
-    // Same usage against the group's budget slice (1/maxGroups): a group
-    // filling its share reads 100% while the account is at 50%.
+    // Usage against the group's budget slice (1/maxGroups): a group filling
+    // its share reads 100% while the account is at 50%.
     sessionBudgetPct: groupBudgetPct(sessionSplit.get(id), settings.maxGroups),
     weeklyBudgetPct: groupBudgetPct(weeklySplit.get(id), settings.maxGroups),
     sessionTokens: sessionSplit.get(id)?.tokens ?? 0,
