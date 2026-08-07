@@ -1,6 +1,6 @@
 import { AutoRefresh } from "@/components/AutoRefresh";
-import { createGroup, deleteGroup, updateGroup } from "@/lib/actions";
-import { backfillUngroupedDevices, listGroups, MAX_GROUPS } from "@/lib/data";
+import { createGroup, deleteGroup, updateGroup, updateMaxGroups } from "@/lib/actions";
+import { backfillUngroupedDevices, ensureSettings, listGroups } from "@/lib/data";
 import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +9,8 @@ export default async function GroupsPage() {
   const user = await requireUser();
   await backfillUngroupedDevices(user.id);
   const groups = await listGroups(user.id);
-  const atCap = groups.length >= MAX_GROUPS;
+  const { maxGroups } = await ensureSettings(user.id);
+  const atCap = groups.length >= maxGroups;
 
   return (
     <div className="flex flex-col gap-6">
@@ -17,14 +18,38 @@ export default async function GroupsPage() {
       <div className="flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold">Groups</h1>
         <span className="text-sm text-neutral-500 tabular-nums">
-          {groups.length} / {MAX_GROUPS}
+          {groups.length} / {maxGroups}
         </span>
       </div>
 
+      <form
+        action={updateMaxGroups}
+        className="flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-[#0a0a0a] p-5 text-sm"
+      >
+        <label htmlFor="maxGroups" className="font-medium text-neutral-200">
+          Groups per account
+        </label>
+        <input
+          id="maxGroups"
+          name="maxGroups"
+          type="number"
+          min={1}
+          max={10}
+          defaultValue={maxGroups}
+          className="w-20 rounded border border-white/15 bg-transparent px-2 py-1 text-neutral-200 [color-scheme:dark]"
+        />
+        <button className="rounded-md border border-white/15 px-3 py-1.5 text-neutral-200 hover:bg-white/5">
+          Save
+        </button>
+        <span className="text-xs text-neutral-500">
+          Each group is budgeted 1/{maxGroups} of the account limit.
+        </span>
+      </form>
+
       {atCap ? (
         <p className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm text-neutral-400">
-          You&apos;ve reached the limit of {MAX_GROUPS} groups. Each group is
-          budgeted half the account limit. Delete one to add another.
+          You&apos;ve reached the limit of {maxGroups} group
+          {maxGroups === 1 ? "" : "s"}. Delete one, or raise the limit above.
         </p>
       ) : (
         <form
@@ -107,8 +132,9 @@ export default async function GroupsPage() {
         )}
       </div>
       <p className="text-xs text-neutral-500">
-        Up to {MAX_GROUPS} groups per account; each is measured against half the
-        account limit. Deleting a group moves its devices to your other group.
+        Up to {maxGroups} groups per account; each is measured against a
+        1/{maxGroups} slice of the account limit. Deleting a group moves its
+        devices to another group.
       </p>
     </div>
   );

@@ -5,8 +5,12 @@ import { createDevice } from "@/lib/actions";
 
 export function AddDeviceForm({
   groups,
+  atCap,
+  maxDevices,
 }: {
   groups: { id: string; name: string }[];
+  atCap: boolean;
+  maxDevices: number;
 }) {
   const [name, setName] = useState("");
   // Default to the first group so a new device is never left ungrouped.
@@ -64,12 +68,19 @@ export function AddDeviceForm({
         </label>
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || atCap}
           className="rounded-md bg-white px-4 py-2 font-medium text-black hover:bg-neutral-200 disabled:opacity-50"
         >
           {loading ? "Creating…" : "Add device"}
         </button>
       </form>
+
+      {atCap && (
+        <p className="mt-3 text-sm text-amber-400">
+          You&apos;ve reached the limit of {maxDevices} active device
+          {maxDevices === 1 ? "" : "s"}. Revoke one, or raise the limit above.
+        </p>
+      )}
 
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
 

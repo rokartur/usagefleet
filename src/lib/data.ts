@@ -188,7 +188,7 @@ export interface LiveGroupUsage {
   /** TRUE share of the official account % (group pcts sum to the account pct). */
   sessionPct: number;
   weeklyPct: number;
-  /** Same usage measured against the group's budget slice (1/MAX_GROUPS of the
+  /** Same usage measured against the group's budget slice (1/maxGroups of the
    *  account limit) — the "am I eating the other group's half?" view. */
   sessionBudgetPct: number;
   weeklyBudgetPct: number;
@@ -230,7 +230,7 @@ export interface LiveModelLimitGroup {
   color: string;
   /** TRUE share of the official model % (group pcts sum to the model pct). */
   pct: number;
-  /** Against the group's budget slice (1/MAX_GROUPS), like sessionBudgetPct. */
+  /** Against the group's budget slice (1/maxGroups), like sessionBudgetPct. */
   budgetPct: number;
   /** Billable tokens of this model family in the limit's window. */
   tokens: number;
@@ -287,15 +287,13 @@ function windowDurationMs(window: string): number | null {
   return n * unit;
 }
 
-/** An account may have at most this many groups. Each group is budgeted an equal
- *  slice of the account limit (1/MAX_GROUPS), so a group's percentage is measured
- *  against that slice — e.g. with 2 groups, a group at its half-budget reads 100%
- *  while the account is only at 50%. */
-export const MAX_GROUPS = 2;
-
-/** Scale an account-share pct to a per-group "half budget" pct (cap 100). */
-const groupBudgetPct = (sharePct: number) =>
-  Math.min(100, sharePct * MAX_GROUPS);
+/** Scale an account-share pct to a per-group budget pct (1/maxGroups slice of
+ *  the account limit, cap 100) — e.g. with 2 groups, a group at its half-budget
+ *  reads 100% while the account is only at 50%. Takes the *unrounded* share so
+ *  the ×maxGroups multiply doesn't amplify a rounding error (at maxGroups=10 a
+ *  0.5pt rounding would become 5pt). */
+const groupBudgetPct = (share: ShareEntry | undefined, maxGroups: number) =>
+  Math.round(Math.min(100, (share?.exactPct ?? 0) * maxGroups));
 
 /** Split an official account-wide percentage across an arbitrary key (group or
  *  device) by each key's share of estimated cost (API list prices) within the
@@ -303,7 +301,10 @@ const groupBudgetPct = (sharePct: number) =>
  *  models (Fable > Opus > Sonnet > Haiku) like Anthropic's cost-based limit
  *  accounting. Token fields stay billable/total for display. */
 interface ShareEntry {
+  /** Integer share of the official pct; these sum exactly to it. */
   pct: number;
+  /** Same share unrounded — used for budget scaling, never displayed raw. */
+  exactPct: number;
   tokens: number;
   /** All-bucket total (incl. cache_read); display only, never used for splits. */
   totalTokens: number;
@@ -356,6 +357,7 @@ function splitByShare(
         tokens: tok,
         totalTokens: totalByKey.get(k) ?? 0,
         pct: 0,
+        exactPct: 0,
         models: models(k),
       });
     }
@@ -364,7 +366,7 @@ function splitByShare(
   const rows = [...tokensByKey].map(([k, tok]) => {
     const exact = target * ((costByKey.get(k) ?? 0) / totalCost);
     const floor = Math.floor(exact);
-    return { k, tok, floor, frac: exact - floor };
+    return { k, tok, exact, floor, frac: exact - floor };
   });
   let leftover = target - rows.reduce((s, r) => s + r.floor, 0);
   rows.sort((a, b) => b.frac - a.frac);
@@ -376,6 +378,7 @@ function splitByShare(
       tokens: r.tok,
       totalTokens: totalByKey.get(r.k) ?? 0,
       pct: r.floor,
+      exactPct: r.exact,
       models: models(r.k),
     });
   }
@@ -486,10 +489,10 @@ export async function getLiveDashboard(
     color: colorFor(id),
     sessionPct: sessionSplit.get(id)?.pct ?? 0,
     weeklyPct: weeklySplit.get(id)?.pct ?? 0,
-    // Same usage against the group's budget slice (1/MAX_GROUPS): a group
-    // filling its half reads 100% while the account is at 50%.
-    sessionBudgetPct: groupBudgetPct(sessionSplit.get(id)?.pct ?? 0),
-    weeklyBudgetPct: groupBudgetPct(weeklySplit.get(id)?.pct ?? 0),
+    // Same usage against the group's budget slice (1/maxGroups): a group
+    // filling its share reads 100% while the account is at 50%.
+    sessionBudgetPct: groupBudgetPct(sessionSplit.get(id), settings.maxGroups),
+    weeklyBudgetPct: groupBudgetPct(weeklySplit.get(id), settings.maxGroups),
     sessionTokens: sessionSplit.get(id)?.tokens ?? 0,
     weeklyTokens: weeklySplit.get(id)?.tokens ?? 0,
     sessionTotalTokens: sessionSplit.get(id)?.totalTokens ?? 0,
@@ -515,7 +518,7 @@ export async function getLiveDashboard(
           name: nameFor(id),
           color: colorFor(id),
           pct: s.pct,
-          budgetPct: groupBudgetPct(s.pct),
+          budgetPct: groupBudgetPct(s, settings.maxGroups),
           tokens: s.tokens,
         }),
       );

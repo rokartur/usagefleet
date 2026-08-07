@@ -151,7 +151,7 @@ export function GroupTable({
                       ~{g.sessionPct}%
                       <span
                         className="text-neutral-600"
-                        title="Measured against this group's half of the account limit"
+                        title="Measured against this group's slice of the account limit"
                       >
                         {" "}(budget {g.sessionBudgetPct}%)
                       </span>{" "}
@@ -174,7 +174,7 @@ export function GroupTable({
                       ~{g.weeklyPct}%
                       <span
                         className="text-neutral-600"
-                        title="Measured against this group's half of the account limit"
+                        title="Measured against this group's slice of the account limit"
                       >
                         {" "}(budget {g.weeklyBudgetPct}%)
                       </span>{" "}

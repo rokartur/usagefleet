@@ -5,7 +5,7 @@ import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { devices, groups, userSettings } from "@/db/schema";
-import { ensureDefaultGroup, ensureSettings, MAX_GROUPS } from "@/lib/data";
+import { ensureDefaultGroup, ensureSettings } from "@/lib/data";
 import { generateDeviceToken } from "@/lib/device-token";
 import { requireUser } from "@/lib/session";
 
@@ -15,7 +15,7 @@ function safeColor(v: string): string {
   return /^#[0-9a-fA-F]{6}$/.test(v) ? v : "#6366f1";
 }
 
-/** Count the user's groups (for the MAX_GROUPS cap). */
+/** Count the user's groups (for the per-account cap). */
 async function groupCount(userId: string): Promise<number> {
   const rows = await db
     .select({ n: sql<number>`count(*)::int` })
@@ -36,14 +36,44 @@ export async function updateCacheTtl(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+/** Set how many groups this account may hold (1–10). Lowering it below the
+ *  current count only blocks new groups — existing ones are kept. */
+export async function updateMaxGroups(formData: FormData) {
+  const user = await requireUser();
+  const n = Number(formData.get("maxGroups"));
+  if (!Number.isFinite(n)) return;
+  await ensureSettings(user.id);
+  await db
+    .update(userSettings)
+    .set({ maxGroups: Math.min(10, Math.max(1, Math.round(n))) })
+    .where(eq(userSettings.userId, user.id));
+  revalidatePath("/groups");
+  revalidatePath("/dashboard");
+}
+
+/** Set how many active devices this account may hold (1–50). Lowering it below
+ *  the current count only blocks new devices — existing ones keep working. */
+export async function updateMaxDevices(formData: FormData) {
+  const user = await requireUser();
+  const n = Number(formData.get("maxDevices"));
+  if (!Number.isFinite(n)) return;
+  await ensureSettings(user.id);
+  await db
+    .update(userSettings)
+    .set({ maxDevices: Math.min(50, Math.max(1, Math.round(n))) })
+    .where(eq(userSettings.userId, user.id));
+  revalidatePath("/devices");
+}
+
 export async function createGroup(formData: FormData) {
   const user = await requireUser();
   const name = String(formData.get("name") ?? "").trim();
   const color = safeColor(String(formData.get("color") ?? "#6366f1"));
   if (!name) return;
-  // An account may hold at most MAX_GROUPS groups (each is budgeted half the
-  // account limit). Silently ignore over-cap creates; the UI also disables the form.
-  if ((await groupCount(user.id)) >= MAX_GROUPS) return;
+  // Each group is budgeted an equal slice of the account limit. Silently ignore
+  // over-cap creates; the UI also disables the form.
+  const { maxGroups } = await ensureSettings(user.id);
+  if ((await groupCount(user.id)) >= maxGroups) return;
   await db.insert(groups).values({ id: randomUUID(), ownerId: user.id, name, color });
   revalidatePath("/groups");
   revalidatePath("/dashboard");
@@ -142,6 +172,16 @@ export async function createDevice(
   groupId: string | null,
 ): Promise<{ id: string; token: string }> {
   const user = await requireUser();
+  // Revoked devices don't hold a slot — otherwise you'd have to hard-delete
+  // audit history to add a machine. The UI also disables the form at the cap.
+  const [{ n: active } = { n: 0 }] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(devices)
+    .where(and(eq(devices.userId, user.id), eq(devices.revoked, false)));
+  const { maxDevices } = await ensureSettings(user.id);
+  if (active >= maxDevices) {
+    throw new Error(`Device limit reached (${maxDevices}).`);
+  }
   // Devices are always grouped — fall back to the default when none is chosen.
   const safeGroupId =
     (await ownedGroupId(user.id, groupId || null)) ??

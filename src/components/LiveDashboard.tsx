@@ -82,7 +82,7 @@ function ModelLimitCard({ limit }: { limit: ModelLimitDTO }) {
                 ~{g.pct}%
                 <span
                   className="text-neutral-600"
-                  title="Measured against this group's half of the account limit"
+                  title="Measured against this group's slice of the account limit"
                 >
                   {" "}(budget {g.budgetPct}%)
                 </span>{" "}
@@ -450,8 +450,9 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
         percentage is its true share of that account figure (group shares sum to
         the account value), split by estimated cost at API list prices. The
         muted &quot;budget&quot; percentage measures the same usage against the
-        group&apos;s half of the account limit — it hits 100% when the group has
-        eaten its half, warning you not to starve the other group.
+        group&apos;s equal slice of the account limit (1 / your groups-per-account
+        setting) — it hits 100% when the group has eaten its slice, warning you
+        not to starve the other groups.
       </p>
     </div>
   );

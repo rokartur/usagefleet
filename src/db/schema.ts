@@ -128,6 +128,11 @@ export const userSettings = pgTable("user_settings", {
     .default(2_200_000),
   weekResetWeekday: integer("week_reset_weekday").notNull().default(1), // 0=Sun
   weekResetHourUtc: integer("week_reset_hour_utc").notNull().default(0),
+  // How many groups this account may hold; each is budgeted 1/maxGroups of the
+  // account limit.
+  maxGroups: integer("max_groups").notNull().default(2),
+  // How many active (non-revoked) devices this account may hold.
+  maxDevices: integer("max_devices").notNull().default(10),
   // Cache-write TTL used for pricing ('5m' | '1h'). Claude Code writes 1h caches.
   cacheWriteTtl: text("cache_write_ttl").notNull().default("1h"),
   // Deprecated (manual sessionKey flow, replaced by collector-reported limits).

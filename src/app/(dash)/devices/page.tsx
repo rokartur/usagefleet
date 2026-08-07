@@ -1,7 +1,17 @@
 import { AddDeviceForm } from "@/components/AddDeviceForm";
 import { AutoRefresh } from "@/components/AutoRefresh";
-import { assignDeviceGroup, deleteDevice, revokeDevice } from "@/lib/actions";
-import { backfillUngroupedDevices, listDevices, listGroups } from "@/lib/data";
+import {
+  assignDeviceGroup,
+  deleteDevice,
+  revokeDevice,
+  updateMaxDevices,
+} from "@/lib/actions";
+import {
+  backfillUngroupedDevices,
+  ensureSettings,
+  listDevices,
+  listGroups,
+} from "@/lib/data";
 import { OS_LABEL, formatRelative } from "@/lib/format";
 import { requireUser } from "@/lib/session";
 
@@ -11,17 +21,53 @@ export default async function DevicesPage() {
   const user = await requireUser();
   // Enforce the "every device is grouped" invariant before listing.
   await backfillUngroupedDevices(user.id);
-  const [devices, groups] = await Promise.all([
+  const [devices, groups, settings] = await Promise.all([
     listDevices(user.id),
     listGroups(user.id),
+    ensureSettings(user.id),
   ]);
+  // Revoked devices don't hold a slot — must match createDevice's count.
+  const active = devices.filter((d) => !d.revoked).length;
 
   return (
     <div className="flex flex-col gap-6">
       <AutoRefresh />
-      <h1 className="text-2xl font-semibold">Devices</h1>
+      <div className="flex items-baseline justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Devices</h1>
+        <span className="text-sm text-neutral-500 tabular-nums">
+          {active} / {settings.maxDevices} active
+        </span>
+      </div>
 
-      <AddDeviceForm groups={groups.map((g) => ({ id: g.id, name: g.name }))} />
+      <form
+        action={updateMaxDevices}
+        className="flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-[#0a0a0a] p-5 text-sm"
+      >
+        <label htmlFor="maxDevices" className="font-medium text-neutral-200">
+          Devices per account
+        </label>
+        <input
+          id="maxDevices"
+          name="maxDevices"
+          type="number"
+          min={1}
+          max={50}
+          defaultValue={settings.maxDevices}
+          className="w-20 rounded border border-white/15 bg-transparent px-2 py-1 text-neutral-200 [color-scheme:dark]"
+        />
+        <button className="rounded-md border border-white/15 px-3 py-1.5 text-neutral-200 hover:bg-white/5">
+          Save
+        </button>
+        <span className="text-xs text-neutral-500">
+          Revoked devices don&apos;t count toward the limit.
+        </span>
+      </form>
+
+      <AddDeviceForm
+        groups={groups.map((g) => ({ id: g.id, name: g.name }))}
+        atCap={active >= settings.maxDevices}
+        maxDevices={settings.maxDevices}
+      />
 
       <div className="rounded-lg border border-white/10 bg-[#0a0a0a]">
         {devices.length === 0 ? (

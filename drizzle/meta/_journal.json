@@ -50,6 +50,20 @@
       "when": 1784807878071,
       "tag": "0006_neat_logan",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786103351299,
+      "tag": "0007_clumsy_energizer",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786104300920,
+      "tag": "0008_brainy_loa",
+      "breakpoints": true
     }
   ]
 }

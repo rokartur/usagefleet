@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "max_groups" integer DEFAULT 2 NOT NULL;

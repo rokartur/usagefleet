@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "max_devices" integer DEFAULT 10 NOT NULL;
