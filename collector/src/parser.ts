@@ -85,10 +85,7 @@ function parsePiLine(o: Record<string, unknown>): UsageRecord | null {
  * app the file came from (the line itself carries no app identifier) and selects
  * the format: `pi` files use pi's own schema, everything else Claude Code's.
  */
-export function parseLine(
-  line: string,
-  source: UsageSource = "cli",
-): UsageRecord | null {
+export function parseLine(line: string, source: UsageSource = "cli"): UsageRecord | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
   let o: Record<string, unknown>;
@@ -99,9 +96,7 @@ export function parseLine(
   }
   if (source === "pi") return parsePiLine(o);
   if (o.type !== "assistant") return null;
-  const message = o.message as
-    | { id?: string; model?: string; usage?: RawUsage }
-    | undefined;
+  const message = o.message as { id?: string; model?: string; usage?: RawUsage } | undefined;
   if (!message || typeof message.usage !== "object" || message.usage === null) {
     return null;
   }

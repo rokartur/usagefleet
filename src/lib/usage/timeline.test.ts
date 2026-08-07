@@ -1,19 +1,17 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildDailyTimeline,
-  buildHourlyTimeline,
-  buildTimeline,
-  metricValue,
-} from "./timeline";
+import { buildDailyTimeline, buildHourlyTimeline, buildTimeline, metricValue } from "./timeline";
 import type { UsageRecord } from "./types";
 
 /** Billable shorthand for the new TokenTotals-keyed buckets. */
-const bill = (t: { inputTokens: number; outputTokens: number; cacheCreationTokens: number; cacheReadTokens: number; totalTokens: number }) =>
-  metricValue(t, "billable");
+const bill = (t: {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  totalTokens: number;
+}) => metricValue(t, "billable");
 
-function rec(
-  p: Partial<UsageRecord> & { uuid: string; ts: string },
-): UsageRecord {
+function rec(p: Partial<UsageRecord> & { uuid: string; ts: string }): UsageRecord {
   return {
     messageId: null,
     requestId: null,
@@ -32,9 +30,39 @@ function rec(
 // One logical message streamed across 3 growing segments — must fold to the
 // largest BEFORE bucketing (else a single message is counted 3x).
 const m1 = [
-  rec({ uuid: "u1a", messageId: "msg_1", requestId: "req_1", ts: "2026-06-18T10:15:00Z", inputTokens: 6, outputTokens: 100, cacheCreationTokens: 13240, cacheReadTokens: 17499, groupId: "g1" }),
-  rec({ uuid: "u1b", messageId: "msg_1", requestId: "req_1", ts: "2026-06-18T10:15:01Z", inputTokens: 6, outputTokens: 200, cacheCreationTokens: 13240, cacheReadTokens: 17499, groupId: "g1" }),
-  rec({ uuid: "u1c", messageId: "msg_1", requestId: "req_1", ts: "2026-06-18T10:15:02Z", inputTokens: 6, outputTokens: 312, cacheCreationTokens: 13240, cacheReadTokens: 17499, groupId: "g1" }),
+  rec({
+    uuid: "u1a",
+    messageId: "msg_1",
+    requestId: "req_1",
+    ts: "2026-06-18T10:15:00Z",
+    inputTokens: 6,
+    outputTokens: 100,
+    cacheCreationTokens: 13240,
+    cacheReadTokens: 17499,
+    groupId: "g1",
+  }),
+  rec({
+    uuid: "u1b",
+    messageId: "msg_1",
+    requestId: "req_1",
+    ts: "2026-06-18T10:15:01Z",
+    inputTokens: 6,
+    outputTokens: 200,
+    cacheCreationTokens: 13240,
+    cacheReadTokens: 17499,
+    groupId: "g1",
+  }),
+  rec({
+    uuid: "u1c",
+    messageId: "msg_1",
+    requestId: "req_1",
+    ts: "2026-06-18T10:15:02Z",
+    inputTokens: 6,
+    outputTokens: 312,
+    cacheCreationTokens: 13240,
+    cacheReadTokens: 17499,
+    groupId: "g1",
+  }),
 ];
 
 const WEEK_START = new Date("2026-06-15T00:00:00Z");
@@ -68,7 +96,14 @@ describe("timeline — daily", () => {
 
   it("billable metric excludes cache reads; cacheRead/total metrics include them", () => {
     const evs = [
-      rec({ uuid: "x", ts: "2026-06-17T08:00:00Z", inputTokens: 5, outputTokens: 7, cacheCreationTokens: 3, cacheReadTokens: 99999 }),
+      rec({
+        uuid: "x",
+        ts: "2026-06-17T08:00:00Z",
+        inputTokens: 5,
+        outputTokens: 7,
+        cacheCreationTokens: 3,
+        cacheReadTokens: 99999,
+      }),
       rec({ uuid: "y", ts: "2026-06-17T09:00:00Z", cacheReadTokens: 50000 }), // pure cache read
     ];
     const tl = buildDailyTimeline(evs, WEEK_START, NOW);
@@ -107,8 +142,20 @@ describe("timeline — daily", () => {
 
   it("keys byGroup/byModel correctly and group sums equal the bucket total", () => {
     const evs = [
-      rec({ uuid: "a", ts: "2026-06-16T08:00:00Z", outputTokens: 10, groupId: "g1", model: "claude-opus-4-8" }),
-      rec({ uuid: "b", ts: "2026-06-16T09:00:00Z", outputTokens: 4, groupId: null, model: "claude-sonnet-4-6" }),
+      rec({
+        uuid: "a",
+        ts: "2026-06-16T08:00:00Z",
+        outputTokens: 10,
+        groupId: "g1",
+        model: "claude-opus-4-8",
+      }),
+      rec({
+        uuid: "b",
+        ts: "2026-06-16T09:00:00Z",
+        outputTokens: 4,
+        groupId: null,
+        model: "claude-sonnet-4-6",
+      }),
     ];
     const day = buildDailyTimeline(evs, WEEK_START, NOW).find(
       (b) => b.ts === "2026-06-16T00:00:00.000Z",

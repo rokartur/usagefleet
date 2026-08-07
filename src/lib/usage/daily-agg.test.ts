@@ -29,9 +29,31 @@ function row(p: Partial<DailyAggRow> & { day: string }): DailyAggRow {
 }
 
 const ROWS: DailyAggRow[] = [
-  row({ day: "2026-06-24", groupId: "g1", model: "claude-opus-4-8", inputTokens: 10, outputTokens: 5, cacheCreationTokens: 2, cacheReadTokens: 100 }),
-  row({ day: "2026-06-24", groupId: "g2", model: "claude-sonnet-4-6", inputTokens: 3, outputTokens: 1, cacheCreationTokens: 0, cacheReadTokens: 40 }),
-  row({ day: "2026-06-18", groupId: "g1", model: "claude-opus-4-8", outputTokens: 20, cacheReadTokens: 7 }),
+  row({
+    day: "2026-06-24",
+    groupId: "g1",
+    model: "claude-opus-4-8",
+    inputTokens: 10,
+    outputTokens: 5,
+    cacheCreationTokens: 2,
+    cacheReadTokens: 100,
+  }),
+  row({
+    day: "2026-06-24",
+    groupId: "g2",
+    model: "claude-sonnet-4-6",
+    inputTokens: 3,
+    outputTokens: 1,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 40,
+  }),
+  row({
+    day: "2026-06-18",
+    groupId: "g1",
+    model: "claude-opus-4-8",
+    outputTokens: 20,
+    cacheReadTokens: 7,
+  }),
   row({ day: "2026-05-30", groupId: "g1", model: "claude-sonnet-4-6", inputTokens: 8 }),
 ];
 
@@ -55,9 +77,7 @@ describe("daily-agg — sums", () => {
   });
 
   it("totalsForDay / totalsForMonth filter by UTC key", () => {
-    expect(metricValue(totalsForDay(ROWS, "2026-06-24"), "billable")).toBe(
-      10 + 5 + 2 + 3 + 1,
-    );
+    expect(metricValue(totalsForDay(ROWS, "2026-06-24"), "billable")).toBe(10 + 5 + 2 + 3 + 1);
     expect(totalsForDay(ROWS, "2026-06-24").cacheReadTokens).toBe(140);
     // June = 24th (two rows) + 18th
     expect(totalsForMonth(ROWS, "2026-06").outputTokens).toBe(5 + 1 + 20);
@@ -113,7 +133,16 @@ describe("daily-agg — chart buckets", () => {
 
   it("keys absent group/model as ungrouped/unknown", () => {
     const buckets = aggToDailyBuckets(
-      [row({ day: "2026-06-24", groupId: null, model: null, source: null, deviceId: null, outputTokens: 4 })],
+      [
+        row({
+          day: "2026-06-24",
+          groupId: null,
+          model: null,
+          source: null,
+          deviceId: null,
+          outputTokens: 4,
+        }),
+      ],
       new Date("2026-06-24T00:00:00Z"),
       new Date("2026-06-24T12:00:00Z"),
     );
@@ -128,7 +157,13 @@ describe("daily-agg — chart buckets", () => {
     const buckets = aggToDailyBuckets(
       [
         row({ day: "2026-06-24", groupId: "g1", source: "cli", deviceId: "dA", outputTokens: 10 }),
-        row({ day: "2026-06-24", groupId: "g1", source: "desktop", deviceId: "dB", outputTokens: 4 }),
+        row({
+          day: "2026-06-24",
+          groupId: "g1",
+          source: "desktop",
+          deviceId: "dB",
+          outputTokens: 4,
+        }),
       ],
       new Date("2026-06-24T00:00:00Z"),
       new Date("2026-06-24T12:00:00Z"),
@@ -156,4 +191,3 @@ describe("daily-agg — groupTotals", () => {
     expect(day.get("g1")!.cacheReadTokens).toBe(100);
   });
 });
-

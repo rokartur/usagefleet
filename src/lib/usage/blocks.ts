@@ -28,16 +28,10 @@ export interface SessionBlock {
  *   event was <5h ago.
  * Input is folded first so streamed segments don't distort totals.
  */
-export function buildSessionBlocks(
-  rawEvents: UsageRecord[],
-  now: Date,
-): SessionBlock[] {
-  const events = foldEvents(rawEvents).sort(
-    (a, b) => a.ts.getTime() - b.ts.getTime(),
-  );
+export function buildSessionBlocks(rawEvents: UsageRecord[], now: Date): SessionBlock[] {
+  const events = foldEvents(rawEvents).sort((a, b) => a.ts.getTime() - b.ts.getTime());
   const blocks: SessionBlock[] = [];
-  let cur: { start: Date; end: Date; events: UsageRecord[]; last: Date } | null =
-    null;
+  let cur: { start: Date; end: Date; events: UsageRecord[]; last: Date } | null = null;
 
   const finalize = (c: NonNullable<typeof cur>): SessionBlock => ({
     start: c.start,
@@ -45,9 +39,7 @@ export function buildSessionBlocks(
     lastActivity: c.last,
     events: c.events,
     totals: sumRecords(c.events),
-    isActive:
-      now.getTime() < c.end.getTime() &&
-      now.getTime() - c.last.getTime() < FIVE_HOURS_MS,
+    isActive: now.getTime() < c.end.getTime() && now.getTime() - c.last.getTime() < FIVE_HOURS_MS,
   });
 
   for (const e of events) {
@@ -72,9 +64,6 @@ export function buildSessionBlocks(
 }
 
 /** The current active 5h block, or null if the last activity is >5h old. */
-export function activeBlock(
-  events: UsageRecord[],
-  now: Date,
-): SessionBlock | null {
+export function activeBlock(events: UsageRecord[], now: Date): SessionBlock | null {
   return buildSessionBlocks(events, now).find((b) => b.isActive) ?? null;
 }

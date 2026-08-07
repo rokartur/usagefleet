@@ -14,11 +14,7 @@ export interface RateResult {
   retryAfter: number;
 }
 
-export function rateLimit(
-  key: string,
-  limit: number,
-  windowMs: number,
-): RateResult {
+export function rateLimit(key: string, limit: number, windowMs: number): RateResult {
   const now = Date.now();
 
   // Opportunistic prune so the map can't grow unbounded.

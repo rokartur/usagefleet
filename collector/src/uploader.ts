@@ -25,10 +25,7 @@ export type UploadResult =
  * POST a batch with exponential backoff + jitter. Returns ok on 2xx, otherwise a
  * classified failure so the caller advances or retains the file offset correctly.
  */
-export async function uploadBatch(
-  payload: BatchPayload,
-  cfg: Config,
-): Promise<UploadResult> {
+export async function uploadBatch(payload: BatchPayload, cfg: Config): Promise<UploadResult> {
   let delay = 1000;
   for (let attempt = 0; attempt <= MAX_ATTEMPTS; attempt++) {
     let res: Response | null = null;
@@ -56,8 +53,7 @@ export async function uploadBatch(
     // Non-retryable 4xx (except 429): classify so the caller handles it without
     // re-POSTing the same chunk forever.
     if (res && res.status >= 400 && res.status < 500 && res.status !== 429) {
-      const fatal: UploadFailure =
-        res.status === 401 || res.status === 403 ? "auth" : "invalid";
+      const fatal: UploadFailure = res.status === 401 || res.status === 403 ? "auth" : "invalid";
       return { ok: false, fatal };
     }
 
@@ -86,10 +82,7 @@ function retryAfterMs(header: string | null | undefined, fallback: number): numb
 }
 
 /** Report the account's real limit utilization to the server. */
-export async function postLimits(
-  report: LimitsReport,
-  cfg: Config,
-): Promise<boolean> {
+export async function postLimits(report: LimitsReport, cfg: Config): Promise<boolean> {
   try {
     const res = await fetch(`${cfg.endpoint}/api/v1/limits`, {
       method: "POST",

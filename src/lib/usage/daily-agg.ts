@@ -4,10 +4,7 @@ import { EMPTY_TOTALS, type TokenTotals } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const MONTHS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
  * One pre-folded, pre-bucketed usage aggregate: the token sums for a single
@@ -51,8 +48,7 @@ function addInto(t: TokenTotals, r: DailyAggRow): void {
   t.outputTokens += r.outputTokens;
   t.cacheCreationTokens += r.cacheCreationTokens;
   t.cacheReadTokens += r.cacheReadTokens;
-  t.totalTokens +=
-    r.inputTokens + r.outputTokens + r.cacheCreationTokens + r.cacheReadTokens;
+  t.totalTokens += r.inputTokens + r.outputTokens + r.cacheCreationTokens + r.cacheReadTokens;
 }
 
 /** UTC "YYYY-MM-DD" for a Date. */
@@ -83,10 +79,7 @@ function monthLabel(key: string, withYear = true): string {
 }
 
 /** Sum the rows matching `pred` (all rows when omitted). */
-export function sumAgg(
-  rows: DailyAggRow[],
-  pred?: (r: DailyAggRow) => boolean,
-): TokenTotals {
+export function sumAgg(rows: DailyAggRow[], pred?: (r: DailyAggRow) => boolean): TokenTotals {
   const t = emptyTotals();
   for (const r of rows) if (!pred || pred(r)) addInto(t, r);
   return t;
@@ -138,7 +131,11 @@ export function dailyLedger(rows: DailyAggRow[]): UsagePeriod[] {
 
 /** Per-month ledger, newest first. */
 export function monthlyLedger(rows: DailyAggRow[]): UsagePeriod[] {
-  return buildLedger(rows, (r) => r.day.slice(0, 7), (k) => monthLabel(k));
+  return buildLedger(
+    rows,
+    (r) => r.day.slice(0, 7),
+    (k) => monthLabel(k),
+  );
 }
 
 function floorUtcDay(t: number): number {
@@ -151,11 +148,7 @@ function floorUtcDay(t: number): number {
  * toggle works exactly like the event-built timelines. Days with no activity
  * are zero-filled.
  */
-export function aggToDailyBuckets(
-  rows: DailyAggRow[],
-  start: Date,
-  end: Date,
-): TimelineBucket[] {
+export function aggToDailyBuckets(rows: DailyAggRow[], start: Date, end: Date): TimelineBucket[] {
   const byDay = new Map<string, DailyAggRow[]>();
   for (const r of rows) {
     const arr = byDay.get(r.day);
@@ -176,11 +169,7 @@ export function aggToDailyBuckets(
  * aggregate rows, group/model split, zero-filling empty months. Labels are
  * compact ("Jun 26") for the x-axis.
  */
-export function aggToMonthlyBuckets(
-  rows: DailyAggRow[],
-  start: Date,
-  end: Date,
-): TimelineBucket[] {
+export function aggToMonthlyBuckets(rows: DailyAggRow[], start: Date, end: Date): TimelineBucket[] {
   const byMonth = new Map<string, DailyAggRow[]>();
   for (const r of rows) {
     const ym = r.day.slice(0, 7);
@@ -209,11 +198,7 @@ export function aggToMonthlyBuckets(
 
 /** Assemble one bucket's totals + per-group + per-model breakdown + the
  *  fully-dimensioned cells (group × model × source × device) from rows. */
-function fillBucket(
-  ts: string,
-  label: string,
-  rows: DailyAggRow[],
-): TimelineBucket {
+function fillBucket(ts: string, label: string, rows: DailyAggRow[]): TimelineBucket {
   const totals = emptyTotals();
   const byGroup: Record<string, TokenTotals> = {};
   const byModel: Record<string, TokenTotals> = {};

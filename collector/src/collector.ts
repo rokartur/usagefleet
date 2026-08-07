@@ -128,7 +128,9 @@ export async function runOnce(
       // Token revoked/expired. The data is valid and must NOT be skipped — keep
       // the offset so it uploads once a fresh token is configured. Retrying the
       // remaining files would 401 identically, so stop this cycle and surface.
-      log(`auth rejected (401/403) — device token invalid or revoked; re-run \`claude-track init\` with a fresh token, then restart the service`);
+      log(
+        `auth rejected (401/403) — device token invalid or revoked; re-run \`claude-track init\` with a fresh token, then restart the service`,
+      );
       result.failed = true;
       result.authFailed = true;
       break;
@@ -163,7 +165,9 @@ export async function reportLimitsOnce(
           "item, or set ANTHROPIC_API_KEY for the service.",
       );
     } else {
-      log("no Claude login detected — skipping limits (sign in with `claude` or set ANTHROPIC_API_KEY)");
+      log(
+        "no Claude login detected — skipping limits (sign in with `claude` or set ANTHROPIC_API_KEY)",
+      );
     }
     return null;
   }

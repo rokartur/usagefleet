@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { foldEvents, foldAndSum, recordTotal } from "./fold";
-import {
-  buildSessionBlocks,
-  activeBlock,
-  floorToHourUtc,
-} from "./blocks";
+import { buildSessionBlocks, activeBlock, floorToHourUtc } from "./blocks";
 import { weekWindowStart, weeklyTotals } from "./window";
 import { pct, limitsForPlan, PLAN_PRESETS } from "./limits";
 import { costForTotals, costUsd, priceFor } from "./pricing";
@@ -31,12 +27,59 @@ function rec(p: Partial<UsageRecord> & { uuid: string; ts: string }): UsageRecor
 // One logical message (msg_1/req_1) streamed across 3 segments with growing
 // totals — must collapse to the largest, NOT sum.
 const m1 = [
-  rec({ uuid: "u1a", messageId: "msg_1", requestId: "req_1", ts: "2026-06-18T10:15:00Z", inputTokens: 6, outputTokens: 100, cacheCreationTokens: 13240, cacheReadTokens: 17499, groupId: "g1" }),
-  rec({ uuid: "u1b", messageId: "msg_1", requestId: "req_1", ts: "2026-06-18T10:15:01Z", inputTokens: 6, outputTokens: 200, cacheCreationTokens: 13240, cacheReadTokens: 17499, groupId: "g1" }),
-  rec({ uuid: "u1c", messageId: "msg_1", requestId: "req_1", ts: "2026-06-18T10:15:02Z", inputTokens: 6, outputTokens: 312, cacheCreationTokens: 13240, cacheReadTokens: 17499, groupId: "g1" }),
+  rec({
+    uuid: "u1a",
+    messageId: "msg_1",
+    requestId: "req_1",
+    ts: "2026-06-18T10:15:00Z",
+    inputTokens: 6,
+    outputTokens: 100,
+    cacheCreationTokens: 13240,
+    cacheReadTokens: 17499,
+    groupId: "g1",
+  }),
+  rec({
+    uuid: "u1b",
+    messageId: "msg_1",
+    requestId: "req_1",
+    ts: "2026-06-18T10:15:01Z",
+    inputTokens: 6,
+    outputTokens: 200,
+    cacheCreationTokens: 13240,
+    cacheReadTokens: 17499,
+    groupId: "g1",
+  }),
+  rec({
+    uuid: "u1c",
+    messageId: "msg_1",
+    requestId: "req_1",
+    ts: "2026-06-18T10:15:02Z",
+    inputTokens: 6,
+    outputTokens: 312,
+    cacheCreationTokens: 13240,
+    cacheReadTokens: 17499,
+    groupId: "g1",
+  }),
 ];
-const m2 = rec({ uuid: "u2", messageId: "msg_2", requestId: "req_2", ts: "2026-06-18T10:20:00Z", inputTokens: 10, outputTokens: 50, cacheReadTokens: 1000, groupId: "g2" });
-const old = rec({ uuid: "u0", messageId: "msg_0", requestId: "req_0", ts: "2026-06-10T08:00:00Z", inputTokens: 5, outputTokens: 5, groupId: "g1" });
+const m2 = rec({
+  uuid: "u2",
+  messageId: "msg_2",
+  requestId: "req_2",
+  ts: "2026-06-18T10:20:00Z",
+  inputTokens: 10,
+  outputTokens: 50,
+  cacheReadTokens: 1000,
+  groupId: "g2",
+});
+const old = rec({
+  uuid: "u0",
+  messageId: "msg_0",
+  requestId: "req_0",
+  ts: "2026-06-10T08:00:00Z",
+  inputTokens: 5,
+  outputTokens: 5,
+  groupId: "g1",
+});
 
 const NOW = new Date("2026-06-18T12:30:00Z");
 
@@ -118,15 +161,22 @@ describe("limits", () => {
   });
   it("resolves plan presets", () => {
     expect(limitsForPlan("max5")).toEqual(PLAN_PRESETS.max5);
-    expect(limitsForPlan("custom", { sessionLimitTokens: 1, weeklyLimitTokens: 2 }))
-      .toEqual({ sessionLimitTokens: 1, weeklyLimitTokens: 2 });
+    expect(limitsForPlan("custom", { sessionLimitTokens: 1, weeklyLimitTokens: 2 })).toEqual({
+      sessionLimitTokens: 1,
+      weeklyLimitTokens: 2,
+    });
   });
 });
 
 describe("pricing", () => {
   it("prices per million tokens by model family and version", () => {
     const mtok = (over: Partial<TokenTotals>): TokenTotals => ({
-      inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0, ...over,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      totalTokens: 0,
+      ...over,
     });
     // Opus 4.5+ current tier: $5 in / $25 out per MTok.
     expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-opus-4-8")).toBeCloseTo(5);
@@ -139,12 +189,30 @@ describe("pricing", () => {
     expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-3-5-haiku")).toBeCloseTo(0.8);
     // Sonnet flat $3 in / $15 out; cache write 2x (1h TTL), cache read 0.1x.
     expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(3);
-    expect(costForTotals(mtok({ cacheCreationTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(6);
-    expect(costForTotals(mtok({ cacheReadTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(0.3);
+    expect(
+      costForTotals(mtok({ cacheCreationTokens: 1_000_000 }), "claude-sonnet-4-6"),
+    ).toBeCloseTo(6);
+    expect(costForTotals(mtok({ cacheReadTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(
+      0.3,
+    );
   });
   it("prices fable at the frontier tier ($10/$50, cache 20/1)", () => {
-    expect(priceFor("claude-fable-5")).toEqual({ input: 10, output: 50, cacheWrite: 20, cacheRead: 1 });
-    expect(costUsd(rec({ uuid: "f", ts: "2026-06-18T10:00:00Z", model: "claude-fable-5", outputTokens: 1_000_000 }))).toBeCloseTo(50);
+    expect(priceFor("claude-fable-5")).toEqual({
+      input: 10,
+      output: 50,
+      cacheWrite: 20,
+      cacheRead: 1,
+    });
+    expect(
+      costUsd(
+        rec({
+          uuid: "f",
+          ts: "2026-06-18T10:00:00Z",
+          model: "claude-fable-5",
+          outputTokens: 1_000_000,
+        }),
+      ),
+    ).toBeCloseTo(50);
   });
 });
 
@@ -163,7 +231,15 @@ describe("model breakdown", () => {
   });
 
   it("folds streamed segments, groups by model, sorts by billable desc", () => {
-    const opus = rec({ uuid: "o1", messageId: "mo", requestId: "ro", model: "claude-opus-4-8", ts: "2026-06-18T10:30:00Z", inputTokens: 100, outputTokens: 900 });
+    const opus = rec({
+      uuid: "o1",
+      messageId: "mo",
+      requestId: "ro",
+      model: "claude-opus-4-8",
+      ts: "2026-06-18T10:30:00Z",
+      inputTokens: 100,
+      outputTokens: 900,
+    });
     const mb = modelBreakdown([...m1, m2, opus]);
     // sonnet billable (13558 from folded m1 + 60 from m2) > opus (1000) → first
     expect(mb.map((m) => m.label)).toEqual(["Sonnet 4.6", "Opus 4.8"]);
@@ -174,14 +250,24 @@ describe("model breakdown", () => {
   });
 
   it("drops token-less pseudo-models like <synthetic>", () => {
-    const real = rec({ uuid: "r1", model: "claude-opus-4-8", ts: "2026-06-18T10:00:00Z", outputTokens: 100 });
+    const real = rec({
+      uuid: "r1",
+      model: "claude-opus-4-8",
+      ts: "2026-06-18T10:00:00Z",
+      outputTokens: 100,
+    });
     const synthetic = rec({ uuid: "s1", model: "<synthetic>", ts: "2026-06-18T10:01:00Z" }); // all token buckets 0
     const mb = modelBreakdown([real, synthetic]);
     expect(mb.map((m) => m.label)).toEqual(["Opus 4.8"]); // <synthetic> excluded
   });
 
   it("buckets events without a model id under 'unknown'", () => {
-    const noModel = rec({ uuid: "n1", ts: "2026-06-18T10:00:00Z", model: null as unknown as string, outputTokens: 5 });
+    const noModel = rec({
+      uuid: "n1",
+      ts: "2026-06-18T10:00:00Z",
+      model: null as unknown as string,
+      outputTokens: 5,
+    });
     const mb = modelBreakdown([noModel]);
     expect(mb).toHaveLength(1);
     expect(mb[0].model).toBe("unknown");
@@ -190,7 +276,12 @@ describe("model breakdown", () => {
 });
 
 describe("dashboard aggregate", () => {
-  const cfg = { sessionLimitTokens: 88_000, weeklyLimitTokens: 2_200_000, weekResetWeekday: 1, weekResetHourUtc: 0 };
+  const cfg = {
+    sessionLimitTokens: 88_000,
+    weeklyLimitTokens: 2_200_000,
+    weekResetWeekday: 1,
+    weekResetHourUtc: 0,
+  };
   const groups = [
     { id: "g1", name: "Laptops", color: "#111" },
     { id: "g2", name: "Desktops", color: "#222" },

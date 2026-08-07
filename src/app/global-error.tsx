@@ -31,9 +31,7 @@ export default function GlobalError({
         }}
       >
         <div style={{ textAlign: "center", padding: "2rem", maxWidth: "28rem" }}>
-          <h2 style={{ fontSize: "1.125rem", fontWeight: 600 }}>
-            Something went wrong
-          </h2>
+          <h2 style={{ fontSize: "1.125rem", fontWeight: 600 }}>Something went wrong</h2>
           <p style={{ marginTop: "0.5rem", color: "#a3a3a3", fontSize: "0.875rem" }}>
             The app hit an unexpected error. This is usually temporary.
           </p>

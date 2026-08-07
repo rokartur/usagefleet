@@ -1,9 +1,7 @@
 import { EMPTY_TOTALS, type TokenTotals, type UsageRecord } from "./types";
 
 export function recordTotal(e: UsageRecord): number {
-  return (
-    e.inputTokens + e.outputTokens + e.cacheCreationTokens + e.cacheReadTokens
-  );
+  return e.inputTokens + e.outputTokens + e.cacheCreationTokens + e.cacheReadTokens;
 }
 
 /**
@@ -19,9 +17,7 @@ export function recordTotal(e: UsageRecord): number {
 export function foldEvents(events: UsageRecord[]): UsageRecord[] {
   const byKey = new Map<string, UsageRecord>();
   for (const e of events) {
-    const key = e.messageId
-      ? `m:${e.messageId}::${e.requestId ?? ""}`
-      : `u:${e.uuid}`;
+    const key = e.messageId ? `m:${e.messageId}::${e.requestId ?? ""}` : `u:${e.uuid}`;
     const prev = byKey.get(key);
     if (!prev || recordTotal(e) > recordTotal(prev)) byKey.set(key, e);
   }
@@ -37,8 +33,7 @@ export function sumRecords(events: UsageRecord[]): TokenTotals {
     t.cacheCreationTokens += e.cacheCreationTokens;
     t.cacheReadTokens += e.cacheReadTokens;
   }
-  t.totalTokens =
-    t.inputTokens + t.outputTokens + t.cacheCreationTokens + t.cacheReadTokens;
+  t.totalTokens = t.inputTokens + t.outputTokens + t.cacheCreationTokens + t.cacheReadTokens;
   return t;
 }
 

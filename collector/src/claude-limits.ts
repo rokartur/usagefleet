@@ -63,9 +63,7 @@ export function parseLimitsHeaders(
       model,
       window,
       pct: parsePct(get(raw)),
-      resetsAt: parseReset(
-        get(`anthropic-ratelimit-unified-${window}-${model}-reset`),
-      ),
+      resetsAt: parseReset(get(`anthropic-ratelimit-unified-${window}-${model}-reset`)),
     });
   }
   return {
@@ -141,28 +139,24 @@ export function parseOauthUsage(body: unknown): ModelLimit[] {
         resets_at?: unknown;
         scope?: unknown;
       };
-      const scope = (
-        typeof l.scope === "object" && l.scope !== null ? l.scope : {}
-      ) as { model?: unknown };
+      const scope = (typeof l.scope === "object" && l.scope !== null ? l.scope : {}) as {
+        model?: unknown;
+      };
       const model = (
-        typeof scope.model === "object" && scope.model !== null
-          ? scope.model
-          : null
+        typeof scope.model === "object" && scope.model !== null ? scope.model : null
       ) as { id?: unknown; display_name?: unknown } | null;
       const name =
         (typeof model?.id === "string" && model.id) ||
         (typeof model?.display_name === "string" && model.display_name) ||
         null;
       if (!name || typeof l.percent !== "number") continue;
-      const window =
-        l.group === "session" ? "5h" : l.group === "weekly" ? "7d" : "7d";
+      const window = l.group === "session" ? "5h" : l.group === "weekly" ? "7d" : "7d";
       const key = modelKeyOf(name);
       out.push({
         model: key,
         window,
         pct: clampPct(l.percent),
-        resetsAt:
-          typeof l.resets_at === "string" ? parseReset(l.resets_at) : null,
+        resetsAt: typeof l.resets_at === "string" ? parseReset(l.resets_at) : null,
       });
       seen.add(`${window}:${key}`);
     }
@@ -179,8 +173,7 @@ export function parseOauthUsage(body: unknown): ModelLimit[] {
       model: m[2],
       window,
       pct: clampPct(entry.utilization),
-      resetsAt:
-        typeof entry.resets_at === "string" ? parseReset(entry.resets_at) : null,
+      resetsAt: typeof entry.resets_at === "string" ? parseReset(entry.resets_at) : null,
     });
   }
   return out;
@@ -226,11 +219,7 @@ export async function fetchLimits(creds: ClaudeCreds): Promise<LimitsReport> {
       if (k.includes("ratelimit")) console.error(`[debug] ${k}: ${v}`);
     }
   }
-  const report = parseLimitsHeaders(
-    creds.source,
-    (n) => res.headers.get(n),
-    res.headers.keys(),
-  );
+  const report = parseLimitsHeaders(creds.source, (n) => res.headers.get(n), res.headers.keys());
   const gotHeaders =
     report.fiveHourPct != null ||
     report.sevenDayPct != null ||

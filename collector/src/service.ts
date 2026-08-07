@@ -1,12 +1,5 @@
 import { execFileSync } from "node:child_process";
-import {
-  chmodSync,
-  copyFileSync,
-  mkdirSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFileConfig } from "./config.js";
@@ -37,15 +30,9 @@ function stableBinDir(): string {
     return join(homedir(), "Library", "Application Support", "claude-track");
   }
   if (process.platform === "win32") {
-    return join(
-      process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local"),
-      "claude-track",
-    );
+    return join(process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "claude-track");
   }
-  return join(
-    process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"),
-    "claude-track",
-  );
+  return join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "claude-track");
 }
 
 /** Where the Windows launcher sends the collector's stdout/stderr (launchd has
@@ -69,10 +56,7 @@ function stableBinPath(): string {
  *  Treating that virtual path as a real script (the old bug) baked a bogus
  *  argument into the service command, so the launched process saw an unknown
  *  command, printed help, and exited cleanly — leaving the service down. */
-export function looksLikeCompiledBinary(
-  scriptPath: string | undefined,
-  execPath: string,
-): boolean {
+export function looksLikeCompiledBinary(scriptPath: string | undefined, execPath: string): boolean {
   if (!scriptPath || scriptPath === execPath) return true;
   if (scriptPath.includes("/$bunfs/")) return true;
   if (/[\\/]~BUN[\\/]/.test(scriptPath)) return true;
@@ -130,10 +114,7 @@ function systemdUnitPath(): string {
 
 /** Env vars that are actually set, for baking into the unit. */
 function presentEnv(): Array<[string, string]> {
-  return PASSTHROUGH_ENV.filter((k) => process.env[k]).map((k) => [
-    k,
-    process.env[k] as string,
-  ]);
+  return PASSTHROUGH_ENV.filter((k) => process.env[k]).map((k) => [k, process.env[k] as string]);
 }
 
 /** Escape a string for a VBScript double-quoted literal (only `"` is special). */
@@ -343,9 +324,7 @@ ${envXml}
     // systemd: quote values, escape backslash/quote, reject newlines.
     const envLines = env
       .filter(([, v]) => !/[\r\n]/.test(v))
-      .map(
-        ([k, v]) => `Environment="${k}=${v.replace(/[\\"]/g, (m) => "\\" + m)}"`,
-      )
+      .map(([k, v]) => `Environment="${k}=${v.replace(/[\\"]/g, (m) => "\\" + m)}"`)
       .join("\n");
     const unit = `[Unit]
 Description=Claude Track collector
@@ -420,8 +399,14 @@ WantedBy=default.target
       // Fallback for hosts that reject the XML (locale/schema quirks): a plain
       // onlogon task. Same launcher, minus restart-on-failure.
       schtasks(
-        "/create", "/tn", TASK, "/sc", "onlogon", "/f",
-        "/tr", `wscript.exe //B //Nologo "${vbsPath}"`,
+        "/create",
+        "/tn",
+        TASK,
+        "/sc",
+        "onlogon",
+        "/f",
+        "/tr",
+        `wscript.exe //B //Nologo "${vbsPath}"`,
       );
     rmSync(xmlPath, { force: true });
 

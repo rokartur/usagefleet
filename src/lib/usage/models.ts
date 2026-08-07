@@ -82,9 +82,7 @@ export function modelBreakdown(events: UsageRecord[]): ModelUsage[] {
     });
   }
   out.sort(
-    (a, b) =>
-      b.billableTokens - a.billableTokens ||
-      b.totals.totalTokens - a.totals.totalTokens,
+    (a, b) => b.billableTokens - a.billableTokens || b.totals.totalTokens - a.totals.totalTokens,
   );
   return out;
 }

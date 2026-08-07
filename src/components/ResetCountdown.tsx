@@ -30,9 +30,7 @@ function clockLabel(resetsAt: string | null): string | null {
   if (Number.isNaN(d.getTime())) return null;
   const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const moreThanADay = d.getTime() - Date.now() > 24 * 60 * 60 * 1000;
-  const day = moreThanADay
-    ? d.toLocaleDateString([], { weekday: "short" }) + " "
-    : "";
+  const day = moreThanADay ? d.toLocaleDateString([], { weekday: "short" }) + " " : "";
   return `${day}${time}`;
 }
 

@@ -18,10 +18,7 @@ export const PLAN_PRESETS: Record<Exclude<PlanId, "custom">, PlanLimits> = {
   max20: { sessionLimitTokens: 220_000, weeklyLimitTokens: 5_500_000 },
 };
 
-export function limitsForPlan(
-  plan: PlanId,
-  custom?: PlanLimits,
-): PlanLimits {
+export function limitsForPlan(plan: PlanId, custom?: PlanLimits): PlanLimits {
   if (plan === "custom") {
     return custom ?? PLAN_PRESETS.max5;
   }

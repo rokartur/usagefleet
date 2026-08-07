@@ -56,10 +56,7 @@ export const devices = pgTable(
     lastSeenAt: timestamp("last_seen_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (t) => [
-    index("devices_user_idx").on(t.userId),
-    index("devices_group_idx").on(t.groupId),
-  ],
+  (t) => [index("devices_user_idx").on(t.userId), index("devices_group_idx").on(t.groupId)],
 );
 
 // One raw JSONL assistant-message segment, deduped server-side on `uuid`.
@@ -120,12 +117,8 @@ export const userSettings = pgTable("user_settings", {
     .primaryKey()
     .references(() => user.id, { onDelete: "cascade" }),
   plan: planEnum("plan").notNull().default("max5"),
-  sessionLimitTokens: bigint("session_limit_tokens", { mode: "number" })
-    .notNull()
-    .default(88_000),
-  weeklyLimitTokens: bigint("weekly_limit_tokens", { mode: "number" })
-    .notNull()
-    .default(2_200_000),
+  sessionLimitTokens: bigint("session_limit_tokens", { mode: "number" }).notNull().default(88_000),
+  weeklyLimitTokens: bigint("weekly_limit_tokens", { mode: "number" }).notNull().default(2_200_000),
   weekResetWeekday: integer("week_reset_weekday").notNull().default(1), // 0=Sun
   weekResetHourUtc: integer("week_reset_hour_utc").notNull().default(0),
   // How many groups this account may hold; each is budgeted 1/maxGroups of the

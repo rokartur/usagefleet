@@ -30,9 +30,7 @@ export function tailFile(
     return null; // file vanished
   }
 
-  const rotated =
-    prev !== undefined &&
-    (st.ino !== prev.inode || st.size < prev.offset);
+  const rotated = prev !== undefined && (st.ino !== prev.inode || st.size < prev.offset);
   const start = rotated || prev === undefined ? 0 : prev.offset;
 
   const base: FileState = {

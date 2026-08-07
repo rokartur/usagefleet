@@ -102,11 +102,7 @@ type TokenCounts = Pick<
 export type CacheTtl = "5m" | "1h";
 
 /** USD cost of a set of token counts under one model's list price. */
-export function costForTokens(
-  t: TokenCounts,
-  model: string | null,
-  ttl: CacheTtl = "1h",
-): number {
+export function costForTokens(t: TokenCounts, model: string | null, ttl: CacheTtl = "1h"): number {
   const p = priceFor(model);
   const cacheWrite = ttl === "5m" ? p.input * 1.25 : p.cacheWrite;
   return (

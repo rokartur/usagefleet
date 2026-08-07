@@ -24,12 +24,10 @@ describe("loadNotifyConfig", () => {
   });
 
   it("drops out-of-range / non-numeric entries and falls back when empty", () => {
-    expect(
-      loadNotifyConfig({ CLAUDE_TRACK_NOTIFY_THRESHOLDS: "0,101,-5,abc" }).thresholds,
-    ).toEqual([80, 95]);
-    expect(loadNotifyConfig({ CLAUDE_TRACK_NOTIFY_THRESHOLDS: "  " }).thresholds).toEqual([
-      80, 95,
-    ]);
+    expect(loadNotifyConfig({ CLAUDE_TRACK_NOTIFY_THRESHOLDS: "0,101,-5,abc" }).thresholds).toEqual(
+      [80, 95],
+    );
+    expect(loadNotifyConfig({ CLAUDE_TRACK_NOTIFY_THRESHOLDS: "  " }).thresholds).toEqual([80, 95]);
   });
 });
 

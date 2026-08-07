@@ -1,13 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import {
-  devices,
-  groups,
-  type StoredModelLimit,
-  usageEvents,
-  userSettings,
-} from "@/db/schema";
+import { devices, groups, type StoredModelLimit, usageEvents, userSettings } from "@/db/schema";
 import {
   billableTokens,
   type CacheTtl,
@@ -45,19 +39,12 @@ export async function ensureSettings(userId: string) {
     .returning();
   return (
     inserted[0] ??
-    (await db
-      .select()
-      .from(userSettings)
-      .where(eq(userSettings.userId, userId))
-      .limit(1))[0]
+    (await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1))[0]
   );
 }
 
 /** Events for a user at or after `cutoff`, joined to their device's group. */
-export async function loadRecentEvents(
-  userId: string,
-  cutoff: Date,
-): Promise<UsageRecord[]> {
+export async function loadRecentEvents(userId: string, cutoff: Date): Promise<UsageRecord[]> {
   const rows = await db
     .select({
       uuid: usageEvents.uuid,
@@ -89,9 +76,7 @@ export async function loadRecentEvents(
  * cell. Rows with no real tokens (e.g. "<synthetic>" placeholders) are dropped
  * by the HAVING clause. Days are bucketed in UTC to match the JS timelines.
  */
-export async function loadDailyAggregates(
-  userId: string,
-): Promise<DailyAggRow[]> {
+export async function loadDailyAggregates(userId: string): Promise<DailyAggRow[]> {
   // The logical-message fold key: (messageId, requestId) when present, else the
   // row's own uuid. Prefixed so a uuid can never collide with a messageId pair.
   const foldKey = sql`CASE WHEN ${usageEvents.messageId} IS NOT NULL THEN 'm:' || ${usageEvents.messageId} || '::' || coalesce(${usageEvents.requestId}, '') ELSE 'u:' || ${usageEvents.uuid} END`;
@@ -155,10 +140,7 @@ export async function loadDailyAggregates(
   }));
 }
 
-export async function getDashboard(
-  userId: string,
-  now: Date,
-): Promise<DashboardUsage> {
+export async function getDashboard(userId: string, now: Date): Promise<DashboardUsage> {
   await refreshPrices();
   const cutoff = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000);
   const [settings, groupRows, events] = await Promise.all([
@@ -273,7 +255,13 @@ function windowDurationMs(window: string): number | null {
   if (!m) return null;
   const n = Number(m[1]);
   const unit =
-    m[2] === "h" ? HOUR_MS : m[2] === "d" ? 24 * HOUR_MS : m[2] === "w" ? 7 * 24 * HOUR_MS : 30 * 24 * HOUR_MS;
+    m[2] === "h"
+      ? HOUR_MS
+      : m[2] === "d"
+        ? 24 * HOUR_MS
+        : m[2] === "w"
+          ? 7 * 24 * HOUR_MS
+          : 30 * 24 * HOUR_MS;
   return n * unit;
 }
 
@@ -380,13 +368,9 @@ function splitByShare(
  * it from the local Claude Code login), with a local token-share split per
  * group. `connected: false` until the collector has reported once.
  */
-export async function getLiveDashboard(
-  userId: string,
-  now: Date,
-): Promise<LiveDashboard> {
+export async function getLiveDashboard(userId: string, now: Date): Promise<LiveDashboard> {
   const settings = await ensureSettings(userId);
-  const hasLimits =
-    settings.fiveHourPct !== null || settings.sevenDayPct !== null;
+  const hasLimits = settings.fiveHourPct !== null || settings.sevenDayPct !== null;
 
   const clampPct = (v: number | null) => Math.min(100, Math.max(0, v ?? 0));
   const base = {
@@ -430,13 +414,9 @@ export async function getLiveDashboard(
     .map((m) => {
       const dur = windowDurationMs(m.window) ?? SEVEN_D_MS;
       const parsed = m.resetsAt ? new Date(m.resetsAt) : null;
-      const resetsAt =
-        parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+      const resetsAt = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
       const start = new Date(
-        Math.max(
-          (resetsAt ?? new Date(now.getTime() - dur)).getTime() - dur,
-          now.getTime() - dur,
-        ),
+        Math.max((resetsAt ?? new Date(now.getTime() - dur)).getTime() - dur, now.getTime() - dur),
       );
       return { entry: m, start, resetsAt };
     });
@@ -462,10 +442,7 @@ export async function getLiveDashboard(
   const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, ttl);
   const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct, ttl);
 
-  const keys = new Set<string | null>([
-    ...sessionSplit.keys(),
-    ...weeklySplit.keys(),
-  ]);
+  const keys = new Set<string | null>([...sessionSplit.keys(), ...weeklySplit.keys()]);
   const nameFor = (id: string | null) =>
     id === null ? "Ungrouped" : (groupRows.find((g) => g.id === id)?.name ?? "Unknown");
   const colorFor = (id: string | null) =>
@@ -492,33 +469,27 @@ export async function getLiveDashboard(
   // Per-model official limits: split each model cap across groups by that model
   // family's local cost share within the limit's own window — the same Hamilton
   // split (and per-group budget scaling) as the session/weekly limits above.
-  const modelLimits: LiveModelLimit[] = modelWindows.map(
-    ({ entry, start, resetsAt }) => {
-      const familyEvents = events.filter((e) =>
-        (e.model ?? "").toLowerCase().includes(entry.model),
-      );
-      const split = splitByShare(familyEvents, start, now, entry.pct, ttl);
-      const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(
-        ([id, s]) => ({
-          groupId: id,
-          name: nameFor(id),
-          color: colorFor(id),
-          pct: s.pct,
-          budgetPct: groupBudgetPct(s, settings.maxGroups),
-          tokens: s.tokens,
-        }),
-      );
-      groupRowsFor.sort((a, b) => b.tokens - a.tokens);
-      return {
-        model: entry.model,
-        label: modelLabel(entry.model),
-        window: entry.window,
-        pct: Math.min(100, Math.max(0, entry.pct)),
-        resetsAt,
-        groups: groupRowsFor,
-      };
-    },
-  );
+  const modelLimits: LiveModelLimit[] = modelWindows.map(({ entry, start, resetsAt }) => {
+    const familyEvents = events.filter((e) => (e.model ?? "").toLowerCase().includes(entry.model));
+    const split = splitByShare(familyEvents, start, now, entry.pct, ttl);
+    const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(([id, s]) => ({
+      groupId: id,
+      name: nameFor(id),
+      color: colorFor(id),
+      pct: s.pct,
+      budgetPct: groupBudgetPct(s, settings.maxGroups),
+      tokens: s.tokens,
+    }));
+    groupRowsFor.sort((a, b) => b.tokens - a.tokens);
+    return {
+      model: entry.model,
+      label: modelLabel(entry.model),
+      window: entry.window,
+      pct: Math.min(100, Math.max(0, entry.pct)),
+      resetsAt,
+      groups: groupRowsFor,
+    };
+  });
 
   // Weekly-window spend: fold once, then price each logical message by its own
   // model. Monthly spend comes from the pre-folded daily aggregates, priced per
@@ -669,26 +640,25 @@ export async function listGroups(userId: string) {
 }
 
 export async function listDevices(userId: string) {
-  return db
-    .select({
-      id: devices.id,
-      name: devices.name,
-      os: devices.os,
-      hostname: devices.hostname,
-      groupId: devices.groupId,
-      groupName: groups.name,
-      revoked: devices.revoked,
-      tokenPrefix: devices.tokenPrefix,
-      collectorVersion: devices.collectorVersion,
-      lastSeenAt: devices.lastSeenAt,
-      createdAt: devices.createdAt,
-    })
-    .from(devices)
-    // Owner-scoped join so a stray cross-tenant groupId can never leak a name.
-    .leftJoin(
-      groups,
-      and(eq(devices.groupId, groups.id), eq(groups.ownerId, userId)),
-    )
-    .where(eq(devices.userId, userId))
-    .orderBy(desc(devices.createdAt));
+  return (
+    db
+      .select({
+        id: devices.id,
+        name: devices.name,
+        os: devices.os,
+        hostname: devices.hostname,
+        groupId: devices.groupId,
+        groupName: groups.name,
+        revoked: devices.revoked,
+        tokenPrefix: devices.tokenPrefix,
+        collectorVersion: devices.collectorVersion,
+        lastSeenAt: devices.lastSeenAt,
+        createdAt: devices.createdAt,
+      })
+      .from(devices)
+      // Owner-scoped join so a stray cross-tenant groupId can never leak a name.
+      .leftJoin(groups, and(eq(devices.groupId, groups.id), eq(groups.ownerId, userId)))
+      .where(eq(devices.userId, userId))
+      .orderBy(desc(devices.createdAt))
+  );
 }

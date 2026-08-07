@@ -104,7 +104,9 @@ describe("parseLine", () => {
 
   it("ignores non-assistant and usage-less lines", () => {
     expect(parseLine(JSON.stringify({ type: "user", uuid: "x" }))).toBeNull();
-    expect(parseLine(JSON.stringify({ type: "assistant", uuid: "y", message: { id: "m" } }))).toBeNull();
+    expect(
+      parseLine(JSON.stringify({ type: "assistant", uuid: "y", message: { id: "m" } })),
+    ).toBeNull();
     expect(parseLine("not json")).toBeNull();
     expect(parseLine("")).toBeNull();
   });

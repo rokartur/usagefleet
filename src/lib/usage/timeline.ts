@@ -4,22 +4,14 @@ import { EMPTY_TOTALS, type TokenTotals, type UsageRecord } from "./types";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
-const MONTHS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export type TimelineGranularity = "day" | "hour";
 
 /** Selectable token metric for the timeline chart. `billable` is the default
  *  (input+output+cacheCreation, the share-split measure); `total` adds replayed
  *  cache reads; the rest isolate a single component. */
-export type TimelineMetric =
-  | "billable"
-  | "total"
-  | "input"
-  | "output"
-  | "cacheRead";
+export type TimelineMetric = "billable" | "total" | "input" | "output" | "cacheRead";
 
 /**
  * One fully-dimensioned slice of a bucket: the token totals for a single
@@ -84,8 +76,7 @@ function addInto(t: TokenTotals, e: UsageRecord): void {
   t.outputTokens += e.outputTokens;
   t.cacheCreationTokens += e.cacheCreationTokens;
   t.cacheReadTokens += e.cacheReadTokens;
-  t.totalTokens +=
-    e.inputTokens + e.outputTokens + e.cacheCreationTokens + e.cacheReadTokens;
+  t.totalTokens += e.inputTokens + e.outputTokens + e.cacheCreationTokens + e.cacheReadTokens;
 }
 
 /** Floor an epoch-ms instant to the start of its UTC day/hour. Epoch 0 is a UTC

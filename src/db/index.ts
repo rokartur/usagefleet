@@ -6,8 +6,7 @@ import * as schema from "./schema";
 // data collection phase loads this module without a DB and must not throw).
 const connectionString =
   process.env.DATABASE_URL ??
-  (process.env.NODE_ENV === "production" &&
-  process.env.NEXT_PHASE !== "phase-production-build"
+  (process.env.NODE_ENV === "production" && process.env.NEXT_PHASE !== "phase-production-build"
     ? (() => {
         throw new Error("DATABASE_URL is not set");
       })()

@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  parseLimitsHeaders,
-  parseOauthUsage,
-  parsePct,
-  parseReset,
-} from "./claude-limits.js";
+import { parseLimitsHeaders, parseOauthUsage, parsePct, parseReset } from "./claude-limits.js";
 
 describe("parsePct", () => {
   it("reads a percent header", () => {
@@ -41,11 +36,7 @@ describe("parseLimitsHeaders", () => {
       "anthropic-ratelimit-unified-7d-utilization": "73",
       "anthropic-ratelimit-unified-7d-reset": "2026-06-22T00:00:00Z",
     };
-    const r = parseLimitsHeaders(
-      "sub",
-      (n) => headers[n] ?? null,
-      Object.keys(headers),
-    );
+    const r = parseLimitsHeaders("sub", (n) => headers[n] ?? null, Object.keys(headers));
     expect(r).toEqual({
       source: "sub",
       fiveHourPct: 42,
@@ -66,11 +57,7 @@ describe("parseLimitsHeaders", () => {
       // requests-per-minute style headers must NOT match the model pattern
       "anthropic-ratelimit-requests-limit": "50",
     };
-    const r = parseLimitsHeaders(
-      "sub",
-      (n) => headers[n] ?? null,
-      Object.keys(headers),
-    );
+    const r = parseLimitsHeaders("sub", (n) => headers[n] ?? null, Object.keys(headers));
     expect(r.modelLimits).toEqual([
       {
         model: "fable",

@@ -17,9 +17,7 @@ const RecordSchema = z.object({
   requestId: z.string().nullish(),
   model: z.string().nullish(),
   sessionId: z.string().nullish(),
-  timestamp: z
-    .string()
-    .refine((v) => !Number.isNaN(new Date(v).getTime()), "invalid timestamp"),
+  timestamp: z.string().refine((v) => !Number.isNaN(new Date(v).getTime()), "invalid timestamp"),
   cwd: z.string().nullish(),
   gitBranch: z.string().nullish(),
   version: z.string().nullish(),

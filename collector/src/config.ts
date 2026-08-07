@@ -44,7 +44,11 @@ export function loadConfig(): Config {
     token,
     statePath: defaultStatePath(),
     projectsDir: process.env.CLAUDE_TRACK_PROJECTS || file.projectsDir || defaultProjectsDir(),
-    desktopDir: resolveOptionalDir(process.env.CLAUDE_TRACK_DESKTOP, file.desktopDir, defaultDesktopSessionsDir()),
+    desktopDir: resolveOptionalDir(
+      process.env.CLAUDE_TRACK_DESKTOP,
+      file.desktopDir,
+      defaultDesktopSessionsDir(),
+    ),
     piDirs: resolvePiDirs(process.env.CLAUDE_TRACK_PI, file.piDir),
     batchSize,
   };
@@ -52,16 +56,29 @@ export function loadConfig(): Config {
 
 /** pi scan roots: env "off"/"0" disables, else a comma-separated env list, else
  *  the config file's string-or-array, else every auto-detected default. */
-export function resolvePiDirs(env: string | undefined, fromFile: string | string[] | undefined): string[] {
+export function resolvePiDirs(
+  env: string | undefined,
+  fromFile: string | string[] | undefined,
+): string[] {
   if (env === "0" || env?.toLowerCase() === "off") return [];
-  const raw = env ? env.split(",") : Array.isArray(fromFile) ? fromFile : fromFile ? [fromFile] : null;
+  const raw = env
+    ? env.split(",")
+    : Array.isArray(fromFile)
+      ? fromFile
+      : fromFile
+        ? [fromFile]
+        : null;
   if (!raw) return defaultPiSessionsDirs();
   return [...new Set(raw.map((d) => d.trim()).filter((d) => d.length > 0))];
 }
 
 /** Optional scan root (CLAUDE_TRACK_DESKTOP / CLAUDE_TRACK_PI): env "off"/"0"
  *  disables, env or config-file path overrides, else the auto-detected default. */
-function resolveOptionalDir(env: string | undefined, fromFile: string | undefined, fallback: string): string | null {
+function resolveOptionalDir(
+  env: string | undefined,
+  fromFile: string | undefined,
+  fallback: string,
+): string | null {
   if (env === "0" || env?.toLowerCase() === "off") return null;
   return env || fromFile || fallback;
 }

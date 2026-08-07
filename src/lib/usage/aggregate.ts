@@ -54,11 +54,7 @@ export function computeDashboardUsage(
   now: Date,
 ): DashboardUsage {
   const block = activeBlock(events, now);
-  const weekStart = weekWindowStart(
-    now,
-    cfg.weekResetWeekday,
-    cfg.weekResetHourUtc,
-  );
+  const weekStart = weekWindowStart(now, cfg.weekResetWeekday, cfg.weekResetHourUtc);
 
   const sliceFor = (subset: UsageRecord[]): UsageSlice => {
     const session = block

@@ -1,15 +1,11 @@
 import { describe, expect, it } from "vitest";
-import {
-  looksLikeCompiledBinary,
-  windowsLauncherVbs,
-  windowsTaskXml,
-} from "./service.js";
+import { looksLikeCompiledBinary, windowsLauncherVbs, windowsTaskXml } from "./service.js";
 
 describe("looksLikeCompiledBinary", () => {
   it("treats `node dist/index.js` as NOT a compiled binary", () => {
-    expect(
-      looksLikeCompiledBinary("/opt/app/collector/dist/index.js", "/usr/bin/node"),
-    ).toBe(false);
+    expect(looksLikeCompiledBinary("/opt/app/collector/dist/index.js", "/usr/bin/node")).toBe(
+      false,
+    );
   });
 
   it("detects a bun --compile binary by its /$bunfs/ virtual entry", () => {

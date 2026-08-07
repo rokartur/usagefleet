@@ -129,11 +129,9 @@ function cmdNotifyTest(): void {
     console.log("Notifications are disabled (CLAUDE_TRACK_NOTIFY=0).");
     return;
   }
-  sendNotification(
-    "claude-track",
-    "Test notification — desktop alerts are working.",
-    { urgency: "normal" },
-  );
+  sendNotification("claude-track", "Test notification — desktop alerts are working.", {
+    urgency: "normal",
+  });
   console.log(
     `[${ts()}] sent a test notification via ${detectOs()} (thresholds: ${cfg.thresholds.join(", ")}%)`,
   );

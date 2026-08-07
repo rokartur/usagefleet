@@ -67,7 +67,10 @@ export async function POST(req: Request) {
 
   const parsed = LimitsSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    return Response.json({ error: "invalid payload", issues: parsed.error.issues }, { status: 400 });
+    return Response.json(
+      { error: "invalid payload", issues: parsed.error.issues },
+      { status: 400 },
+    );
   }
   const b = parsed.data;
   const now = new Date();
@@ -86,14 +89,15 @@ export async function POST(req: Request) {
     // wipe the last-known-good limits (that's what made the section flicker).
     // An older collector that omits the field entirely is preserved the same way.
     // Reset strings are normalized to ISO (unparseable → null) before storing.
-    ...(b.modelLimits != null && b.modelLimits.length > 0 && {
-      modelLimits: b.modelLimits.map((m) => ({
-        model: m.model,
-        window: m.window,
-        pct: m.pct ?? null,
-        resetsAt: toDate(m.resetsAt)?.toISOString() ?? null,
-      })),
-    }),
+    ...(b.modelLimits != null &&
+      b.modelLimits.length > 0 && {
+        modelLimits: b.modelLimits.map((m) => ({
+          model: m.model,
+          window: m.window,
+          pct: m.pct ?? null,
+          resetsAt: toDate(m.resetsAt)?.toISOString() ?? null,
+        })),
+      }),
   };
   await db
     .insert(userSettings)

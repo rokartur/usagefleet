@@ -16,11 +16,7 @@ function osaEscape(s: string): string {
 
 /** Fire-and-forget child process; swallow spawn/runtime errors so a missing
  *  binary or denied display never disturbs the collector. */
-function spawnQuiet(
-  cmd: string,
-  args: string[],
-  onError?: (err: Error) => void,
-): void {
+function spawnQuiet(cmd: string, args: string[], onError?: (err: Error) => void): void {
   try {
     const child = execFile(cmd, args, { timeout: 5000 }, (err) => {
       if (err && onError) onError(err);
@@ -48,13 +44,7 @@ function notifyLinux(title: string, message: string, urgency: Urgency): void {
     // `--` ends option parsing so a title/message can never be read as a flag.
     ["-a", "claude-track", "-u", urgency, "--", oneLine(title), oneLine(message)],
     () => {
-      spawnQuiet("kdialog", [
-        "--title",
-        oneLine(title),
-        "--passivepopup",
-        oneLine(message),
-        "10",
-      ]);
+      spawnQuiet("kdialog", ["--title", oneLine(title), "--passivepopup", oneLine(message), "10"]);
     },
   );
 }

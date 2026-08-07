@@ -10,8 +10,7 @@ export function defaultProjectsDir(): string {
  *  verified against the installed app's main bundle. */
 function claudeDesktopUserData(): string {
   if (process.platform === "win32") {
-    const appData =
-      process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+    const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
     return join(appData, "Claude");
   }
   if (process.platform === "darwin") {
@@ -52,8 +51,5 @@ export function defaultConfigPath(): string {
 }
 
 export function defaultNotifyStatePath(): string {
-  return (
-    process.env.CLAUDE_TRACK_NOTIFY_STATE ??
-    join(homedir(), ".claude-track-notify.json")
-  );
+  return process.env.CLAUDE_TRACK_NOTIFY_STATE ?? join(homedir(), ".claude-track-notify.json");
 }
