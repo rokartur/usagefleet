@@ -43,51 +43,53 @@ function OfficialCard({
   );
 }
 
-/** One per-model official limit: Claude's own utilization bar up top, then the
- *  per-group split underneath — same presentation as the session split. */
+/** One per-model official limit, shown purely as the per-group split: each
+ *  group gets its own share of the model's limit (shares sum to Claude's
+ *  account figure, which is not shown separately). */
 function ModelLimitCard({ limit }: { limit: ModelLimitDTO }) {
   return (
     <div className="rounded-lg border border-white/10 bg-[#0a0a0a] p-5">
-      <div className="flex items-baseline justify-between">
-        <h3 className="text-sm font-medium text-neutral-400">
-          {limit.label}
-          <span className="ml-2 text-xs text-neutral-600">
-            {windowLabel(limit.window)} limit
-          </span>
-        </h3>
-        <span className="text-3xl font-semibold tabular-nums">{limit.pct}%</span>
-      </div>
-      <p className="mb-3 text-xs text-neutral-500">
+      <h3 className="text-sm font-medium text-neutral-400">
+        {limit.label}
+        <span className="ml-2 text-xs text-neutral-600">
+          {windowLabel(limit.window)} limit
+        </span>
+      </h3>
+      <p className="text-xs text-neutral-500">
         <ResetCountdown resetsAt={limit.resetsAt} />
       </p>
-      <UsageBar pct={limit.pct} />
-      {limit.groups.length > 0 && (
-        <ul className="mt-4 flex flex-col gap-2 border-t border-white/5 pt-3">
+      {limit.groups.length === 0 ? (
+        <p className="mt-4 text-sm text-neutral-500">
+          No group activity in this window.
+        </p>
+      ) : (
+        <ul className="mt-4 flex flex-col gap-3">
           {limit.groups.map((g) => (
-            <li
-              key={g.groupId ?? "ungrouped"}
-              className="flex items-center gap-3 text-sm"
-            >
-              <span className="flex w-32 min-w-0 items-center gap-1.5 text-neutral-300">
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: g.color }}
-                />
-                <span className="truncate">{g.name}</span>
-              </span>
-              <div className="w-28">
-                <UsageBar pct={g.pct} />
+            <li key={g.groupId ?? "ungrouped"} className="flex flex-col gap-1.5">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="flex min-w-0 items-center gap-1.5 text-neutral-300">
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: g.color }}
+                  />
+                  <span className="truncate">{g.name}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-neutral-300">
+                  <span className="text-lg font-semibold text-white">
+                    {g.pct}%
+                  </span>
+                  <span
+                    className="text-neutral-600"
+                    title="Measured against this group's slice of the account limit"
+                  >
+                    {" "}(budget {g.budgetPct}%)
+                  </span>{" "}
+                  <span className="text-neutral-500">
+                    · {formatTokens(g.tokens)}
+                  </span>
+                </span>
               </div>
-              <span className="tabular-nums text-neutral-400">
-                ~{g.pct}%
-                <span
-                  className="text-neutral-600"
-                  title="Measured against this group's slice of the account limit"
-                >
-                  {" "}(budget {g.budgetPct}%)
-                </span>{" "}
-                · {formatTokens(g.tokens)}
-              </span>
+              <UsageBar pct={g.pct} />
             </li>
           ))}
         </ul>
@@ -283,10 +285,10 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
       </section>
 
       <p className="text-xs text-neutral-500">
-        The 5-hour, weekly and per-model percentages up top are Claude&apos;s own
-        account utilization (reported by the collector). A group&apos;s main
-        percentage is its true share of that account figure (group shares sum to
-        the account value), split by estimated cost at API list prices. The
+        The 5-hour and weekly percentages up top are Claude&apos;s own account
+        utilization (reported by the collector). Under a model limit, each group
+        shows only its own share of that model&apos;s official figure (the group
+        shares sum to it), split by estimated cost at API list prices. The
         muted &quot;budget&quot; percentage measures the same usage against the
         group&apos;s equal slice of the account limit (1 / your groups-per-account
         setting) — it hits 100% when the group has eaten its slice, warning you
