@@ -12,7 +12,8 @@
 # Quick start (you only need a device token from the Devices page):
 #   curl -fsSL https://raw.githubusercontent.com/rokartur/claude-track/main/install.sh | sh -s -- --token ctk_xxx
 #
-# On Windows use install.ps1 (PowerShell) instead — same flags, PowerShell style.
+# On Windows (Git Bash/MSYS/Cygwin) this hands over to install.ps1 automatically,
+# keeping your flags — autostart there is a Scheduled Task, not launchd/systemd.
 #
 # To update later: just re-run the same command — it pulls the latest binary
 # and restarts the service.
@@ -70,8 +71,27 @@ case "$os" in
   Darwin) os_part="macos" ;;
   Linux)  os_part="linux" ;;
   MINGW*|MSYS*|CYGWIN*)
-    fail "this is the POSIX installer. On Windows run the PowerShell one instead:
-  \$s = irm https://raw.githubusercontent.com/${REPO}/main/install.ps1; & ([scriptblock]::Create(\$s)) -Token ctk_xxx" ;;
+    # No launchd/systemd here — hand the same flags to the PowerShell installer.
+    command -v powershell.exe >/dev/null 2>&1 \
+      || fail "Windows detected but powershell.exe is not on PATH. Run install.ps1 from PowerShell instead."
+    # Quote every value as a PowerShell single-quoted literal (no interpolation
+    # inside one, so doubling ' is the whole job).
+    psq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
+    ps_args=""
+    if [ -n "$TOKEN" ]; then ps_args="$ps_args -Token $(psq "$TOKEN")"; fi
+    if [ -n "$ENDPOINT" ]; then ps_args="$ps_args -Endpoint $(psq "$ENDPOINT")"; fi
+    if [ -n "$BIN_DIR" ]; then
+      # PowerShell can't use an MSYS path like /c/tools — hand it a Windows one.
+      command -v cygpath >/dev/null 2>&1 && BIN_DIR="$(cygpath -w "$BIN_DIR")"
+      ps_args="$ps_args -BinDir $(psq "$BIN_DIR")"
+    fi
+    if [ "$VERSION" != "latest" ]; then ps_args="$ps_args -Version $(psq "$VERSION")"; fi
+    if [ "$SERVICE_MODE" = "skip" ]; then ps_args="$ps_args -NoService"; fi
+    if [ "$SERVICE_MODE" = "force" ]; then ps_args="$ps_args -Service"; fi
+    info "Windows detected — running the PowerShell installer..."
+    exec powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
+      "\$s = irm 'https://raw.githubusercontent.com/${REPO}/main/install.ps1'; & ([scriptblock]::Create(\$s))${ps_args}"
+    ;;
   *) fail "unsupported OS: $os" ;;
 esac
 case "$arch" in

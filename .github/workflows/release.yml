@@ -63,11 +63,25 @@ jobs:
           body: |
             Standalone `claude-track` collector binaries (built from `${{ github.sha }}`).
 
-            Download the binary for your OS, make it executable, then:
+            Easiest install (downloads, verifies, enables autostart):
+
+            ```bash
+            # macOS / Linux
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh -s -- --token ctk_xxx
+            ```
+
+            ```powershell
+            # Windows
+            $s = irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1
+            & ([scriptblock]::Create($s)) -Token ctk_xxx
+            ```
+
+            Or grab the binary for your OS manually (make it executable first on
+            macOS/Linux):
 
             ```bash
             ./claude-track init --endpoint https://your-server --token ctk_xxx
-            ./claude-track watch
+            ./claude-track install   # autostart: launchd / systemd / Task Scheduler
             ```
 
             | OS | Asset |
