@@ -28,6 +28,9 @@ $s = irm https://raw.githubusercontent.com/rokartur/claude-track/main/install.ps
 (Running `install.sh` from Git Bash/MSYS works too — it forwards your flags to
 `install.ps1`.)
 
+Step-by-step per OS — service paths, logs, update/uninstall, troubleshooting:
+**[../INSTALL.md](../INSTALL.md)**.
+
 The repo is **private**, so the installer pulls releases through the GitHub CLI.
 Install [`gh`](https://cli.github.com/) and run `gh auth login` once first (or set
 `GH_TOKEN`). Autostart uses launchd (macOS), systemd `--user` (Linux) and

@@ -13,6 +13,8 @@ share of your **5-hour session** and **weekly** limits.
 
 > Phones are out of scope: the Claude mobile app keeps no local usage logs.
 
+Per-OS setup walkthrough (macOS / Linux / Windows): **[INSTALL.md](INSTALL.md)**.
+
 ## How usage is measured
 
 The headline **5-hour** and **weekly** percentages are Claude's own utilization
