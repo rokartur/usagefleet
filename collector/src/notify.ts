@@ -59,12 +59,42 @@ function notifyLinux(title: string, message: string, urgency: Urgency): void {
   );
 }
 
+/** Escape a string for a PowerShell single-quoted literal (no interpolation
+ *  happens inside one, so doubling `'` is the whole job). */
+function psEscape(s: string): string {
+  return oneLine(s).replace(/'/g, "''");
+}
+
+function notifyWindows(title: string, message: string): void {
+  // WinRT toast through Windows PowerShell 5.1 (always present on Win10/11;
+  // pwsh 7 can't load WinRT types). Text goes in via the DOM, so there is no
+  // XML-injection surface. Borrowing PowerShell's AppUserModelID avoids having
+  // to register one of our own — the toast shows up under "Windows PowerShell".
+  const script = [
+    "[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]|Out-Null",
+    "$t=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)",
+    "$n=$t.GetElementsByTagName('text')",
+    `$n.Item(0).AppendChild($t.CreateTextNode('${psEscape(title)}'))|Out-Null`,
+    `$n.Item(1).AppendChild($t.CreateTextNode('${psEscape(message)}'))|Out-Null`,
+    "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Microsoft.WindowsPowerShell').Show([Windows.UI.Notifications.ToastNotification]::new($t))",
+  ].join(";");
+  spawnQuiet("powershell.exe", [
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    script,
+  ]);
+}
+
 /**
  * Show a desktop notification. Best-effort and non-blocking: it never throws and
  * never blocks the caller. Supported platforms:
  *   - macOS: `osascript` -> Notification Center.
  *   - Linux: `notify-send` (KDE Plasma + other freedesktop daemons), falling
  *     back to `kdialog --passivepopup` on KDE.
+ *   - Windows: WinRT toast via `powershell.exe` -> Action Center.
  * Other platforms are a no-op.
  */
 export function sendNotification(
@@ -77,8 +107,9 @@ export function sendNotification(
       notifyMac(title, message);
     } else if (process.platform === "linux") {
       notifyLinux(title, message, opts.urgency ?? "normal");
+    } else if (process.platform === "win32") {
+      notifyWindows(title, message);
     }
-    // win32 and others: no built-in notifier wired up yet.
   } catch {
     /* notifications are non-essential — never let one break a cycle */
   }

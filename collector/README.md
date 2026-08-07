@@ -12,17 +12,28 @@ One line — downloads the prebuilt binary for your OS, verifies its checksum,
 configures it, and enables autostart. You only need a device **token** from the
 server's Devices page (endpoint defaults to `https://claude-tracker.rokartur.com`):
 
+**macOS / Linux:**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rokartur/claude-track/main/install.sh | sh -s -- --token ctk_xxx
 ```
 
+**Windows (PowerShell):**
+
+```powershell
+$s = irm https://raw.githubusercontent.com/rokartur/claude-track/main/install.ps1
+& ([scriptblock]::Create($s)) -Token ctk_xxx
+```
+
 The repo is **private**, so the installer pulls releases through the GitHub CLI.
 Install [`gh`](https://cli.github.com/) and run `gh auth login` once first (or set
-`GH_TOKEN`). Works on macOS (launchd) and Linux (systemd `--user`).
+`GH_TOKEN`). Autostart uses launchd (macOS), systemd `--user` (Linux) and
+Task Scheduler (Windows).
 
 **Update** any time by re-running the same command — it fetches the latest
 binary and restarts the service. Flags: `--no-service` (binary only),
-`--endpoint <url>`, `--bin-dir <dir>`, `--version <tag>`; `--help` for all.
+`--endpoint <url>`, `--bin-dir <dir>`, `--version <tag>`; `--help` for all
+(PowerShell: `-NoService`, `-Endpoint`, `-BinDir`, `-Version`).
 
 ### Install from source
 
@@ -152,6 +163,9 @@ claude-track notify-test     # fire a sample notification to confirm it works
 - **Linux (KDE Plasma / freedesktop)** — uses `notify-send`; if that's missing it
   falls back to KDE's `kdialog --passivepopup`. Install `notify-send` via
   `libnotify` (e.g. `apt install libnotify-bin`) if neither is present.
+- **Windows** — a WinRT toast via built-in `powershell.exe` → Action Center (no
+  extra install; it appears under "Windows PowerShell"). Check Settings →
+  Notifications if nothing shows up.
 
 Tune or disable:
 
@@ -169,7 +183,7 @@ export CLAUDE_TRACK_NOTIFY=0                         # turn notifications off
 ## Run as a background service
 
 ```bash
-claude-track install        # launchd (macOS) / systemd --user (Linux)
+claude-track install        # launchd (macOS) / systemd --user (Linux) / Task Scheduler (Windows)
 claude-track uninstall
 ```
 
@@ -182,8 +196,13 @@ restarts the service, so it doubles as the update step.
 - **Linux** — writes a `--user` unit and runs `systemctl --user daemon-reload`,
   `enable --now`, `restart`, plus `loginctl enable-linger $USER` automatically so
   it survives logout. If `systemctl` can't be driven, it prints the manual steps.
-- **Windows** — `install` prints the NSSM / Task Scheduler command to register
-  `claude-track watch` (the binary auto-detects the OS as `windows`).
+- **Windows** — registers a Scheduled Task (`claude-track`) that starts at logon,
+  restarts on failure, and runs **hidden** (no console window) through a
+  generated `wscript` launcher in `%LOCALAPPDATA%\claude-track`. Task XML has no
+  env support, so the launcher carries the `CLAUDE_TRACK_*` values that were set
+  when you ran `install`, and redirects output to
+  `%LOCALAPPDATA%\claude-track\claude-track.log` (truncated on each start).
+  Inspect it with `schtasks /query /tn claude-track /v /fo list`.
 
 The OS is reported automatically (`process.platform` → `mac`/`linux`/`windows`).
 

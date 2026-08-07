@@ -12,6 +12,8 @@
 # Quick start (you only need a device token from the Devices page):
 #   curl -fsSL https://raw.githubusercontent.com/rokartur/claude-track/main/install.sh | sh -s -- --token ctk_xxx
 #
+# On Windows use install.ps1 (PowerShell) instead — same flags, PowerShell style.
+#
 # To update later: just re-run the same command — it pulls the latest binary
 # and restarts the service.
 #
@@ -67,7 +69,10 @@ arch="$(uname -m)"
 case "$os" in
   Darwin) os_part="macos" ;;
   Linux)  os_part="linux" ;;
-  *) fail "unsupported OS: $os (only macOS and Linux; Windows users grab the .exe from the Releases page)" ;;
+  MINGW*|MSYS*|CYGWIN*)
+    fail "this is the POSIX installer. On Windows run the PowerShell one instead:
+  \$s = irm https://raw.githubusercontent.com/${REPO}/main/install.ps1; & ([scriptblock]::Create(\$s)) -Token ctk_xxx" ;;
+  *) fail "unsupported OS: $os" ;;
 esac
 case "$arch" in
   arm64|aarch64) arch_part="arm64" ;;

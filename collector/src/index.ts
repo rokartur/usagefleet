@@ -189,7 +189,7 @@ Usage:
   claude-track notify-test         Fire a test desktop notification
   claude-track status              Show resolved config + state + Claude login
   claude-track init --endpoint <url> --token <t>   Write ~/.claude-track.json
-  claude-track install             Install as a background service (launchd/systemd)
+  claude-track install             Install as a background service (launchd/systemd/Task Scheduler)
   claude-track uninstall           Remove the background service
 
 Config (env overrides ~/.claude-track.json):
