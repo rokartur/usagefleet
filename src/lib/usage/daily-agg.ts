@@ -1,4 +1,4 @@
-import { type CacheTtl, costForTokens } from "./pricing";
+import { costForTokens } from "./pricing";
 import { cellKey, type TimelineBucket, type TimelineCell } from "./timeline";
 import { EMPTY_TOTALS, type TokenTotals } from "./types";
 
@@ -232,34 +232,6 @@ function fillBucket(
     addInto(cell.totals, r);
   }
   return { ts, label, totals, byGroup, byModel, cells: [...cellAcc.values()] };
-}
-
-/** One (UTC day × group) cell with cost pre-priced per model — the compact
- *  series the panel's period picker filters and sums client-side. */
-export interface GroupDailySpend {
-  day: string;
-  groupId: string | null;
-  totals: TokenTotals;
-  costUsd: number;
-}
-
-/** Collapse (day × group × model × …) rows to (day × group), pricing each row
- *  by its own model before summing so mixed-model days cost correctly. */
-export function groupDailySpend(
-  rows: DailyAggRow[],
-  ttl: CacheTtl = "1h",
-): GroupDailySpend[] {
-  const acc = new Map<string, GroupDailySpend>();
-  for (const r of rows) {
-    const k = `${r.day}|${r.groupId ?? ""}`;
-    let e = acc.get(k);
-    if (!e) {
-      acc.set(k, (e = { day: r.day, groupId: r.groupId, totals: emptyTotals(), costUsd: 0 }));
-    }
-    addInto(e.totals, r);
-    e.costUsd += costForTokens(r, r.model, ttl);
-  }
-  return [...acc.values()];
 }
 
 /** Per-group token totals over the rows matching `pred` (all rows when omitted),

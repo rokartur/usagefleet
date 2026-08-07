@@ -8,3 +8,4 @@ export * from "./models";
 export * from "./aggregate";
 export * from "./timeline";
 export * from "./daily-agg";
+export * from "./chart";

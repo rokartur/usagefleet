@@ -19,8 +19,6 @@ import {
   EMPTY_TOTALS,
   filterByWindow,
   foldEvents,
-  type GroupDailySpend,
-  groupDailySpend,
   modelBreakdown,
   modelLabel,
   type ModelUsage,
@@ -262,11 +260,6 @@ export interface LiveDashboard {
   modelLimits: LiveModelLimit[];
   /** Money spent this week (weekly window) and this calendar month. */
   spend: Spend;
-  /** All-time (UTC day × group) tokens+cost — the period picker's raw series. */
-  groupDaily: GroupDailySpend[];
-  /** Every group the user has (for labeling historical groupDaily rows — a
-   *  group idle this week still appears in past periods). */
-  groupCatalog: { id: string; name: string; color: string }[];
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -411,8 +404,6 @@ export async function getLiveDashboard(
       groups: [],
       modelLimits: [],
       spend: emptySpend(),
-      groupDaily: [],
-      groupCatalog: [],
       ...base,
     };
   }
@@ -552,9 +543,39 @@ export async function getLiveDashboard(
     groups: groupUsages,
     modelLimits,
     spend,
-    groupDaily: groupDailySpend(aggRows, ttl),
-    groupCatalog: groupRows.map((g) => ({ id: g.id, name: g.name, color: g.color })),
     ...base,
+  };
+}
+
+/** One (UTC day × group × model × source × device) aggregate with its cost —
+ *  the raw all-time series the dashboard explorer filters and charts. */
+export interface HistoryRow extends DailyAggRow {
+  costUsd: number;
+}
+
+/** All-time history plus the labels the client needs to name its dimensions. */
+export interface HistoryDTO {
+  rows: HistoryRow[];
+  groups: { id: string; name: string; color: string }[];
+  devices: { id: string; name: string; groupId: string | null }[];
+}
+
+export async function getHistory(userId: string): Promise<HistoryDTO> {
+  await refreshPrices();
+  const [settings, rows, groupRows, deviceRows] = await Promise.all([
+    ensureSettings(userId),
+    loadDailyAggregates(userId),
+    db.select().from(groups).where(eq(groups.ownerId, userId)),
+    db
+      .select({ id: devices.id, name: devices.name, groupId: devices.groupId })
+      .from(devices)
+      .where(eq(devices.userId, userId)),
+  ]);
+  const ttl: CacheTtl = settings.cacheWriteTtl === "5m" ? "5m" : "1h";
+  return {
+    rows: rows.map((r) => ({ ...r, costUsd: costForTokens(r, r.model, ttl) })),
+    groups: groupRows.map((g) => ({ id: g.id, name: g.name, color: g.color })),
+    devices: deviceRows,
   };
 }
 
@@ -575,8 +596,6 @@ export interface DashboardDTO {
   groups: LiveGroupUsage[];
   modelLimits: ModelLimitDTO[];
   spend: Spend;
-  groupDaily: GroupDailySpend[];
-  groupCatalog: { id: string; name: string; color: string }[];
 }
 
 export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
@@ -594,8 +613,6 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
       resetsAt: m.resetsAt?.toISOString() ?? null,
     })),
     spend: d.spend,
-    groupDaily: d.groupDaily,
-    groupCatalog: d.groupCatalog,
   };
 }
 
