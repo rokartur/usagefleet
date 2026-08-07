@@ -13,6 +13,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 
 /** Confirm-then-run wrapper for the irreversible actions (revoke/delete). The
  *  action is invoked in a transition rather than by submitting a form inside
@@ -23,6 +24,7 @@ export function ConfirmAction({
   title,
   description,
   confirmLabel,
+  successMessage,
   children,
 }: {
   /** Server action taking a FormData with a single `id` field. */
@@ -31,6 +33,7 @@ export function ConfirmAction({
   title: string;
   description: string;
   confirmLabel: string;
+  successMessage: string;
   /** Trigger button content. */
   children: React.ReactNode;
 }) {
@@ -55,8 +58,20 @@ export function ConfirmAction({
               startTransition(async () => {
                 const fd = new FormData();
                 fd.set("id", id);
-                await action(fd);
-                setOpen(false);
+                try {
+                  await toast.promise(action(fd), {
+                    loading: { title: "Working…" },
+                    success: { title: successMessage },
+                    error: {
+                      title: "Action failed",
+                      description: "Please try again.",
+                      priority: "high",
+                    },
+                  });
+                  setOpen(false);
+                } catch {
+                  // The toast reports the error; keep the dialog open for retry.
+                }
               })
             }
           >

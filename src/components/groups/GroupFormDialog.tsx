@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/toast";
 import { createGroup, updateGroup } from "@/lib/actions";
 
 /** Create (no `group`) or rename/recolor (with `group`) — one dialog, since the
@@ -43,8 +44,20 @@ export function GroupFormDialog({
           className="grid gap-4"
           action={(formData) =>
             startTransition(async () => {
-              await (editing ? updateGroup(formData) : createGroup(formData));
-              setOpen(false);
+              try {
+                await toast.promise(editing ? updateGroup(formData) : createGroup(formData), {
+                  loading: { title: editing ? "Saving group…" : "Creating group…" },
+                  success: { title: editing ? "Group updated" : "Group created" },
+                  error: {
+                    title: editing ? "Couldn't update group" : "Couldn't create group",
+                    description: "Please try again.",
+                    priority: "high",
+                  },
+                });
+                setOpen(false);
+              } catch {
+                // The toast reports the error; keep the dialog open for retry.
+              }
             })
           }
         >

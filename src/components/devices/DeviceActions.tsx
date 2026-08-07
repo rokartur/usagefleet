@@ -1,6 +1,7 @@
 "use client";
 
 import { Ban, Trash2 } from "lucide-react";
+import { ActionForm } from "@/components/ActionForm";
 import { ConfirmAction } from "@/components/ConfirmAction";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { assignDeviceGroup, deleteDevice, revokeDevice } from "@/lib/actions";
@@ -18,7 +19,12 @@ export function DeviceGroupSelect({
   groups: { id: string; name: string }[];
 }) {
   return (
-    <form action={assignDeviceGroup}>
+    <ActionForm
+      action={assignDeviceGroup}
+      loadingMessage={`Moving ${deviceName}…`}
+      successMessage={`${deviceName} moved`}
+      errorMessage={`Couldn't move ${deviceName}. Please try again.`}
+    >
       <input type="hidden" name="deviceId" value={deviceId} />
       <NativeSelect
         key={groupId ?? ""}
@@ -34,7 +40,7 @@ export function DeviceGroupSelect({
           </NativeSelectOption>
         ))}
       </NativeSelect>
-    </form>
+    </ActionForm>
   );
 }
 
@@ -46,6 +52,7 @@ export function RevokeDeviceButton({ id, name }: { id: string; name: string }) {
       title={`Revoke ${name}?`}
       description="Its token stops working immediately and the collector on that machine can no longer report usage. Past usage is kept."
       confirmLabel="Revoke"
+      successMessage={`${name} revoked`}
     >
       <Ban />
       Revoke
@@ -61,6 +68,7 @@ export function DeleteDeviceButton({ id, name }: { id: string; name: string }) {
       title={`Delete ${name}?`}
       description="This removes the device and the usage history it reported. This cannot be undone."
       confirmLabel="Delete"
+      successMessage={`${name} deleted`}
     >
       <Trash2 />
       Delete

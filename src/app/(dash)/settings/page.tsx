@@ -1,3 +1,4 @@
+import { ActionForm } from "@/components/ActionForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -37,7 +38,11 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <FieldGroup>
-            <form action={updateMaxGroups}>
+            <ActionForm
+              action={updateMaxGroups}
+              loadingMessage="Saving group limit…"
+              successMessage="Group limit saved"
+            >
               <Field orientation="responsive">
                 <FieldContent>
                   <FieldLabel htmlFor="maxGroups">Groups per account</FieldLabel>
@@ -65,11 +70,15 @@ export default async function SettingsPage() {
                   </Button>
                 </div>
               </Field>
-            </form>
+            </ActionForm>
 
             <FieldSeparator />
 
-            <form action={updateMaxDevices}>
+            <ActionForm
+              action={updateMaxDevices}
+              loadingMessage="Saving device limit…"
+              successMessage="Device limit saved"
+            >
               <Field orientation="responsive">
                 <FieldContent>
                   <FieldLabel htmlFor="maxDevices">Devices per account</FieldLabel>
@@ -94,7 +103,7 @@ export default async function SettingsPage() {
                   </Button>
                 </div>
               </Field>
-            </form>
+            </ActionForm>
           </FieldGroup>
         </CardContent>
       </Card>
@@ -108,7 +117,11 @@ export default async function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={updateCacheTtl}>
+          <ActionForm
+            action={updateCacheTtl}
+            loadingMessage="Saving pricing settings…"
+            successMessage="Pricing settings saved"
+          >
             <Field orientation="responsive">
               <FieldContent>
                 <FieldLabel htmlFor="cacheWriteTtl">Cache-write TTL</FieldLabel>
@@ -131,7 +144,7 @@ export default async function SettingsPage() {
                 </Button>
               </div>
             </Field>
-          </form>
+          </ActionForm>
         </CardContent>
       </Card>
     </div>

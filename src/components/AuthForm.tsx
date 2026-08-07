@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/toast";
 import { signIn, signUp } from "@/lib/auth-client";
 
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {
@@ -19,17 +20,33 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const res =
-      mode === "signup"
-        ? await signUp.email({ email, password, name: name || email })
-        : await signIn.email({ email, password });
-    setLoading(false);
-    if (res.error) {
-      setError(res.error.message ?? "Something went wrong");
-      return;
+    const request = (async () => {
+      const result =
+        mode === "signup"
+          ? await signUp.email({ email, password, name: name || email })
+          : await signIn.email({ email, password });
+      if (result.error) {
+        throw new Error(result.error.message ?? "Something went wrong");
+      }
+    })();
+
+    try {
+      await toast.promise(request, {
+        loading: { title: mode === "signup" ? "Creating account…" : "Signing in…" },
+        success: { title: mode === "signup" ? "Account created" : "Signed in" },
+        error: (error) => ({
+          title: mode === "signup" ? "Couldn't create account" : "Couldn't sign in",
+          description: error instanceof Error ? error.message : "Something went wrong",
+          priority: "high",
+        }),
+      });
+      router.push("/dashboard");
+      router.refresh();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Something went wrong");
+    } finally {
+      setLoading(false);
     }
-    router.push("/dashboard");
-    router.refresh();
   }
 
   return (

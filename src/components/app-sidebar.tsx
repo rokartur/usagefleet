@@ -30,6 +30,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { toast } from "@/components/ui/toast";
 import { signOut } from "@/lib/auth-client";
 
 const NAV: { href: string; label: string; icon: LucideIcon }[] = [
@@ -78,10 +79,22 @@ function NavUser({ email }: { email: string }) {
           disabled={pending}
           onClick={async () => {
             setPending(true);
+            const request = (async () => {
+              const result = await signOut();
+              if (result.error) throw new Error("Sign out failed");
+            })();
             try {
-              await signOut();
+              await toast.promise(request, {
+                loading: { title: "Signing out…" },
+                success: { title: "Signed out" },
+                error: {
+                  title: "Couldn't sign out",
+                  description: "Please sign in again if your session remains active.",
+                  priority: "high",
+                },
+              });
             } catch {
-              // network failure: still send the user to /login (best-effort)
+              // Keep the existing best-effort redirect; the toast reports the failure.
             } finally {
               router.push("/login");
               router.refresh();

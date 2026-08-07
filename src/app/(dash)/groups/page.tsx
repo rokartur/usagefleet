@@ -101,6 +101,7 @@ export default async function GroupsPage() {
                           title={`Delete ${g.name}?`}
                           description="Its devices move to another group (a fresh Default is created if this was the last one). Reported usage is kept."
                           confirmLabel="Delete"
+                          successMessage={`${g.name} deleted`}
                         >
                           <Trash2 />
                           Delete

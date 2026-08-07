@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { CheckIcon, CopyIcon, PlusIcon } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,6 +16,7 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { toast } from "@/components/ui/toast";
 import { createDevice } from "@/lib/actions";
 
 /** The one-time token step: the plaintext token is never retrievable again, so
@@ -37,9 +37,14 @@ function TokenReveal({ token }: { token: string }) {
             try {
               await navigator.clipboard.writeText(token);
               setCopied(true);
-              toast.success("Token copied to clipboard");
+              toast.add({ title: "Token copied to clipboard", type: "success" });
             } catch {
-              toast.error("Couldn't copy — select the token and copy manually");
+              toast.add({
+                title: "Couldn't copy token",
+                description: "Select the token and copy it manually.",
+                type: "error",
+                priority: "high",
+              });
             }
           }}
         >
@@ -74,7 +79,15 @@ export function AddDeviceForm({
     setLoading(true);
     setError(null);
     try {
-      const res = await createDevice(name, groupId || null);
+      const res = await toast.promise(createDevice(name, groupId || null), {
+        loading: { title: "Creating device…" },
+        success: { title: "Device created" },
+        error: {
+          title: "Failed to create device",
+          description: "Please try again.",
+          priority: "high",
+        },
+      });
       setToken(res.token);
       setName("");
       // createDevice already calls revalidatePath("/devices"), which refreshes
