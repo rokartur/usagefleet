@@ -48,6 +48,19 @@ function Write-Info { param($m) Write-Host "==> $m" -ForegroundColor Blue }
 function Write-Warn { param($m) Write-Host "warning: $m" -ForegroundColor Yellow }
 function Die { param($m) Write-Host "error: $m" -ForegroundColor Red; exit 1 }
 
+# While $ErrorActionPreference is 'Stop', PowerShell 5.1 turns anything a native
+# command writes to stderr into a terminating NativeCommandError - and both
+# `schtasks /end` on a missing task and `gh auth status` answer on stderr as a
+# matter of course. Run native tools with the preference relaxed and judge them
+# by their exit code, which is the only thing we actually care about.
+function Invoke-Native {
+  param([Parameter(Mandatory)][string]$File, [string[]]$ArgList = @(), [switch]$Quiet)
+  # Assigning here shadows the script-scope preference for this call only.
+  $ErrorActionPreference = 'Continue'
+  if ($Quiet) { & $File @ArgList *>$null } else { & $File @ArgList 2>&1 | Out-Host }
+  return $LASTEXITCODE
+}
+
 if ([Environment]::Is64BitOperatingSystem -eq $false) {
   Die 'unsupported architecture: only 64-bit Windows is published.'
 }
@@ -56,8 +69,7 @@ if ([Environment]::Is64BitOperatingSystem -eq $false) {
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
   Die "the GitHub CLI 'gh' is required (the repo is private). Install it: https://cli.github.com/ - then run 'gh auth login'."
 }
-gh auth status *>$null
-if ($LASTEXITCODE -ne 0 -and -not ($env:GH_TOKEN -or $env:GITHUB_TOKEN)) {
+if ((Invoke-Native gh @('auth', 'status') -Quiet) -ne 0 -and -not ($env:GH_TOKEN -or $env:GITHUB_TOKEN)) {
   Die "gh is not authenticated. Run 'gh auth login' (or set GH_TOKEN) and retry."
 }
 
@@ -66,8 +78,8 @@ if ($Version -ne 'latest') { $tagArgs = @($Version) }
 
 function Get-Asset {
   param([string]$Name, [string]$Dest)
-  gh release download @tagArgs -R $repo -p $Name -O $Dest --clobber *>$null
-  return ($LASTEXITCODE -eq 0)
+  $a = @('release', 'download') + $tagArgs + @('-R', $repo, '-p', $Name, '-O', $Dest, '--clobber')
+  return ((Invoke-Native gh $a -Quiet) -eq 0)
 }
 
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("claude-track-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -106,7 +118,7 @@ try {
 
   # Stop the autostart task first: Windows locks a running .exe against
   # overwrite, so an update would otherwise fail here.
-  schtasks /end /tn $task *>$null
+  $null = Invoke-Native schtasks @('/end', '/tn', $task) -Quiet
   try {
     Move-Item -LiteralPath $downloaded -Destination $dest -Force
   }
@@ -122,8 +134,8 @@ try {
   Unblock-File -LiteralPath $dest -ErrorAction SilentlyContinue
 
   Write-Info "Installed claude-track -> $dest"
-  & $dest help *>$null
-  if ($LASTEXITCODE -eq 0) { Write-Info 'Binary runs OK.' } else { Write-Warn 'binary installed but did not run cleanly.' }
+  if ((Invoke-Native $dest @('help') -Quiet) -eq 0) { Write-Info 'Binary runs OK.' }
+  else { Write-Warn 'binary installed but did not run cleanly.' }
 
   # ---- PATH -----------------------------------------------------------------
   $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -138,7 +150,9 @@ try {
   if ($Token) {
     if (-not $Endpoint) { $Endpoint = $defaultEndpoint }
     Write-Info "Configuring for $Endpoint (writing ~/.claude-track.json)..."
-    & $dest init --endpoint $Endpoint --token $Token
+    if ((Invoke-Native $dest @('init', '--endpoint', $Endpoint, '--token', $Token)) -ne 0) {
+      Die 'claude-track init failed - see the message above.'
+    }
   }
 
   $configured = $false
@@ -161,7 +175,9 @@ try {
   }
   elseif ($Service -or $configured) {
     Write-Info 'Enabling autostart task...'
-    & $dest install
+    if ((Invoke-Native $dest @('install')) -ne 0) {
+      Die 'claude-track install failed - see the messages above.'
+    }
     Write-Host ''
     Write-Info 'Done. claude-track is running and will start at logon.'
     Write-Info 'Update anytime by re-running this installer.'
