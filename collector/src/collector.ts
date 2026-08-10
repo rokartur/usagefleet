@@ -154,7 +154,7 @@ export async function reportLimitsOnce(
   cfg: Config,
   log: (msg: string) => void = () => {},
 ): Promise<LimitsReport | null> {
-  const creds = detectClaudeCreds();
+  const creds = await detectClaudeCreds();
   if (!creds) {
     if (process.platform === "darwin" && macKeychainDenied()) {
       // "Works by hand, broken as a service" signature: a launchd agent can be
@@ -166,7 +166,8 @@ export async function reportLimitsOnce(
       );
     } else {
       log(
-        "no Claude login detected — skipping limits (sign in with `claude` or set ANTHROPIC_API_KEY)",
+        "no usable Claude login — missing, or expired with a refresh that failed; " +
+          "sign in with `claude` or set ANTHROPIC_API_KEY",
       );
     }
     return null;

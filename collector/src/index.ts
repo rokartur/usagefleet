@@ -137,7 +137,7 @@ function cmdNotifyTest(): void {
   );
 }
 
-function cmdStatus(): void {
+async function cmdStatus(): Promise<void> {
   const cfg = loadConfig();
   const state = loadState(cfg.statePath);
   const tracked = Object.keys(state.files).length;
@@ -151,7 +151,7 @@ function cmdStatus(): void {
   console.log(`deviceId:  ${state.deviceId}`);
   console.log(`tracked:   ${tracked} files, ${bytes} bytes consumed`);
   console.log(`updated:   ${state.updatedAt}`);
-  const creds = detectClaudeCreds();
+  const creds = await detectClaudeCreds();
   console.log(
     `claude:    ${creds ? `${creds.source}${creds.subscriptionType ? ` (${creds.subscriptionType})` : ""} detected` : "no login detected"}`,
   );
