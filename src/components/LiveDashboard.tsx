@@ -42,6 +42,9 @@ function windowLabel(window: string): string {
 }
 
 const POLL_MS = 5000;
+/** The collector reports limits every 5 min; past three missed reports the
+ *  numbers below are history, not "live" — say so instead of pulsing green. */
+const DATA_STALE_MS = 15 * 60 * 1000;
 
 /** Colored dot used for a group's identity across cards and tables. */
 function GroupDot({ color }: { color: string }) {
@@ -195,7 +198,10 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
     };
   }, [refresh]);
 
-  const stale = now - lastOk > 3 * POLL_MS;
+  const pollDown = now - lastOk > 3 * POLL_MS;
+  const reportAge = dash.reportedAt ? now - Date.parse(dash.reportedAt) : 0;
+  const stale = pollDown || reportAge > DATA_STALE_MS;
+  const statusLabel = pollDown ? "reconnecting…" : stale ? "collector offline" : "live";
 
   if (!dash.connected) {
     return (
@@ -231,7 +237,7 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
             )}
             aria-hidden
           />
-          {stale ? "reconnecting…" : "live"}
+          {statusLabel}
         </Badge>
         Live from Claude · {sourceLabel}
         {dash.reportedAt ? ` · updated ${formatRelative(new Date(dash.reportedAt))}` : ""}
