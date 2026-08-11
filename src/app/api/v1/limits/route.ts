@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { devices, userSettings } from "@/db/schema";
+import { type Device, devices, userSettings } from "@/db/schema";
+import { getLiveDashboard } from "@/lib/data";
 import { hashToken } from "@/lib/device-token";
 import { bodyTooLarge, clientIp, rateLimit, tooMany } from "@/lib/rate-limit";
 
@@ -43,27 +44,69 @@ function toDate(v: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-export async function POST(req: Request) {
-  if (bodyTooLarge(req, 64 * 1024)) {
-    return Response.json({ error: "payload too large" }, { status: 413 });
-  }
+/**
+ * Resolves the device behind a request's token, or the response to send back
+ * instead. `scope` keys the rate limiter, so a chatty reader cannot starve the
+ * ingest path by sharing a counter with it.
+ */
+async function authenticateDevice(
+  req: Request,
+  scope: string,
+): Promise<{ device: Device } | { response: Response }> {
   const token = tokenFrom(req);
   if (!token) {
-    const rl = rateLimit(`limits-ip:${clientIp(req)}`, 60, 60_000);
-    if (!rl.ok) return tooMany(rl.retryAfter);
-    return Response.json({ error: "missing token" }, { status: 401 });
+    const rl = rateLimit(`${scope}-ip:${clientIp(req)}`, 60, 60_000);
+    if (!rl.ok) return { response: tooMany(rl.retryAfter) };
+    return { response: Response.json({ error: "missing token" }, { status: 401 }) };
   }
 
   const tokenHash = hashToken(token);
-  const rl = rateLimit(`limits:${tokenHash}`, 60, 60_000);
-  if (!rl.ok) return tooMany(rl.retryAfter);
+  const rl = rateLimit(`${scope}:${tokenHash}`, 60, 60_000);
+  if (!rl.ok) return { response: tooMany(rl.retryAfter) };
 
   const device = (
     await db.select().from(devices).where(eq(devices.tokenHash, tokenHash)).limit(1)
   )[0];
   if (!device || device.revoked) {
-    return Response.json({ error: "invalid token" }, { status: 401 });
+    return { response: Response.json({ error: "invalid token" }, { status: 401 }) };
   }
+  return { device };
+}
+
+/**
+ * The calling device's own group slice, for surfacing usage outside the
+ * dashboard (status bars, editor plugins). Percentages are the group's budget
+ * slice — the same numbers the dashboard's group table shows — because the
+ * account-wide utilization a collector reads locally cannot be split per group
+ * without every device's events.
+ */
+export async function GET(req: Request) {
+  const auth = await authenticateDevice(req, "limits-read");
+  if ("response" in auth) return auth.response;
+
+  const dash = await getLiveDashboard(auth.device.userId, new Date());
+  const group = dash.groups.find((g) => g.groupId === auth.device.groupId);
+
+  return Response.json(
+    {
+      group: group?.name ?? null,
+      sessionPct: group?.sessionBudgetPct ?? 0,
+      weeklyPct: group?.weeklyBudgetPct ?? 0,
+      // Null until a collector reports real utilization; the percentages above
+      // are meaningless (0) until then, and stale once this stops moving.
+      reportedAt: dash.connected ? (dash.reportedAt?.toISOString() ?? null) : null,
+    },
+    { headers: { "cache-control": "no-store" } },
+  );
+}
+
+export async function POST(req: Request) {
+  if (bodyTooLarge(req, 64 * 1024)) {
+    return Response.json({ error: "payload too large" }, { status: 413 });
+  }
+  const auth = await authenticateDevice(req, "limits");
+  if ("response" in auth) return auth.response;
+  const { device } = auth;
 
   const parsed = LimitsSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
