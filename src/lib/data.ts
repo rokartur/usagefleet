@@ -205,8 +205,6 @@ export interface LiveModelLimitGroup {
   groupId: string | null;
   name: string;
   color: string;
-  /** TRUE share of the official model % (group pcts sum to the model pct). */
-  pct: number;
   /** Against the group's budget slice (1/maxGroups), like sessionBudgetPct. */
   budgetPct: number;
   /** Billable tokens of this model family in the limit's window. */
@@ -279,9 +277,8 @@ const groupBudgetPct = (share: ShareEntry | undefined, maxGroups: number) =>
  *  models (Fable > Opus > Sonnet > Haiku) like Anthropic's cost-based limit
  *  accounting. Token fields stay billable/total for display. */
 interface ShareEntry {
-  /** Integer share of the official pct; these sum exactly to it. */
-  pct: number;
-  /** Same share unrounded — used for budget scaling, never displayed raw. */
+  /** This key's share of the official pct, unrounded — scaled to a budget pct
+   *  before display, so rounding happens once, at the end. */
   exactPct: number;
   tokens: number;
   /** All-bucket total (incl. cache_read); display only, never used for splits. */
@@ -326,38 +323,13 @@ function splitByShare(
   const models = (k: string | null) => modelsByKey.get(k) ?? [];
   const out = new Map<string | null, ShareEntry>();
 
-  // Largest-remainder (Hamilton) apportionment so per-key pcts sum EXACTLY to
-  // the integer official pct (avoids the rounding drift of independent rounds).
-  const target = Math.max(0, Math.round(officialPct));
-  if (totalCost <= 0 || target === 0) {
-    for (const [k, tok] of tokensByKey) {
-      out.set(k, {
-        tokens: tok,
-        totalTokens: totalByKey.get(k) ?? 0,
-        pct: 0,
-        exactPct: 0,
-        models: models(k),
-      });
-    }
-    return out;
-  }
-  const rows = [...tokensByKey].map(([k, tok]) => {
-    const exact = target * ((costByKey.get(k) ?? 0) / totalCost);
-    const floor = Math.floor(exact);
-    return { k, tok, exact, floor, frac: exact - floor };
-  });
-  let leftover = target - rows.reduce((s, r) => s + r.floor, 0);
-  rows.sort((a, b) => b.frac - a.frac);
-  for (let i = 0; i < rows.length && leftover > 0; i++, leftover--) {
-    rows[i].floor += 1;
-  }
-  for (const r of rows) {
-    out.set(r.k, {
-      tokens: r.tok,
-      totalTokens: totalByKey.get(r.k) ?? 0,
-      pct: r.floor,
-      exactPct: r.exact,
-      models: models(r.k),
+  const target = Math.max(0, officialPct);
+  for (const [k, tok] of tokensByKey) {
+    out.set(k, {
+      tokens: tok,
+      totalTokens: totalByKey.get(k) ?? 0,
+      exactPct: totalCost > 0 ? target * ((costByKey.get(k) ?? 0) / totalCost) : 0,
+      models: models(k),
     });
   }
   return out;
@@ -467,7 +439,7 @@ export async function getLiveDashboard(userId: string, now: Date): Promise<LiveD
   groupUsages.sort((a, b) => b.weeklyTokens - a.weeklyTokens);
 
   // Per-model official limits: split each model cap across groups by that model
-  // family's local cost share within the limit's own window — the same Hamilton
+  // family's local cost share within the limit's own window — the same cost
   // split (and per-group budget scaling) as the session/weekly limits above.
   const modelLimits: LiveModelLimit[] = modelWindows.map(({ entry, start, resetsAt }) => {
     const familyEvents = events.filter((e) => (e.model ?? "").toLowerCase().includes(entry.model));
@@ -476,7 +448,6 @@ export async function getLiveDashboard(userId: string, now: Date): Promise<LiveD
       groupId: id,
       name: nameFor(id),
       color: colorFor(id),
-      pct: s.pct,
       budgetPct: groupBudgetPct(s, settings.maxGroups),
       tokens: s.tokens,
     }));

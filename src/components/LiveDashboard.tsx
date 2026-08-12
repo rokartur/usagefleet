@@ -81,9 +81,9 @@ function OfficialCard({
   );
 }
 
-/** One per-model official limit, shown purely as the per-group split: each
- *  group gets its own share of the model's limit (shares sum to Claude's
- *  account figure, which is not shown separately). */
+/** One per-model official limit, shown purely as the per-group split: each row
+ *  is that group's usage against its own slice (1/maxGroups) of the model
+ *  limit — same budget-relative measure as the group table. */
 function ModelLimitCard({ limit }: { limit: ModelLimitDTO }) {
   return (
     <Card>
@@ -111,14 +111,11 @@ function ModelLimitCard({ limit }: { limit: ModelLimitDTO }) {
                     <span className="truncate">{g.name}</span>
                   </span>
                   <span className="shrink-0 tabular-nums">
-                    <span className="font-medium">{g.pct}%</span>
-                    <span className="text-muted-foreground">
-                      {" "}
-                      · budget {g.budgetPct}% · {formatTokens(g.tokens)}
-                    </span>
+                    <span className="font-medium">{g.budgetPct}%</span>
+                    <span className="text-muted-foreground"> · {formatTokens(g.tokens)}</span>
                   </span>
                 </div>
-                <UsageBar pct={g.pct} />
+                <UsageBar pct={g.budgetPct} />
               </li>
             ))}
           </ul>
@@ -300,11 +297,10 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
 
       <p className="max-w-3xl text-xs text-muted-foreground">
         The 5-hour and weekly percentages up top are Claude&apos;s own account utilization (reported
-        by the collector). Under a model limit, each group shows only its own share of that
-        model&apos;s official figure (the group shares sum to it), split by estimated cost at API
-        list prices. The &quot;budget&quot; percentage measures the same usage against the
-        group&apos;s equal slice of the account limit (1 / your groups-per-account setting) — it
-        hits 100% when the group has eaten its slice, warning you not to starve the other groups.
+        by the collector). Every per-group percentage — in the table and under each model limit — is
+        budget-relative: that group&apos;s usage (split by estimated cost at API list prices) measured
+        against its equal slice of the limit (1 / your groups-per-account setting). It hits 100% when
+        the group has eaten its slice, warning you not to starve the other groups.
       </p>
     </div>
   );
