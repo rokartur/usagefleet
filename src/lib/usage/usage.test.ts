@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { foldEvents, foldAndSum, recordTotal } from "./fold";
 import { buildSessionBlocks, activeBlock, floorToHourUtc } from "./blocks";
-import { weekWindowStart, weeklyTotals } from "./window";
+import { pastWindowStarts, weekWindowStart, weeklyTotals } from "./window";
 import { pct, limitsForPlan, PLAN_PRESETS } from "./limits";
 import { costForTotals, costUsd, priceFor } from "./pricing";
 import { modelBreakdown, modelLabel } from "./models";
@@ -151,6 +151,28 @@ describe("weekly window", () => {
   it("excludes events before the window start", () => {
     const { totals } = weeklyTotals([...m1, m2, old], NOW, 1, 0);
     expect(totals.totalTokens).toBe(32117); // `old` (06-10) excluded
+  });
+});
+
+describe("past windows", () => {
+  const FIVE_H = 5 * 60 * 60 * 1000;
+  // NOW is 2026-06-18T12:00:00Z; the reported reset sits in the future, so the
+  // open window is 10:00–15:00 and the completed ones run backwards from 10:00.
+  const starts = pastWindowStarts(new Date("2026-06-18T15:00:00Z"), FIVE_H, NOW, 3);
+
+  it("walks back from the window containing now, newest first", () => {
+    expect(starts.map((d) => d.toISOString())).toEqual([
+      "2026-06-18T05:00:00.000Z",
+      "2026-06-18T00:00:00.000Z",
+      "2026-06-17T19:00:00.000Z",
+    ]);
+  });
+
+  it("takes its phase from the origin, past or future", () => {
+    // 06-01T00:00 is exactly 84 strides before NOW, so the open window starts at
+    // 12:00 and the last completed one at 07:00 — a different grid than above.
+    const [first] = pastWindowStarts(new Date("2026-06-01T00:00:00Z"), FIVE_H, NOW, 1);
+    expect(first?.toISOString()).toBe("2026-06-18T07:00:00.000Z");
   });
 });
 

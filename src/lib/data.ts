@@ -17,12 +17,20 @@ import {
   modelLabel,
   type ModelUsage,
   monthKey,
+  pastWindowStarts,
+  pct,
   refreshPrices,
   sumAgg,
   sumRecords,
   type TokenTotals,
   type UsageRecord,
+  weekWindowStart,
 } from "@/lib/usage";
+
+// The logical-message fold key: (messageId, requestId) when present, else the
+// row's own uuid. Prefixed so a uuid can never collide with a messageId pair.
+const FOLD_KEY = sql`CASE WHEN ${usageEvents.messageId} IS NOT NULL THEN 'm:' || ${usageEvents.messageId} || '::' || coalesce(${usageEvents.requestId}, '') ELSE 'u:' || ${usageEvents.uuid} END`;
+const ROW_TOTAL = sql`(${usageEvents.inputTokens} + ${usageEvents.outputTokens} + ${usageEvents.cacheCreationTokens} + ${usageEvents.cacheReadTokens})`;
 
 /** Lazily create and return the user's settings row (defaults = max5 preset). */
 export async function ensureSettings(userId: string) {
@@ -77,14 +85,9 @@ export async function loadRecentEvents(userId: string, cutoff: Date): Promise<Us
  * by the HAVING clause. Days are bucketed in UTC to match the JS timelines.
  */
 export async function loadDailyAggregates(userId: string): Promise<DailyAggRow[]> {
-  // The logical-message fold key: (messageId, requestId) when present, else the
-  // row's own uuid. Prefixed so a uuid can never collide with a messageId pair.
-  const foldKey = sql`CASE WHEN ${usageEvents.messageId} IS NOT NULL THEN 'm:' || ${usageEvents.messageId} || '::' || coalesce(${usageEvents.requestId}, '') ELSE 'u:' || ${usageEvents.uuid} END`;
-  const rowTotal = sql`(${usageEvents.inputTokens} + ${usageEvents.outputTokens} + ${usageEvents.cacheCreationTokens} + ${usageEvents.cacheReadTokens})`;
-
   const result = await db.execute(sql`
     WITH folded AS (
-      SELECT DISTINCT ON (${foldKey})
+      SELECT DISTINCT ON (${FOLD_KEY})
         ${usageEvents.ts} AS ts,
         ${usageEvents.deviceId} AS device_id,
         ${usageEvents.model} AS model,
@@ -95,7 +98,7 @@ export async function loadDailyAggregates(userId: string): Promise<DailyAggRow[]
         ${usageEvents.cacheReadTokens} AS cache_read_tokens
       FROM ${usageEvents}
       WHERE ${usageEvents.userId} = ${userId}
-      ORDER BY ${foldKey}, ${rowTotal} DESC, ${usageEvents.ts} ASC
+      ORDER BY ${FOLD_KEY}, ${ROW_TOTAL} DESC, ${usageEvents.ts} ASC
     )
     SELECT
       to_char(date_trunc('day', folded.ts AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
@@ -487,6 +490,195 @@ export async function getLiveDashboard(userId: string, now: Date): Promise<LiveD
     modelLimits,
     spend,
     ...base,
+  };
+}
+
+/** How many completed windows back the past-windows card looks. */
+const PAST_WINDOWS = 8;
+
+/** Folded token totals for one (window bucket × group) cell. */
+interface WindowAggRow {
+  /** Bucket start, epoch ms, aligned to the limit's own reset boundary. */
+  binStart: number;
+  groupId: string | null;
+  totals: TokenTotals;
+}
+
+/** Same logical-message fold as {@link loadDailyAggregates}, but bucketed into
+ *  rolling `strideMs` windows aligned to `origin` and grouped per group only. */
+async function loadWindowAggregates(
+  userId: string,
+  strideMs: number,
+  origin: Date,
+  since: Date,
+  until: Date,
+): Promise<WindowAggRow[]> {
+  const bucket = sql`date_bin(make_interval(secs => ${strideMs / 1000}::float8), folded.ts, ${origin.toISOString()}::timestamptz)`;
+  const result = await db.execute(sql`
+    WITH folded AS (
+      SELECT DISTINCT ON (${FOLD_KEY})
+        ${usageEvents.ts} AS ts,
+        ${usageEvents.deviceId} AS device_id,
+        ${usageEvents.inputTokens} AS input_tokens,
+        ${usageEvents.outputTokens} AS output_tokens,
+        ${usageEvents.cacheCreationTokens} AS cache_creation_tokens,
+        ${usageEvents.cacheReadTokens} AS cache_read_tokens
+      FROM ${usageEvents}
+      WHERE ${usageEvents.userId} = ${userId}
+        AND ${usageEvents.ts} >= ${since.toISOString()}::timestamptz
+        AND ${usageEvents.ts} < ${until.toISOString()}::timestamptz
+      ORDER BY ${FOLD_KEY}, ${ROW_TOTAL} DESC, ${usageEvents.ts} ASC
+    )
+    SELECT
+      extract(epoch from ${bucket})::bigint AS bin,
+      d.group_id AS group_id,
+      sum(folded.input_tokens)::bigint AS input,
+      sum(folded.output_tokens)::bigint AS output,
+      sum(folded.cache_creation_tokens)::bigint AS cache_creation,
+      sum(folded.cache_read_tokens)::bigint AS cache_read
+    FROM folded
+    JOIN ${devices} d ON d.id = folded.device_id
+    GROUP BY 1, 2
+    HAVING (
+      sum(folded.input_tokens) + sum(folded.output_tokens) +
+      sum(folded.cache_creation_tokens) + sum(folded.cache_read_tokens)
+    ) > 0
+  `);
+
+  const rows = result as unknown as Array<{
+    bin: string;
+    group_id: string | null;
+    input: string;
+    output: string;
+    cache_creation: string;
+    cache_read: string;
+  }>;
+  return rows.map((r) => {
+    const totals = {
+      inputTokens: Number(r.input),
+      outputTokens: Number(r.output),
+      cacheCreationTokens: Number(r.cache_creation),
+      cacheReadTokens: Number(r.cache_read),
+      totalTokens:
+        Number(r.input) + Number(r.output) + Number(r.cache_creation) + Number(r.cache_read),
+    } satisfies TokenTotals;
+    return { binStart: Number(r.bin) * 1000, groupId: r.group_id, totals };
+  });
+}
+
+/** One group's estimated slice of a past limit window. */
+export interface PastWindowGroup {
+  groupId: string | null;
+  name: string;
+  color: string;
+  /** Estimated % of this group's budget slice (1/maxGroups of the limit). */
+  budgetPct: number;
+  /** Billable tokens (cache reads excluded). */
+  tokens: number;
+  totalTokens: number;
+}
+
+/** One completed 5h / weekly window with its per-group split. */
+export interface PastWindow {
+  start: string;
+  end: string;
+  /** Estimated % of the whole account limit burned in the window. */
+  accountPct: number;
+  groups: PastWindowGroup[];
+}
+
+export interface WindowHistoryDTO {
+  sessions: PastWindow[];
+  weeks: PastWindow[];
+}
+
+/** Fold bucketed rows into per-window group splits, newest window first.
+ *  Percentages are ESTIMATES: Claude only reports official utilization for the
+ *  window that is open right now, so past windows are measured locally against
+ *  the plan limit configured in Settings. Windows with no activity are dropped. */
+function buildPastWindows(
+  rows: WindowAggRow[],
+  starts: Date[],
+  strideMs: number,
+  limitTokens: number,
+  maxGroups: number,
+  label: (id: string | null) => { name: string; color: string },
+): PastWindow[] {
+  const byBin = new Map<number, WindowAggRow[]>();
+  for (const row of rows) {
+    const bin = byBin.get(row.binStart);
+    if (bin) bin.push(row);
+    else byBin.set(row.binStart, [row]);
+  }
+  const slice = limitTokens / Math.max(1, maxGroups);
+
+  return starts
+    .map((start) => {
+      const cells = byBin.get(start.getTime()) ?? [];
+      return {
+        start: start.toISOString(),
+        end: new Date(start.getTime() + strideMs).toISOString(),
+        accountPct: pct(
+          cells.reduce((sum, c) => sum + c.totals.totalTokens, 0),
+          limitTokens,
+        ),
+        groups: cells
+          .map((c) => ({
+            groupId: c.groupId,
+            ...label(c.groupId),
+            budgetPct: pct(c.totals.totalTokens, slice),
+            tokens: billableTokens(c.totals),
+            totalTokens: c.totals.totalTokens,
+          }))
+          .sort((a, b) => b.totalTokens - a.totalTokens),
+      };
+    })
+    .filter((w) => w.groups.length > 0);
+}
+
+/** The last {@link PAST_WINDOWS} completed 5h and weekly windows, split per
+ *  group — the "how did we do last session/week" counterpart to the live card. */
+export async function getWindowHistory(userId: string, now: Date): Promise<WindowHistoryDTO> {
+  const settings = await ensureSettings(userId);
+  // Anchor the buckets on the reported reset instants so they match the real
+  // windows; without a report, fall back to "now" / the configured week start.
+  const fiveOrigin = settings.fiveHourResetsAt ? new Date(settings.fiveHourResetsAt) : now;
+  const weekOrigin = settings.sevenDayResetsAt
+    ? new Date(settings.sevenDayResetsAt)
+    : weekWindowStart(now, settings.weekResetWeekday, settings.weekResetHourUtc);
+  const sessionStarts = pastWindowStarts(fiveOrigin, FIVE_H_MS, now, PAST_WINDOWS);
+  const weekStarts = pastWindowStarts(weekOrigin, SEVEN_D_MS, now, PAST_WINDOWS);
+  const span = (starts: Date[], strideMs: number) => ({
+    since: starts[starts.length - 1] ?? now,
+    until: new Date((starts[0] ?? now).getTime() + strideMs),
+  });
+  const sessionSpan = span(sessionStarts, FIVE_H_MS);
+  const weekSpan = span(weekStarts, SEVEN_D_MS);
+
+  const [groupRows, sessionRows, weekRows] = await Promise.all([
+    db.select().from(groups).where(eq(groups.ownerId, userId)),
+    loadWindowAggregates(userId, FIVE_H_MS, fiveOrigin, sessionSpan.since, sessionSpan.until),
+    loadWindowAggregates(userId, SEVEN_D_MS, weekOrigin, weekSpan.since, weekSpan.until),
+  ]);
+  const label = (id: string | null) => {
+    const g = id === null ? undefined : groupRows.find((x) => x.id === id);
+    return {
+      name: id === null ? "Ungrouped" : (g?.name ?? "Unknown"),
+      color: g?.color ?? "#94a3b8",
+    };
+  };
+
+  const { sessionLimitTokens, weeklyLimitTokens, maxGroups } = settings;
+  return {
+    sessions: buildPastWindows(
+      sessionRows,
+      sessionStarts,
+      FIVE_H_MS,
+      sessionLimitTokens,
+      maxGroups,
+      label,
+    ),
+    weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, weeklyLimitTokens, maxGroups, label),
   };
 }
 

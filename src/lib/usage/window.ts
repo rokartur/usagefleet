@@ -14,6 +14,19 @@ export function weekWindowStart(now: Date, weekday: number, hourUtc: number): Da
   return d;
 }
 
+/**
+ * Starts of the `count` most recent COMPLETED windows of length `strideMs`,
+ * newest first. `origin` is any known boundary of that window series — e.g. the
+ * collector-reported `resets_at`, which sits in the *future* — so the windows
+ * line up with Claude's real reset schedule instead of an arbitrary "now minus
+ * 5h". The window containing `now` is excluded (it is still filling).
+ */
+export function pastWindowStarts(origin: Date, strideMs: number, now: Date, count: number): Date[] {
+  const elapsed = now.getTime() - origin.getTime();
+  const currentStart = origin.getTime() + Math.floor(elapsed / strideMs) * strideMs;
+  return Array.from({ length: count }, (_, i) => new Date(currentStart - (i + 1) * strideMs));
+}
+
 export function filterByWindow(events: UsageRecord[], start: Date, end: Date): UsageRecord[] {
   const s = start.getTime();
   const e = end.getTime();
