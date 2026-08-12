@@ -81,9 +81,9 @@ function OfficialCard({
   );
 }
 
-/** One per-model official limit, shown purely as the per-group split: each row
- *  is that group's usage against its own slice (1/maxGroups) of the model
- *  limit — same budget-relative measure as the group table. */
+/** One per-model official limit: Claude's account-wide figure for the model,
+ *  then the per-group split — each row is that group's usage against its own
+ *  slice (1/maxGroups), the same budget-relative measure as the group table. */
 function ModelLimitCard({ limit }: { limit: ModelLimitDTO }) {
   return (
     <Card>
@@ -97,6 +97,10 @@ function ModelLimitCard({ limit }: { limit: ModelLimitDTO }) {
         <CardDescription>
           <ResetCountdown resetsAt={limit.resetsAt} />
         </CardDescription>
+        <CardAction className="text-right">
+          <div className="text-2xl tabular-nums">{Math.min(100, limit.pct)}%</div>
+          <div className="text-xs text-muted-foreground">account</div>
+        </CardAction>
       </CardHeader>
       <CardContent>
         {limit.groups.length === 0 ? (
