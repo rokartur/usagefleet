@@ -304,7 +304,7 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
         by the collector). Every per-group percentage — in the table and under each model limit — is
         budget-relative: that group&apos;s usage (split by estimated cost at API list prices) measured
         against its equal slice of the limit (1 / your groups-per-account setting). It hits 100% when
-        the group has eaten its slice, warning you not to starve the other groups.
+        the group has eaten its slice; above 100% it has overrun into the other groups&apos; share.
       </p>
     </div>
   );

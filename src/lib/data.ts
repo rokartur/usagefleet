@@ -264,12 +264,13 @@ function windowDurationMs(window: string): number | null {
 }
 
 /** Scale an account-share pct to a per-group budget pct (1/maxGroups slice of
- *  the account limit, cap 100) — e.g. with 2 groups, a group at its half-budget
- *  reads 100% while the account is only at 50%. Takes the *unrounded* share so
- *  the ×maxGroups multiply doesn't amplify a rounding error (at maxGroups=10 a
- *  0.5pt rounding would become 5pt). */
+ *  the account limit) — e.g. with 2 groups, a group at its half-budget reads
+ *  100% while the account is only at 50%. Uncapped: past 100% the group has
+ *  overrun its slice and is eating another group's, which is worth seeing.
+ *  Takes the *unrounded* share so the ×maxGroups multiply doesn't amplify a
+ *  rounding error (at maxGroups=10 a 0.5pt rounding would become 5pt). */
 const groupBudgetPct = (share: ShareEntry | undefined, maxGroups: number) =>
-  Math.round(Math.min(100, (share?.exactPct ?? 0) * maxGroups));
+  Math.round((share?.exactPct ?? 0) * maxGroups);
 
 /** Split an official account-wide percentage across an arbitrary key (group or
  *  device) by each key's share of estimated cost (API list prices) within the
