@@ -19,7 +19,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { PastWindow, WindowHistoryDTO } from "@/lib/data";
 import { formatTokens } from "@/lib/format";
 
@@ -58,13 +57,13 @@ function columnsOf(windows: PastWindow[]) {
   for (const w of windows) {
     for (const g of w.groups) {
       const cur = cols.get(columnKey(g.groupId));
-      if (cur) cur.tokens += g.totalTokens;
+      if (cur) cur.tokens += g.tokens;
       else
         cols.set(columnKey(g.groupId), {
           key: columnKey(g.groupId),
           name: g.name,
           color: g.color,
-          tokens: g.totalTokens,
+          tokens: g.tokens,
         });
     }
   }
@@ -73,9 +72,9 @@ function columnsOf(windows: PastWindow[]) {
 
 /**
  * Past limit windows, group by group — the "how did last session/week go"
- * counterpart to the live card. Percentages are estimates against the plan
- * limit in Settings, since Claude only reports official utilization for the
- * window that is currently open.
+ * counterpart to the live card. Shows measured tokens and each group's share
+ * of the window: Claude only reports official utilization for the window that
+ * is currently open, so a past window has no honest limit percentage.
  */
 export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
   const [kind, setKind] = useState<Kind>("sessions");
@@ -88,9 +87,8 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
         <div className="flex flex-col gap-1">
           <CardTitle>Past windows</CardTitle>
           <CardDescription>
-            Completed {kind === "sessions" ? "5-hour" : "weekly"} windows, newest first. Percentages
-            are estimated from local tokens against the limit configured in Settings — Claude only
-            reports official numbers for the window that is open right now.
+            Completed {kind === "sessions" ? "5-hour" : "weekly"} windows, newest first. Billable
+            tokens (cache reads excluded) and each group&apos;s share of the window.
           </CardDescription>
         </div>
         <Select
@@ -129,19 +127,7 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Window (UTC)</TableHead>
-                <TableHead>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={<span className="underline decoration-dotted underline-offset-4" />}
-                    >
-                      Account
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Estimated share of the whole account limit; the group columns show each
-                      group&apos;s share of its own slice (1 / groups-per-account).
-                    </TooltipContent>
-                  </Tooltip>
-                </TableHead>
+                <TableHead>Total</TableHead>
                 {columns.map((c) => (
                   <TableHead key={c.key}>
                     <span className="inline-flex items-center gap-2">
@@ -163,7 +149,7 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
                     {windowLabel(w, kind)}
                   </TableCell>
                   <TableCell className="tabular-nums text-muted-foreground">
-                    ~{w.accountPct}%
+                    {formatTokens(w.tokens)}
                   </TableCell>
                   {columns.map((c) => {
                     const g = w.groups.find((x) => columnKey(x.groupId) === c.key);
@@ -171,9 +157,9 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
                       <TableCell key={c.key}>
                         {g ? (
                           <div className="flex min-w-36 items-center gap-3">
-                            <UsageBar pct={g.budgetPct} className="w-16 shrink-0" />
+                            <UsageBar pct={g.sharePct} className="w-16 shrink-0" />
                             <span className="tabular-nums">
-                              <span className="font-medium">~{g.budgetPct}%</span>
+                              <span className="font-medium">{g.sharePct}%</span>
                               <span className="text-muted-foreground">
                                 {" "}
                                 · {formatTokens(g.tokens)}

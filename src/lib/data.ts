@@ -566,24 +566,23 @@ async function loadWindowAggregates(
   });
 }
 
-/** One group's estimated slice of a past limit window. */
+/** One group's slice of a past limit window. */
 export interface PastWindowGroup {
   groupId: string | null;
   name: string;
   color: string;
-  /** Estimated % of this group's budget slice (1/maxGroups of the limit). */
-  budgetPct: number;
+  /** This group's share of the window's billable tokens (groups sum to 100). */
+  sharePct: number;
   /** Billable tokens (cache reads excluded). */
   tokens: number;
-  totalTokens: number;
 }
 
 /** One completed 5h / weekly window with its per-group split. */
 export interface PastWindow {
   start: string;
   end: string;
-  /** Estimated % of the whole account limit burned in the window. */
-  accountPct: number;
+  /** Billable tokens burned in the window, all groups. */
+  tokens: number;
   groups: PastWindowGroup[];
 }
 
@@ -593,15 +592,14 @@ export interface WindowHistoryDTO {
 }
 
 /** Fold bucketed rows into per-window group splits, newest window first.
- *  Percentages are ESTIMATES: Claude only reports official utilization for the
- *  window that is open right now, so past windows are measured locally against
- *  the plan limit configured in Settings. Windows with no activity are dropped. */
+ *  No limit percentages here: Claude only reports official utilization for the
+ *  window that is open right now, and the plan limits are cost-based, not
+ *  token-based — so past windows report measured tokens and each group's share
+ *  of them. Windows with no activity are dropped. */
 function buildPastWindows(
   rows: WindowAggRow[],
   starts: Date[],
   strideMs: number,
-  limitTokens: number,
-  maxGroups: number,
   label: (id: string | null) => { name: string; color: string },
 ): PastWindow[] {
   const byBin = new Map<number, WindowAggRow[]>();
@@ -610,27 +608,23 @@ function buildPastWindows(
     if (bin) bin.push(row);
     else byBin.set(row.binStart, [row]);
   }
-  const slice = limitTokens / Math.max(1, maxGroups);
 
   return starts
     .map((start) => {
       const cells = byBin.get(start.getTime()) ?? [];
+      const tokens = cells.reduce((sum, c) => sum + billableTokens(c.totals), 0);
       return {
         start: start.toISOString(),
         end: new Date(start.getTime() + strideMs).toISOString(),
-        accountPct: pct(
-          cells.reduce((sum, c) => sum + c.totals.totalTokens, 0),
-          limitTokens,
-        ),
+        tokens,
         groups: cells
           .map((c) => ({
             groupId: c.groupId,
             ...label(c.groupId),
-            budgetPct: pct(c.totals.totalTokens, slice),
+            sharePct: pct(billableTokens(c.totals), tokens),
             tokens: billableTokens(c.totals),
-            totalTokens: c.totals.totalTokens,
           }))
-          .sort((a, b) => b.totalTokens - a.totalTokens),
+          .sort((a, b) => b.tokens - a.tokens),
       };
     })
     .filter((w) => w.groups.length > 0);
@@ -668,17 +662,9 @@ export async function getWindowHistory(userId: string, now: Date): Promise<Windo
     };
   };
 
-  const { sessionLimitTokens, weeklyLimitTokens, maxGroups } = settings;
   return {
-    sessions: buildPastWindows(
-      sessionRows,
-      sessionStarts,
-      FIVE_H_MS,
-      sessionLimitTokens,
-      maxGroups,
-      label,
-    ),
-    weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, weeklyLimitTokens, maxGroups, label),
+    sessions: buildPastWindows(sessionRows, sessionStarts, FIVE_H_MS, label),
+    weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, label),
   };
 }
 
