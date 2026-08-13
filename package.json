@@ -11,7 +11,7 @@
     "format:check": "oxfmt --check .",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/scripts/migrate.ts",
+    "db:migrate": "tsx --env-file-if-exists=.env src/scripts/migrate.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
