@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { type Device, devices, userSettings } from "@/db/schema";
+import { type Device, devices, groups, userSettings } from "@/db/schema";
 import { getLiveDashboard } from "@/lib/data";
 import { hashToken } from "@/lib/device-token";
 import { bodyTooLarge, clientIp, rateLimit, tooMany } from "@/lib/rate-limit";
@@ -79,19 +79,54 @@ async function authenticateDevice(
  * slice — the same numbers the dashboard's group table shows — because the
  * account-wide utilization a collector reads locally cannot be split per group
  * without every device's events.
+ *
+ * Also the enforcement read: `claude-track guard` calls this on every prompt
+ * and refuses the prompt when `blocked` is true.
  */
 export async function GET(req: Request) {
   const auth = await authenticateDevice(req, "limits-read");
   if ("response" in auth) return auth.response;
+  const { device } = auth;
 
-  const dash = await getLiveDashboard(auth.device.userId, new Date());
-  const group = dash.groups.find((g) => g.groupId === auth.device.groupId);
+  // Owner-scoped so a stray cross-tenant groupId can never read another
+  // account's switches.
+  const [dash, group] = await Promise.all([
+    getLiveDashboard(device.userId, new Date()),
+    device.groupId
+      ? db
+          .select({
+            blockOnSessionLimit: groups.blockOnSessionLimit,
+            blockOnWeeklyLimit: groups.blockOnWeeklyLimit,
+          })
+          .from(groups)
+          .where(and(eq(groups.id, device.groupId), eq(groups.ownerId, device.userId)))
+          .limit(1)
+          .then((r) => r[0])
+      : undefined,
+  ]);
+  const usage = dash.groups.find((g) => g.groupId === device.groupId);
+  const sessionPct = usage?.sessionBudgetPct ?? 0;
+  const weeklyPct = usage?.weeklyBudgetPct ?? 0;
+
+  // Per-group enforcement switches. Both windows are measured against the
+  // group's 1/maxGroups budget slice, so 100% means "ate my share", not "the
+  // account is out" — a group only blocks itself, never its siblings.
+  const blockedWindow =
+    group?.blockOnSessionLimit && sessionPct >= 100
+      ? "session"
+      : group?.blockOnWeeklyLimit && weeklyPct >= 100
+        ? "weekly"
+        : null;
+  const resetsAt = blockedWindow === "session" ? dash.fiveHourResetsAt : dash.sevenDayResetsAt;
 
   return Response.json(
     {
-      group: group?.name ?? null,
-      sessionPct: group?.sessionBudgetPct ?? 0,
-      weeklyPct: group?.weeklyBudgetPct ?? 0,
+      group: usage?.name ?? null,
+      sessionPct,
+      weeklyPct,
+      blocked: blockedWindow !== null,
+      blockedWindow,
+      blockedUntil: blockedWindow ? (resetsAt?.toISOString() ?? null) : null,
       // Null until a collector reports real utilization; the percentages above
       // are meaningless (0) until then, and stale once this stops moving.
       reportedAt: dash.connected ? (dash.reportedAt?.toISOString() ?? null) : null,

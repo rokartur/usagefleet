@@ -3,6 +3,7 @@ import { chmodSync, copyFileSync, mkdirSync, renameSync, rmSync, writeFileSync }
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFileConfig } from "./config.js";
+import { installPromptHook, uninstallPromptHook } from "./hook.js";
 
 const LABEL = "dev.claudetrack.collector";
 /** Scheduled Task name on Windows (mirrors the launchd label / systemd unit). */
@@ -257,6 +258,10 @@ export function install(): void {
   const prog = programArgs();
   const env = presentEnv();
 
+  // Same binary, different entry point: the service watches, the hook enforces.
+  // `prog` ends in "watch"; everything before it is how to launch this build.
+  installPromptHook([...prog.slice(0, -1), "guard"]);
+
   if (process.platform === "darwin") {
     const envXml = env
       .map(([k, v]) => `    <key>${xml(k)}</key><string>${xml(v)}</string>`)
@@ -441,6 +446,7 @@ function removeStableBin(): void {
 }
 
 export function uninstall(): void {
+  uninstallPromptHook();
   if (process.platform === "darwin") {
     const path = macPlistPath();
     try {

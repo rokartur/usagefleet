@@ -42,6 +42,12 @@ export function defaultPiSessionsDirs(): string[] {
   return [...new Set(dirs)];
 }
 
+/** Claude Code's user settings file, where the prompt guard hook is registered.
+ *  CLAUDE_CONFIG_DIR is Claude Code's own relocation knob. */
+export function claudeSettingsPath(): string {
+  return join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude"), "settings.json");
+}
+
 export function defaultStatePath(): string {
   return process.env.CLAUDE_TRACK_STATE ?? join(homedir(), ".claude-track-state.json");
 }

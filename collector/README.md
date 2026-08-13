@@ -131,6 +131,7 @@ set CLAUDE_TRACK_TOKEN=ctk_xxx
 claude-track run            # one scan: upload usage + report limits
 claude-track watch          # poll continuously
 claude-track limits         # report ONLY your real 5h/weekly limit usage
+claude-track guard          # exit 2 if this device's group is over a blocking limit
 claude-track status         # show config, tail state, and detected Claude login
 ```
 
@@ -153,6 +154,41 @@ It sends a 1-token ping to the Messages API and reads Anthropic's
 the percentages to the server. `claude-track status` shows which login was found.
 The token/credentials never leave your machine — only the resulting percentages
 are uploaded.
+
+### Blocking prompts over the limit
+
+A group can be set to **refuse new prompts** once it has burned its budget slice
+(1/`maxGroups` of the account limit) for a window. Two switches per group, both
+off by default — flip them in the database:
+
+```sql
+UPDATE groups SET block_on_session_limit = true WHERE name = 'Backend';  -- 5h window
+UPDATE groups SET block_on_weekly_limit  = true WHERE name = 'Backend';  -- 7d window
+```
+
+Enforcement is a Claude Code `UserPromptSubmit` hook, registered in
+`~/.claude/settings.json` automatically by `claude-track install` (and removed
+by `claude-track uninstall`). Re-running install refreshes the path instead of
+stacking a second hook; a settings file that doesn't parse is left untouched.
+Set `CLAUDE_TRACK_HOOK=0` to keep your settings file out of it and add the hook
+yourself:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "claude-track guard" }] }
+    ]
+  }
+}
+```
+
+`claude-track guard` asks the server whether the calling device's group is over
+a window it blocks on; exit code 2 refuses the prompt and shows the reason.
+It **fails open** everywhere else — no config, server down, timeout (5s), old
+server, 429 — because a tracker problem must never stop you from working.
+Only whole prompts are blocked, never tool calls mid-turn, so the current turn
+always finishes.
 
 ### Desktop notifications
 

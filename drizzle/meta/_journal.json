@@ -64,6 +64,13 @@
       "when": 1786104300920,
       "tag": "0008_brainy_loa",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786609983752,
+      "tag": "0009_legal_sunfire",
+      "breakpoints": true
     }
   ]
 }

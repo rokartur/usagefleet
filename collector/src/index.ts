@@ -3,6 +3,7 @@ import { chmodSync, writeFileSync } from "node:fs";
 import { COLLECTOR_VERSION, reportLimitsOnce, runOnce } from "./collector.js";
 import { detectClaudeCreds } from "./claude-creds.js";
 import { loadConfig, readFileConfig } from "./config.js";
+import { runGuard } from "./guard.js";
 import { sendNotification } from "./notify.js";
 import { loadNotifyConfig } from "./notifier.js";
 import { detectOs } from "./os.js";
@@ -184,11 +185,14 @@ Usage:
   claude-track run                 Scan once, upload usage + report limits
   claude-track watch [--interval s] Poll continuously (default 15s)
   claude-track limits              Report only your real 5h/weekly limit usage
+  claude-track guard               Exit 2 if this device's group is over a blocking limit
+                                   (use as a Claude Code UserPromptSubmit hook)
   claude-track notify-test         Fire a test desktop notification
   claude-track status              Show resolved config + state + Claude login
   claude-track init --endpoint <url> --token <t>   Write ~/.claude-track.json
   claude-track install             Install as a background service (launchd/systemd/Task Scheduler)
-  claude-track uninstall           Remove the background service
+                                   and register the guard as a Claude Code hook
+  claude-track uninstall           Remove the background service and the hook
 
 Config (env overrides ~/.claude-track.json):
   CLAUDE_TRACK_ENDPOINT   server base URL (e.g. https://track.example.com)
@@ -198,6 +202,7 @@ Config (env overrides ~/.claude-track.json):
   CLAUDE_TRACK_PI         override pi sessions dirs, comma-separated ("off" to disable)
   CLAUDE_TRACK_INTERVAL   watch interval seconds
   CLAUDE_TRACK_NOTIFY     desktop notifications on/off (default on; 0 to disable)
+  CLAUDE_TRACK_HOOK       register the guard in ~/.claude/settings.json on install (0 to skip)
   CLAUDE_TRACK_NOTIFY_THRESHOLDS  comma list of % alerts (default 80,95)`);
 }
 
@@ -220,6 +225,9 @@ async function main(): Promise<void> {
       return cmdWatch();
     case "limits":
       return cmdLimits();
+    case "guard":
+      process.exitCode = await runGuard();
+      return;
     case "notify-test":
       return cmdNotifyTest();
     case "status":
