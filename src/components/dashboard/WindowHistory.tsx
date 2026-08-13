@@ -72,10 +72,9 @@ function columnsOf(windows: PastWindow[]) {
 
 /**
  * Past limit windows, group by group — the "how did last session/week go"
- * counterpart to the live card. Each group's cell shows its input + output
- * tokens against the configured plan limit, so a window that overshot reads past
- * 100%. The percentage is an estimate: Claude only reports official utilization
- * for the window that is currently open.
+ * counterpart to the live card. Each group's cell reads like the live Groups
+ * table: usage against its 1/maxGroups budget slice of the window, so a group
+ * that ate into another's slice shows past 100% with the excess spelled out.
  */
 export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
   const [kind, setKind] = useState<Kind>("sessions");
@@ -88,10 +87,9 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
         <div className="flex flex-col gap-1">
           <CardTitle>Past windows</CardTitle>
           <CardDescription>
-            Completed {kind === "sessions" ? "5-hour" : "weekly"} windows, newest first. Input +
-            output tokens (no cache, matching how the plan limits are estimated) and each
-            group&apos;s usage against your configured limit — past 100% means the window went
-            over.
+            Completed {kind === "sessions" ? "5-hour" : "weekly"} windows, newest first. Billable
+            tokens (cache reads excluded) and each group&apos;s usage against its budget slice —
+            past 100% means it ate into another group&apos;s share.
           </CardDescription>
         </div>
         <Select
@@ -160,15 +158,18 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
                       <TableCell key={c.key}>
                         {g ? (
                           <div className="flex min-w-36 items-center gap-3">
-                            <UsageBar pct={g.limitPct} className="w-16 shrink-0" />
+                            <UsageBar pct={g.budgetPct} className="w-16 shrink-0" />
                             <span className="tabular-nums">
                               <span
                                 className={
-                                  g.limitPct > 100 ? "font-medium text-destructive" : "font-medium"
+                                  g.budgetPct > 100 ? "font-medium text-destructive" : "font-medium"
                                 }
                               >
-                                {g.limitPct}%
+                                {g.budgetPct}%
                               </span>
+                              {g.budgetPct > 100 && (
+                                <span className="text-destructive"> (+{g.budgetPct - 100})</span>
+                              )}
                               <span className="text-muted-foreground">
                                 {" "}
                                 · {formatTokens(g.tokens)}

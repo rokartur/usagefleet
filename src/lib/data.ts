@@ -18,8 +18,6 @@ import {
   type ModelUsage,
   monthKey,
   pastWindowStarts,
-  promptTokens,
-  pct,
   refreshPrices,
   sumAgg,
   sumRecords,
@@ -572,11 +570,11 @@ export interface PastWindowGroup {
   groupId: string | null;
   name: string;
   color: string;
-  /** This group's tokens against the configured plan limit; the groups of a
-   *  window sum to the window's total utilization, which reads past 100 when
-   *  the limit was overshot. */
-  limitPct: number;
-  /** Input + output tokens, no cache — the unit the plan limits use. */
+  /** Usage against the group's budget slice (1/maxGroups of the window), the
+   *  same measure as the live Groups table: 100% = the group used exactly its
+   *  slice, past that it ate another group's. */
+  budgetPct: number;
+  /** Billable tokens (cache reads excluded). */
   tokens: number;
 }
 
@@ -584,7 +582,7 @@ export interface PastWindowGroup {
 export interface PastWindow {
   start: string;
   end: string;
-  /** Input + output tokens burned in the window, all groups. */
+  /** Billable tokens burned in the window, all groups. */
   tokens: number;
   groups: PastWindowGroup[];
 }
@@ -596,14 +594,15 @@ export interface WindowHistoryDTO {
 
 /** Fold bucketed rows into per-window group splits, newest window first.
  *  Claude only reports official utilization for the window that is open right
- *  now, so a past window is measured against the CONFIGURED plan limit
- *  (`limitTokens`) — an estimate that can read past 100% on an overshoot.
- *  Windows with no activity are dropped. */
+ *  now, so a past window can't be measured against the account limit; each
+ *  group is measured against its 1/maxGroups budget slice of the window
+ *  instead, exactly like the live Groups table. Windows with no activity are
+ *  dropped. */
 function buildPastWindows(
   rows: WindowAggRow[],
   starts: Date[],
   strideMs: number,
-  limitTokens: number,
+  maxGroups: number,
   label: (id: string | null) => { name: string; color: string },
 ): PastWindow[] {
   const byBin = new Map<number, WindowAggRow[]>();
@@ -616,7 +615,7 @@ function buildPastWindows(
   return starts
     .map((start) => {
       const cells = byBin.get(start.getTime()) ?? [];
-      const tokens = cells.reduce((sum, c) => sum + promptTokens(c.totals), 0);
+      const tokens = cells.reduce((sum, c) => sum + billableTokens(c.totals), 0);
       return {
         start: start.toISOString(),
         end: new Date(start.getTime() + strideMs).toISOString(),
@@ -625,8 +624,11 @@ function buildPastWindows(
           .map((c) => ({
             groupId: c.groupId,
             ...label(c.groupId),
-            limitPct: pct(promptTokens(c.totals), limitTokens),
-            tokens: promptTokens(c.totals),
+            // Share of the window scaled to the group's slice — rounded once,
+            // after the multiply, so the scaling can't amplify a rounding error.
+            budgetPct:
+              tokens > 0 ? Math.round((billableTokens(c.totals) / tokens) * 100 * maxGroups) : 0,
+            tokens: billableTokens(c.totals),
           }))
           .sort((a, b) => b.tokens - a.tokens),
       };
@@ -667,14 +669,8 @@ export async function getWindowHistory(userId: string, now: Date): Promise<Windo
   };
 
   return {
-    sessions: buildPastWindows(
-      sessionRows,
-      sessionStarts,
-      FIVE_H_MS,
-      settings.sessionLimitTokens,
-      label,
-    ),
-    weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, settings.weeklyLimitTokens, label),
+    sessions: buildPastWindows(sessionRows, sessionStarts, FIVE_H_MS, settings.maxGroups, label),
+    weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, settings.maxGroups, label),
   };
 }
 
