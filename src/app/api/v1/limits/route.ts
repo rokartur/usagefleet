@@ -1,10 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { type Device, devices, groups, userSettings } from "@/db/schema";
+import { devices, groups, userSettings } from "@/db/schema";
 import { getLiveDashboard } from "@/lib/data";
-import { hashToken } from "@/lib/device-token";
-import { bodyTooLarge, clientIp, rateLimit, tooMany } from "@/lib/rate-limit";
+import { authenticateDevice } from "@/lib/device-auth";
+import { bodyTooLarge } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,47 +30,10 @@ const LimitsSchema = z.object({
     .nullish(),
 });
 
-function tokenFrom(req: Request): string | null {
-  const k = req.headers.get("x-api-key");
-  if (k) return k;
-  const auth = req.headers.get("authorization");
-  if (auth?.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
-  return null;
-}
-
 function toDate(v: string | null | undefined): Date | null {
   if (!v) return null;
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
-}
-
-/**
- * Resolves the device behind a request's token, or the response to send back
- * instead. `scope` keys the rate limiter, so a chatty reader cannot starve the
- * ingest path by sharing a counter with it.
- */
-async function authenticateDevice(
-  req: Request,
-  scope: string,
-): Promise<{ device: Device } | { response: Response }> {
-  const token = tokenFrom(req);
-  if (!token) {
-    const rl = rateLimit(`${scope}-ip:${clientIp(req)}`, 60, 60_000);
-    if (!rl.ok) return { response: tooMany(rl.retryAfter) };
-    return { response: Response.json({ error: "missing token" }, { status: 401 }) };
-  }
-
-  const tokenHash = hashToken(token);
-  const rl = rateLimit(`${scope}:${tokenHash}`, 60, 60_000);
-  if (!rl.ok) return { response: tooMany(rl.retryAfter) };
-
-  const device = (
-    await db.select().from(devices).where(eq(devices.tokenHash, tokenHash)).limit(1)
-  )[0];
-  if (!device || device.revoked) {
-    return { response: Response.json({ error: "invalid token" }, { status: 401 }) };
-  }
-  return { device };
 }
 
 /**
