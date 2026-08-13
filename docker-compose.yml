@@ -38,6 +38,10 @@ services:
       # "true" for one) so rate limiting reads a real client IP from
       # X-Forwarded-For. Leave "false" for direct exposure — see .env.example.
       TRUST_PROXY: ${TRUST_PROXY:-false}
+      # Lets collectors self-update: the server proxies release assets from the
+      # private repo so devices need no GitHub credential. Unset = no updates.
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REPO: ${GITHUB_REPO:-rokartur/claude-track}
       NODE_ENV: production
     ports:
       - "${WEB_PORT:-3000}:3000"

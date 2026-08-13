@@ -8,7 +8,9 @@ import { sendNotification } from "./notify.js";
 import { loadNotifyConfig } from "./notifier.js";
 import { detectOs } from "./os.js";
 import { defaultConfigPath } from "./paths.js";
+import { RELEASE_TAG } from "./release.js";
 import { loadState } from "./state.js";
+import { checkForUpdate } from "./update.js";
 
 function flag(name: string): string | undefined {
   const prefix = `--${name}`;
@@ -75,6 +77,9 @@ async function cmdWatch(): Promise<void> {
   const limitsInterval =
     Math.max(interval / 1000, Number.isFinite(rawLimits) && rawLimits > 0 ? rawLimits : 300) * 1000;
   let lastLimitsAt = 0;
+  // Self-update: once at startup, then daily. CLAUDE_TRACK_UPDATE=0 opts out.
+  const updateInterval = 24 * 60 * 60 * 1000;
+  let lastUpdateAt = 0;
   console.log(
     `[${ts()}] claude-track watching ${cfg.projectsDir}${cfg.desktopDir ? ` + ${cfg.desktopDir}` : ""}${cfg.piDirs.map((d) => ` + ${d}`).join("")} every ${interval / 1000}s → ${cfg.endpoint}`,
   );
@@ -90,6 +95,10 @@ async function cmdWatch(): Promise<void> {
         console.log(`[${ts()}] sent ${r.sent} · accepted ${r.accepted} · dup ${r.duplicates}`);
       }
       const nowMs = Date.now();
+      if (nowMs - lastUpdateAt >= updateInterval) {
+        lastUpdateAt = nowMs;
+        await checkForUpdate(cfg, (m) => console.log(`[${ts()}] ${m}`));
+      }
       if (nowMs - lastLimitsAt >= limitsInterval) {
         lastLimitsAt = nowMs;
         const limits = await reportLimitsOnce(cfg, (m) => console.log(`[${ts()}] ${m}`));
@@ -144,6 +153,9 @@ async function cmdStatus(): Promise<void> {
   const tracked = Object.keys(state.files).length;
   const bytes = Object.values(state.files).reduce((a, f) => a + f.offset, 0);
   console.log(`os:        ${detectOs()}`);
+  console.log(
+    `release:   ${RELEASE_TAG}${RELEASE_TAG === "dev" ? " (local build \u2014 self-update disabled)" : ""}`,
+  );
   console.log(`endpoint:  ${cfg.endpoint}`);
   console.log(`token:     ${cfg.token.slice(0, 8)}…`);
   console.log(`projects:  ${cfg.projectsDir}`);
@@ -187,6 +199,7 @@ Usage:
   claude-track limits              Report only your real 5h/weekly limit usage
   claude-track guard               Exit 2 if this device's group is over a blocking limit
                                    (use as a Claude Code UserPromptSubmit hook)
+  claude-track update              Update to the latest release now (watch does this daily)
   claude-track notify-test         Fire a test desktop notification
   claude-track status              Show resolved config + state + Claude login
   claude-track init --endpoint <url> --token <t>   Write ~/.claude-track.json
@@ -203,6 +216,7 @@ Config (env overrides ~/.claude-track.json):
   CLAUDE_TRACK_INTERVAL   watch interval seconds
   CLAUDE_TRACK_NOTIFY     desktop notifications on/off (default on; 0 to disable)
   CLAUDE_TRACK_HOOK       register the guard in ~/.claude/settings.json on install (0 to skip)
+  CLAUDE_TRACK_UPDATE     daily self-update while watching (0 to disable)
   CLAUDE_TRACK_NOTIFY_THRESHOLDS  comma list of % alerts (default 80,95)`);
 }
 
@@ -227,6 +241,9 @@ async function main(): Promise<void> {
       return cmdLimits();
     case "guard":
       process.exitCode = await runGuard();
+      return;
+    case "update":
+      await checkForUpdate(loadConfig(), (m) => console.log(`[${ts()}] ${m}`), true);
       return;
     case "notify-test":
       return cmdNotifyTest();

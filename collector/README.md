@@ -132,8 +132,26 @@ claude-track run            # one scan: upload usage + report limits
 claude-track watch          # poll continuously
 claude-track limits         # report ONLY your real 5h/weekly limit usage
 claude-track guard          # exit 2 if this device's group is over a blocking limit
+claude-track update         # pull the latest release now
 claude-track status         # show config, tail state, and detected Claude login
 ```
+
+### Updates
+
+`watch` checks for a new release at startup and then once a day; when the tag
+differs from the one baked into the binary it downloads the asset for this
+OS/arch, **verifies its SHA-256**, swaps the binary and re-runs `install` to
+restart the service. `claude-track update` does the same on demand.
+
+The binaries live in a private repo, so the download goes through your server
+(`/api/v1/collector/latest` + `/api/v1/collector/download`, authenticated with
+the device token) — the collector never needs `gh` or a GitHub token. The
+server needs `GITHUB_TOKEN` set; without it the endpoints answer 503 and
+collectors simply stay on their current version.
+
+Every failure is a no-op: bad checksum, offline server, unknown platform and
+locally-built (`dev`) binaries all leave the install untouched. Set
+`CLAUDE_TRACK_UPDATE=0` to turn the daily check off.
 
 The collector tracks a per-file byte offset in `~/.claude-track-state.json`, so
 each line is sent once; it handles rotation/truncation and never sends a partial
