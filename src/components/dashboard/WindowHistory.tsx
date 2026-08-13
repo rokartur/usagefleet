@@ -72,10 +72,10 @@ function columnsOf(windows: PastWindow[]) {
 
 /**
  * Past limit windows, group by group — the "how did last session/week go"
- * counterpart to the live card. Each group's cell shows its tokens against the
- * configured plan limit, so a window that overshot reads past 100%. The
- * percentage is an estimate: Claude only reports official utilization for the
- * window that is currently open.
+ * counterpart to the live card. Each group's cell shows its input + output
+ * tokens against the configured plan limit, so a window that overshot reads past
+ * 100%. The percentage is an estimate: Claude only reports official utilization
+ * for the window that is currently open.
  */
 export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
   const [kind, setKind] = useState<Kind>("sessions");
@@ -88,9 +88,10 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
         <div className="flex flex-col gap-1">
           <CardTitle>Past windows</CardTitle>
           <CardDescription>
-            Completed {kind === "sessions" ? "5-hour" : "weekly"} windows, newest first. Billable
-            tokens (cache reads excluded) and each group&apos;s usage against your configured limit
-            — past 100% means the window went over.
+            Completed {kind === "sessions" ? "5-hour" : "weekly"} windows, newest first. Input +
+            output tokens (no cache, matching how the plan limits are estimated) and each
+            group&apos;s usage against your configured limit — past 100% means the window went
+            over.
           </CardDescription>
         </div>
         <Select

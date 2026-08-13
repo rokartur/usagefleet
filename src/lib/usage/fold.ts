@@ -48,3 +48,10 @@ export function foldAndSum(events: UsageRecord[]): TokenTotals {
 export function billableTokens(t: TokenTotals): number {
   return t.inputTokens + t.outputTokens + t.cacheCreationTokens;
 }
+
+/** Input + output only, no cache tokens at all — the unit the plan limit
+ *  estimates in limits.ts are expressed in, so this is what a % of limit must
+ *  be computed from. */
+export function promptTokens(t: TokenTotals): number {
+  return t.inputTokens + t.outputTokens;
+}

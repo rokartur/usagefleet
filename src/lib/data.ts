@@ -18,6 +18,7 @@ import {
   type ModelUsage,
   monthKey,
   pastWindowStarts,
+  promptTokens,
   pct,
   refreshPrices,
   sumAgg,
@@ -571,11 +572,11 @@ export interface PastWindowGroup {
   groupId: string | null;
   name: string;
   color: string;
-  /** This group's billable tokens against the configured plan limit; the
-   *  groups of a window sum to the window's total utilization, which reads past
-   *  100 when the limit was overshot. */
+  /** This group's tokens against the configured plan limit; the groups of a
+   *  window sum to the window's total utilization, which reads past 100 when
+   *  the limit was overshot. */
   limitPct: number;
-  /** Billable tokens (cache reads excluded). */
+  /** Input + output tokens, no cache — the unit the plan limits use. */
   tokens: number;
 }
 
@@ -583,7 +584,7 @@ export interface PastWindowGroup {
 export interface PastWindow {
   start: string;
   end: string;
-  /** Billable tokens burned in the window, all groups. */
+  /** Input + output tokens burned in the window, all groups. */
   tokens: number;
   groups: PastWindowGroup[];
 }
@@ -615,7 +616,7 @@ function buildPastWindows(
   return starts
     .map((start) => {
       const cells = byBin.get(start.getTime()) ?? [];
-      const tokens = cells.reduce((sum, c) => sum + billableTokens(c.totals), 0);
+      const tokens = cells.reduce((sum, c) => sum + promptTokens(c.totals), 0);
       return {
         start: start.toISOString(),
         end: new Date(start.getTime() + strideMs).toISOString(),
@@ -624,8 +625,8 @@ function buildPastWindows(
           .map((c) => ({
             groupId: c.groupId,
             ...label(c.groupId),
-            limitPct: pct(billableTokens(c.totals), limitTokens),
-            tokens: billableTokens(c.totals),
+            limitPct: pct(promptTokens(c.totals), limitTokens),
+            tokens: promptTokens(c.totals),
           }))
           .sort((a, b) => b.tokens - a.tokens),
       };
