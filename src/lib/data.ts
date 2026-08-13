@@ -496,7 +496,7 @@ export async function getLiveDashboard(userId: string, now: Date): Promise<LiveD
 const PAST_WINDOWS = 8;
 
 /** Folded token totals for one (window bucket × group) cell. */
-interface WindowAggRow {
+export interface WindowAggRow {
   /** Bucket start, epoch ms, aligned to the limit's own reset boundary. */
   binStart: number;
   groupId: string | null;
@@ -592,21 +592,38 @@ export interface WindowHistoryDTO {
   weeks: PastWindow[];
 }
 
+/** Below this the reported (integer) utilization is too coarse to measure a
+ *  limit from: at 1% a half-point of rounding is a ±50% error in the derived
+ *  limit, which is why a freshly-opened 5h window used to scale the whole table
+ *  to 100× of its first few minutes. */
+const MIN_CALIBRATION_PCT = 10;
+
 /** Tokens worth 100% of the account limit, read off the window that is open
  *  right now: Claude reports utilization for that window only, so its tokens
- *  divided by its reported pct is the one measured scale we have. Falls back to
- *  the configured plan limit until the collector has reported a percentage. */
-function calibrateLimit(
+ *  divided by its reported pct is the one measured scale we have. That ratio is
+ *  only usable once the window has filled enough for the pct to carry signal
+ *  ({@link MIN_CALIBRATION_PCT}); before that we fall back to the configured
+ *  plan limit. Either way the estimate is floored by the busiest window we have
+ *  on record — Claude cuts the account off at 100%, so a window that completed
+ *  is proof the limit was at least that big. */
+export function calibrateLimit(
   rows: WindowAggRow[],
   openStart: number,
   officialPct: number | null,
   fallbackTokens: number,
 ): number {
-  if (!officialPct || officialPct <= 0) return fallbackTokens;
-  const tokens = rows
-    .filter((r) => r.binStart === openStart)
-    .reduce((sum, r) => sum + billableTokens(r.totals), 0);
-  return tokens > 0 ? (tokens / officialPct) * 100 : fallbackTokens;
+  const byBin = new Map<number, number>();
+  for (const r of rows)
+    byBin.set(r.binStart, (byBin.get(r.binStart) ?? 0) + billableTokens(r.totals));
+  const openTokens = byBin.get(openStart) ?? 0;
+  const measured =
+    officialPct && officialPct >= MIN_CALIBRATION_PCT && openTokens > 0
+      ? (openTokens / officialPct) * 100
+      : 0;
+  // ponytail: a token-count floor ignores that Claude meters cost, not tokens —
+  // a cheap-model window overstates the limit a little. Good enough until the
+  // collector persists a calibration sample per report.
+  return Math.max(measured || fallbackTokens, ...byBin.values());
 }
 
 /** Fold bucketed rows into per-window group splits, newest window first. Each
