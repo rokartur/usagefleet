@@ -72,11 +72,10 @@ function columnsOf(windows: PastWindow[]) {
 
 /**
  * Past limit windows, group by group — the "how did last session/week go"
- * counterpart to the live card. Each group's cell reads like the live Groups
- * table: the utilization Claude reported for that window, split by the group's
- * cost share and measured against its 1/maxGroups budget slice, with the excess
- * spelled out past 100%. Windows that closed before the collector recorded a
- * utilization sample show tokens only.
+ * counterpart to the live card. Percentages are shares of the whole account
+ * limit: the utilization Claude reported for that window, split across groups
+ * by cost, so the group cells sum to the window total. Windows that closed
+ * before the collector recorded a utilization sample show tokens only.
  */
 export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
   const [kind, setKind] = useState<Kind>("sessions");
@@ -90,9 +89,8 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
           <CardTitle>Past windows</CardTitle>
           <CardDescription>
             Completed {kind === "sessions" ? "5-hour" : "weekly"} windows, newest first. Billable
-            tokens (cache reads excluded) and each group&apos;s share of the utilization Claude
-            reported for that window, against its budget slice — past 100% means it ate into
-            another group&apos;s share.
+            tokens (cache reads excluded) and each group&apos;s share of the account limit,
+            split from the utilization Claude reported for that window.
           </CardDescription>
         </div>
         <Select
@@ -162,26 +160,12 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
                       <TableCell key={c.key}>
                         {g ? (
                           <div className="flex min-w-36 items-center gap-3">
-                            {g.budgetPct !== null && (
-                              <UsageBar pct={g.budgetPct} className="w-16 shrink-0" />
+                            {g.accountPct !== null && (
+                              <UsageBar pct={g.accountPct} className="w-16 shrink-0" />
                             )}
                             <span className="tabular-nums">
-                              {g.budgetPct !== null && (
-                                <>
-                                  <span
-                                    className={
-                                      g.budgetPct > 100
-                                        ? "font-medium text-destructive"
-                                        : "font-medium"
-                                    }
-                                  >
-                                    {g.budgetPct}%
-                                  </span>
-                                  {g.budgetPct > 100 && (
-                                    <span className="text-destructive"> (+{g.budgetPct - 100})</span>
-                                  )}{" "}
-                                  ·{" "}
-                                </>
+                              {g.accountPct !== null && (
+                                <span className="font-medium">{g.accountPct}% · </span>
                               )}
                               <span className="text-muted-foreground">{formatTokens(g.tokens)}</span>
                             </span>

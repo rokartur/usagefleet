@@ -19,27 +19,26 @@ const cell = (groupId: string | null, model: string, billable: number): WindowAg
 
 const label = (id: string | null) => ({ name: id ?? "Ungrouped", color: "#fff" });
 const build = (rows: WindowAggRow[], peaks: Map<number, number>) =>
-  buildPastWindows(rows, [START], STRIDE, peaks, 2, "1h", label);
+  buildPastWindows(rows, [START], STRIDE, peaks, "1h", label);
 
 describe("buildPastWindows", () => {
-  it("splits the window's reported utilization by cost share, scaled to the budget slice", () => {
+  it("splits the window's reported utilization across groups by cost share", () => {
     // Same token count, but opus costs 5x sonnet — so it eats 5/6 of the 60%.
     const [w] = build(
       [cell("a", "claude-opus-4", 1_000_000), cell("b", "claude-sonnet-4", 1_000_000)],
       new Map([[START.getTime(), 60]]),
     );
     expect(w.accountPct).toBe(60);
-    // 60% × 5/6 × 2 groups = 100%, i.e. group a ate the whole account slice.
     expect(w.groups).toEqual([
-      { groupId: "a", name: "a", color: "#fff", budgetPct: 100, tokens: 1_000_000 },
-      { groupId: "b", name: "b", color: "#fff", budgetPct: 20, tokens: 1_000_000 },
+      { groupId: "a", name: "a", color: "#fff", accountPct: 50, tokens: 1_000_000 },
+      { groupId: "b", name: "b", color: "#fff", accountPct: 10, tokens: 1_000_000 },
     ]);
   });
 
   it("reports tokens without a percentage when no sample covers the window", () => {
     const [w] = build([cell("a", "claude-sonnet-4", 500_000)], new Map());
     expect(w.accountPct).toBeNull();
-    expect(w.groups[0]).toMatchObject({ budgetPct: null, tokens: 500_000 });
+    expect(w.groups[0]).toMatchObject({ accountPct: null, tokens: 500_000 });
   });
 
   it("drops windows with no activity", () => {

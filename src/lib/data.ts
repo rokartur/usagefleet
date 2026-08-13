@@ -584,11 +584,10 @@ export interface PastWindowGroup {
   groupId: string | null;
   name: string;
   color: string;
-  /** Usage against the group's 1/maxGroups budget slice of the account limit —
-   *  the same measure as the live Groups table, so 100% means the group ate its
-   *  whole slice and past that it ate into another group's. Null for windows
-   *  that closed without a recorded utilization sample. */
-  budgetPct: number | null;
+  /** The group's share of the whole account limit, i.e. its cost-weighted cut
+   *  of the utilization Claude reported for the window. Null for windows that
+   *  closed without a recorded utilization sample. */
+  accountPct: number | null;
   /** Billable tokens (cache reads excluded). */
   tokens: number;
 }
@@ -670,17 +669,15 @@ async function loadWindowPeaks(
 }
 
 /** Fold bucketed rows into per-window group splits, newest window first. The
- *  window's recorded utilization is split across groups by cost share and
- *  scaled to each group's 1/maxGroups budget slice — the same math as the live
- *  Groups table, so the two read on the same scale. Windows with no activity
- *  are dropped; windows with activity but no recorded utilization show tokens
- *  only (budgetPct null). */
+ *  window's recorded utilization is split across groups by cost share, so the
+ *  group cells sum to the window's account-wide percentage. Windows with no
+ *  activity are dropped; windows with activity but no recorded utilization show
+ *  tokens only (accountPct null). */
 export function buildPastWindows(
   rows: WindowAggRow[],
   starts: Date[],
   strideMs: number,
   peakPctByBin: Map<number, number>,
-  maxGroups: number,
   ttl: CacheTtl,
   label: (id: string | null) => { name: string; color: string },
 ): PastWindow[] {
@@ -714,12 +711,10 @@ export function buildPastWindows(
           .map(([groupId, g]) => ({
             groupId,
             ...label(groupId),
-            // Rounded once, after the ×maxGroups scaling, so it can't amplify a
-            // rounding error — same as groupBudgetPct.
-            budgetPct:
+            accountPct:
               accountPct === null || totalCost === 0
                 ? null
-                : Math.round(accountPct * (g.cost / totalCost) * maxGroups),
+                : Math.round(accountPct * (g.cost / totalCost)),
             tokens: g.tokens,
           }))
           .sort((a, b) => b.tokens - a.tokens),
@@ -767,24 +762,8 @@ export async function getWindowHistory(userId: string, now: Date): Promise<Windo
 
   const ttl: CacheTtl = settings.cacheWriteTtl === "5m" ? "5m" : "1h";
   return {
-    sessions: buildPastWindows(
-      sessionRows,
-      sessionStarts,
-      FIVE_H_MS,
-      sessionPeaks,
-      settings.maxGroups,
-      ttl,
-      label,
-    ),
-    weeks: buildPastWindows(
-      weekRows,
-      weekStarts,
-      SEVEN_D_MS,
-      weekPeaks,
-      settings.maxGroups,
-      ttl,
-      label,
-    ),
+    sessions: buildPastWindows(sessionRows, sessionStarts, FIVE_H_MS, sessionPeaks, ttl, label),
+    weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, weekPeaks, ttl, label),
   };
 }
 
