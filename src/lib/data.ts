@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { devices, groups, type StoredModelLimit, usageEvents, userSettings } from "@/db/schema";
+import {
+  devices,
+  groups,
+  type LimitWindow,
+  limitSamples,
+  type StoredModelLimit,
+  usageEvents,
+  userSettings,
+} from "@/db/schema";
 import {
   billableTokens,
   type CacheTtl,
@@ -495,16 +503,19 @@ export async function getLiveDashboard(userId: string, now: Date): Promise<LiveD
 /** How many completed windows back the past-windows card looks. */
 const PAST_WINDOWS = 8;
 
-/** Folded token totals for one (window bucket × group) cell. */
+/** Folded token totals for one (window bucket × group × model) cell. Model is
+ *  carried because a window's official utilization is split across groups by
+ *  cost share, and cost is per model. */
 export interface WindowAggRow {
   /** Bucket start, epoch ms, aligned to the limit's own reset boundary. */
   binStart: number;
   groupId: string | null;
+  model: string | null;
   totals: TokenTotals;
 }
 
 /** Same logical-message fold as {@link loadDailyAggregates}, but bucketed into
- *  rolling `strideMs` windows aligned to `origin` and grouped per group only. */
+ *  rolling `strideMs` windows aligned to `origin` and grouped per group+model. */
 async function loadWindowAggregates(
   userId: string,
   strideMs: number,
@@ -518,6 +529,7 @@ async function loadWindowAggregates(
       SELECT DISTINCT ON (${FOLD_KEY})
         ${usageEvents.ts} AS ts,
         ${usageEvents.deviceId} AS device_id,
+        ${usageEvents.model} AS model,
         ${usageEvents.inputTokens} AS input_tokens,
         ${usageEvents.outputTokens} AS output_tokens,
         ${usageEvents.cacheCreationTokens} AS cache_creation_tokens,
@@ -531,13 +543,14 @@ async function loadWindowAggregates(
     SELECT
       extract(epoch from ${bucket})::bigint AS bin,
       d.group_id AS group_id,
+      folded.model AS model,
       sum(folded.input_tokens)::bigint AS input,
       sum(folded.output_tokens)::bigint AS output,
       sum(folded.cache_creation_tokens)::bigint AS cache_creation,
       sum(folded.cache_read_tokens)::bigint AS cache_read
     FROM folded
     JOIN ${devices} d ON d.id = folded.device_id
-    GROUP BY 1, 2
+    GROUP BY 1, 2, 3
     HAVING (
       sum(folded.input_tokens) + sum(folded.output_tokens) +
       sum(folded.cache_creation_tokens) + sum(folded.cache_read_tokens)
@@ -547,6 +560,7 @@ async function loadWindowAggregates(
   const rows = result as unknown as Array<{
     bin: string;
     group_id: string | null;
+    model: string | null;
     input: string;
     output: string;
     cache_creation: string;
@@ -561,7 +575,7 @@ async function loadWindowAggregates(
       totalTokens:
         Number(r.input) + Number(r.output) + Number(r.cache_creation) + Number(r.cache_read),
     } satisfies TokenTotals;
-    return { binStart: Number(r.bin) * 1000, groupId: r.group_id, totals };
+    return { binStart: Number(r.bin) * 1000, groupId: r.group_id, model: r.model, totals };
   });
 }
 
@@ -572,8 +586,9 @@ export interface PastWindowGroup {
   color: string;
   /** Usage against the group's 1/maxGroups budget slice of the account limit —
    *  the same measure as the live Groups table, so 100% means the group ate its
-   *  whole slice and past that it ate into another group's. */
-  budgetPct: number;
+   *  whole slice and past that it ate into another group's. Null for windows
+   *  that closed without a recorded utilization sample. */
+  budgetPct: number | null;
   /** Billable tokens (cache reads excluded). */
   tokens: number;
 }
@@ -584,6 +599,9 @@ export interface PastWindow {
   end: string;
   /** Billable tokens burned in the window, all groups. */
   tokens: number;
+  /** Peak account-wide utilization Claude reported while the window was open;
+   *  null when no collector sample covers it. */
+  accountPct: number | null;
   groups: PastWindowGroup[];
 }
 
@@ -592,50 +610,78 @@ export interface WindowHistoryDTO {
   weeks: PastWindow[];
 }
 
-/** Below this the reported (integer) utilization is too coarse to measure a
- *  limit from: at 1% a half-point of rounding is a ±50% error in the derived
- *  limit, which is why a freshly-opened 5h window used to scale the whole table
- *  to 100× of its first few minutes. */
-const MIN_CALIBRATION_PCT = 10;
+/** Start of the `strideMs` bucket holding `t`, aligned to `origin` — the JS
+ *  twin of the SQL `date_bin` the window aggregates are bucketed with, so a
+ *  utilization sample lands in the same bucket as the tokens it measured. */
+const binStartOf = (t: number, origin: number, strideMs: number) =>
+  origin + Math.floor((t - origin) / strideMs) * strideMs;
 
-/** Tokens worth 100% of the account limit, read off the window that is open
- *  right now: Claude reports utilization for that window only, so its tokens
- *  divided by its reported pct is the one measured scale we have. That ratio is
- *  only usable once the window has filled enough for the pct to carry signal
- *  ({@link MIN_CALIBRATION_PCT}); before that we fall back to the configured
- *  plan limit. Either way the estimate is floored by the busiest window we have
- *  on record — Claude cuts the account off at 100%, so a window that completed
- *  is proof the limit was at least that big. */
-export function calibrateLimit(
-  rows: WindowAggRow[],
-  openStart: number,
-  officialPct: number | null,
-  fallbackTokens: number,
-): number {
-  const byBin = new Map<number, number>();
-  for (const r of rows)
-    byBin.set(r.binStart, (byBin.get(r.binStart) ?? 0) + billableTokens(r.totals));
-  const openTokens = byBin.get(openStart) ?? 0;
-  const measured =
-    officialPct && officialPct >= MIN_CALIBRATION_PCT && openTokens > 0
-      ? (openTokens / officialPct) * 100
-      : 0;
-  // ponytail: a token-count floor ignores that Claude meters cost, not tokens —
-  // a cheap-model window overstates the limit a little. Good enough until the
-  // collector persists a calibration sample per report.
-  return Math.max(measured || fallbackTokens, ...byBin.values());
+/** Record the utilization Claude reports for the window that is open right now.
+ *  Kept at its maximum per window: reports are sampled, so the last one before
+ *  a window closes is not necessarily the highest. No-ops without a pct or a
+ *  reset instant — the reset is what dates the sample. */
+export async function recordLimitSample(
+  userId: string,
+  window: LimitWindow,
+  pct: number | null | undefined,
+  resetsAt: Date | null,
+): Promise<void> {
+  if (pct == null || !resetsAt) return;
+  const windowStart = new Date(resetsAt.getTime() - (window === "5h" ? FIVE_H_MS : SEVEN_D_MS));
+  await db
+    .insert(limitSamples)
+    .values({ userId, window, windowStart, peakPct: pct })
+    .onConflictDoUpdate({
+      target: [limitSamples.userId, limitSamples.window, limitSamples.windowStart],
+      set: {
+        peakPct: sql`greatest(${limitSamples.peakPct}, ${pct})`,
+        updatedAt: new Date(),
+      },
+    });
 }
 
-/** Fold bucketed rows into per-window group splits, newest window first. Each
- *  group is measured against its 1/maxGroups slice of `limitTokens` exactly
- *  like the live Groups table, so the two read on the same scale. Windows with
- *  no activity are dropped. */
-function buildPastWindows(
+/** Recorded peak utilization per window bucket, for windows starting at or
+ *  after `since`. Samples are bucketed like the token aggregates; a window
+ *  whose real boundaries drifted from the current reset phase lands in the
+ *  bucket its start falls into, and the highest sample there wins. */
+async function loadWindowPeaks(
+  userId: string,
+  window: LimitWindow,
+  strideMs: number,
+  origin: Date,
+  since: Date,
+): Promise<Map<number, number>> {
+  const rows = await db
+    .select({ windowStart: limitSamples.windowStart, peakPct: limitSamples.peakPct })
+    .from(limitSamples)
+    .where(
+      and(
+        eq(limitSamples.userId, userId),
+        eq(limitSamples.window, window),
+        gte(limitSamples.windowStart, since),
+      ),
+    );
+  const byBin = new Map<number, number>();
+  for (const r of rows) {
+    const bin = binStartOf(new Date(r.windowStart).getTime(), origin.getTime(), strideMs);
+    byBin.set(bin, Math.max(byBin.get(bin) ?? 0, r.peakPct));
+  }
+  return byBin;
+}
+
+/** Fold bucketed rows into per-window group splits, newest window first. The
+ *  window's recorded utilization is split across groups by cost share and
+ *  scaled to each group's 1/maxGroups budget slice — the same math as the live
+ *  Groups table, so the two read on the same scale. Windows with no activity
+ *  are dropped; windows with activity but no recorded utilization show tokens
+ *  only (budgetPct null). */
+export function buildPastWindows(
   rows: WindowAggRow[],
   starts: Date[],
   strideMs: number,
-  limitTokens: number,
+  peakPctByBin: Map<number, number>,
   maxGroups: number,
+  ttl: CacheTtl,
   label: (id: string | null) => { name: string; color: string },
 ): PastWindow[] {
   const byBin = new Map<number, WindowAggRow[]>();
@@ -648,19 +694,33 @@ function buildPastWindows(
   return starts
     .map((start) => {
       const cells = byBin.get(start.getTime()) ?? [];
-      const tokens = cells.reduce((sum, c) => sum + billableTokens(c.totals), 0);
+      const accountPct = peakPctByBin.get(start.getTime()) ?? null;
+      const byGroup = new Map<string | null, { tokens: number; cost: number }>();
+      let totalCost = 0;
+      for (const c of cells) {
+        const cur = byGroup.get(c.groupId) ?? { tokens: 0, cost: 0 };
+        const cost = costForTokens(c.totals, c.model, ttl);
+        cur.tokens += billableTokens(c.totals);
+        cur.cost += cost;
+        totalCost += cost;
+        byGroup.set(c.groupId, cur);
+      }
       return {
         start: start.toISOString(),
         end: new Date(start.getTime() + strideMs).toISOString(),
-        tokens,
-        groups: cells
-          .map((c) => ({
-            groupId: c.groupId,
-            ...label(c.groupId),
+        tokens: [...byGroup.values()].reduce((sum, g) => sum + g.tokens, 0),
+        accountPct,
+        groups: [...byGroup.entries()]
+          .map(([groupId, g]) => ({
+            groupId,
+            ...label(groupId),
             // Rounded once, after the ×maxGroups scaling, so it can't amplify a
             // rounding error — same as groupBudgetPct.
-            budgetPct: Math.round((billableTokens(c.totals) / limitTokens) * 100 * maxGroups),
-            tokens: billableTokens(c.totals),
+            budgetPct:
+              accountPct === null || totalCost === 0
+                ? null
+                : Math.round(accountPct * (g.cost / totalCost) * maxGroups),
+            tokens: g.tokens,
           }))
           .sort((a, b) => b.tokens - a.tokens),
       };
@@ -680,16 +740,22 @@ export async function getWindowHistory(userId: string, now: Date): Promise<Windo
     : weekWindowStart(now, settings.weekResetWeekday, settings.weekResetHourUtc);
   const sessionStarts = pastWindowStarts(fiveOrigin, FIVE_H_MS, now, PAST_WINDOWS);
   const weekStarts = pastWindowStarts(weekOrigin, SEVEN_D_MS, now, PAST_WINDOWS);
-  // Runs up to `now` on purpose: the still-open window is not displayed, but it
-  // is what calibrateLimit measures the account limit from.
-  const span = (starts: Date[]) => ({ since: starts[starts.length - 1] ?? now, until: now });
-  const sessionSpan = span(sessionStarts);
-  const weekSpan = span(weekStarts);
+  // Only completed windows are shown, so nothing past the newest one's end is
+  // needed.
+  const span = (starts: Date[], strideMs: number) => ({
+    since: starts[starts.length - 1] ?? now,
+    until: new Date((starts[0]?.getTime() ?? now.getTime()) + strideMs),
+  });
+  const sessionSpan = span(sessionStarts, FIVE_H_MS);
+  const weekSpan = span(weekStarts, SEVEN_D_MS);
 
-  const [groupRows, sessionRows, weekRows] = await Promise.all([
+  await refreshPrices();
+  const [groupRows, sessionRows, weekRows, sessionPeaks, weekPeaks] = await Promise.all([
     db.select().from(groups).where(eq(groups.ownerId, userId)),
     loadWindowAggregates(userId, FIVE_H_MS, fiveOrigin, sessionSpan.since, sessionSpan.until),
     loadWindowAggregates(userId, SEVEN_D_MS, weekOrigin, weekSpan.since, weekSpan.until),
+    loadWindowPeaks(userId, "5h", FIVE_H_MS, fiveOrigin, sessionSpan.since),
+    loadWindowPeaks(userId, "7d", SEVEN_D_MS, weekOrigin, weekSpan.since),
   ]);
   const label = (id: string | null) => {
     const g = id === null ? undefined : groupRows.find((x) => x.id === id);
@@ -699,31 +765,26 @@ export async function getWindowHistory(userId: string, now: Date): Promise<Windo
     };
   };
 
-  const openSession = (sessionStarts[0]?.getTime() ?? now.getTime()) + FIVE_H_MS;
-  const openWeek = (weekStarts[0]?.getTime() ?? now.getTime()) + SEVEN_D_MS;
-  const sessionLimit = calibrateLimit(
-    sessionRows,
-    openSession,
-    settings.fiveHourPct,
-    settings.sessionLimitTokens,
-  );
-  const weekLimit = calibrateLimit(
-    weekRows,
-    openWeek,
-    settings.sevenDayPct,
-    settings.weeklyLimitTokens,
-  );
-
+  const ttl: CacheTtl = settings.cacheWriteTtl === "5m" ? "5m" : "1h";
   return {
     sessions: buildPastWindows(
       sessionRows,
       sessionStarts,
       FIVE_H_MS,
-      sessionLimit,
+      sessionPeaks,
       settings.maxGroups,
+      ttl,
       label,
     ),
-    weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, weekLimit, settings.maxGroups, label),
+    weeks: buildPastWindows(
+      weekRows,
+      weekStarts,
+      SEVEN_D_MS,
+      weekPeaks,
+      settings.maxGroups,
+      ttl,
+      label,
+    ),
   };
 }
 

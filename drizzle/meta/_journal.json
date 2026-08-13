@@ -71,6 +71,13 @@
       "when": 1786609983752,
       "tag": "0009_legal_sunfire",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786622045134,
+      "tag": "0010_bored_outlaw_kid",
+      "breakpoints": true
     }
   ]
 }

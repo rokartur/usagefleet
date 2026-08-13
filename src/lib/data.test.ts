@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { calibrateLimit, type WindowAggRow } from "./data";
+import { buildPastWindows, type WindowAggRow } from "./data";
 
-const OPEN = 5_000;
-const cell = (binStart: number, billable: number): WindowAggRow => ({
-  binStart,
-  groupId: null,
+const STRIDE = 5 * 60 * 60 * 1000;
+const START = new Date("2026-06-18T10:00:00Z");
+
+const cell = (groupId: string | null, model: string, billable: number): WindowAggRow => ({
+  binStart: START.getTime(),
+  groupId,
+  model,
   totals: {
     inputTokens: billable,
     outputTokens: 0,
@@ -14,20 +17,32 @@ const cell = (binStart: number, billable: number): WindowAggRow => ({
   },
 });
 
-describe("calibrateLimit", () => {
-  const rows = [cell(OPEN, 500_000), cell(4_000, 800_000), cell(3_000, 300_000)];
+const label = (id: string | null) => ({ name: id ?? "Ungrouped", color: "#fff" });
+const build = (rows: WindowAggRow[], peaks: Map<number, number>) =>
+  buildPastWindows(rows, [START], STRIDE, peaks, 2, "1h", label);
 
-  it("measures the limit off the open window once its pct carries signal", () => {
-    expect(calibrateLimit(rows, OPEN, 50, 88_000)).toBe(1_000_000);
+describe("buildPastWindows", () => {
+  it("splits the window's reported utilization by cost share, scaled to the budget slice", () => {
+    // Same token count, but opus costs 5x sonnet — so it eats 5/6 of the 60%.
+    const [w] = build(
+      [cell("a", "claude-opus-4", 1_000_000), cell("b", "claude-sonnet-4", 1_000_000)],
+      new Map([[START.getTime(), 60]]),
+    );
+    expect(w.accountPct).toBe(60);
+    // 60% × 5/6 × 2 groups = 100%, i.e. group a ate the whole account slice.
+    expect(w.groups).toEqual([
+      { groupId: "a", name: "a", color: "#fff", budgetPct: 100, tokens: 1_000_000 },
+      { groupId: "b", name: "b", color: "#fff", budgetPct: 20, tokens: 1_000_000 },
+    ]);
   });
 
-  it("ignores a barely-started window instead of scaling it by 100x", () => {
-    // The old behaviour read 500k tokens at 1% as a 50M limit; the busiest
-    // window on record (800k) is the honest floor instead.
-    expect(calibrateLimit(rows, OPEN, 1, 88_000)).toBe(800_000);
+  it("reports tokens without a percentage when no sample covers the window", () => {
+    const [w] = build([cell("a", "claude-sonnet-4", 500_000)], new Map());
+    expect(w.accountPct).toBeNull();
+    expect(w.groups[0]).toMatchObject({ budgetPct: null, tokens: 500_000 });
   });
 
-  it("falls back to the plan limit with no usage and no report", () => {
-    expect(calibrateLimit([], OPEN, null, 88_000)).toBe(88_000);
+  it("drops windows with no activity", () => {
+    expect(build([], new Map([[START.getTime(), 40]]))).toEqual([]);
   });
 });

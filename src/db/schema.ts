@@ -9,6 +9,7 @@ import {
   boolean,
   index,
   jsonb,
+  primaryKey,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
@@ -153,6 +154,32 @@ export const userSettings = pgTable("user_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+/** Which limit window a sample belongs to, keyed like the rate-limit header. */
+export type LimitWindow = "5h" | "7d";
+
+// Peak utilization Claude reported for ONE limit window, accumulated from the
+// collector's /api/v1/limits posts (one row per window, kept at its maximum).
+// Claude only reports the window that is currently open, so once a window
+// closes this is the only record of how full it actually got — the past-windows
+// card reads it instead of guessing a token limit.
+export const limitSamples = pgTable(
+  "limit_sample",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    window: text("window").$type<LimitWindow>().notNull(),
+    /** Window start = the reported reset instant minus the window's length. */
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    peakPct: integer("peak_pct").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.window, t.windowStart] }),
+    index("limit_sample_user_start_idx").on(t.userId, t.windowStart),
+  ],
+);
+
 export const groupsRelations = relations(groups, ({ many, one }) => ({
   devices: many(devices),
   owner: one(user, { fields: [groups.ownerId], references: [user.id] }),
@@ -175,3 +202,4 @@ export type Device = typeof devices.$inferSelect;
 export type Group = typeof groups.$inferSelect;
 export type UsageEvent = typeof usageEvents.$inferSelect;
 export type UserSettings = typeof userSettings.$inferSelect;
+export type LimitSample = typeof limitSamples.$inferSelect;

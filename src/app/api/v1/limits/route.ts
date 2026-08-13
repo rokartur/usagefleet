@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { devices, groups, userSettings } from "@/db/schema";
-import { getLiveDashboard } from "@/lib/data";
+import { getLiveDashboard, recordLimitSample } from "@/lib/data";
 import { authenticateDevice } from "@/lib/device-auth";
 import { bodyTooLarge } from "@/lib/rate-limit";
 
@@ -145,8 +145,15 @@ export async function POST(req: Request) {
     .values({ userId: device.userId, ...set })
     .onConflictDoUpdate({ target: userSettings.userId, set });
 
-  // Touch the device so the Devices list shows an accurate last-seen time.
-  await db.update(devices).set({ lastSeenAt: now }).where(eq(devices.id, device.id));
+  await Promise.all([
+    // Keep a per-window record of the reported utilization: Claude only reports
+    // the open window, so this is the past-windows card's only ground truth
+    // once a window closes.
+    recordLimitSample(device.userId, "5h", b.fiveHourPct, set.fiveHourResetsAt),
+    recordLimitSample(device.userId, "7d", b.sevenDayPct, set.sevenDayResetsAt),
+    // Touch the device so the Devices list shows an accurate last-seen time.
+    db.update(devices).set({ lastSeenAt: now }).where(eq(devices.id, device.id)),
+  ]);
 
   return Response.json({ ok: true });
 }
