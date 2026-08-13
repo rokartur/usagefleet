@@ -571,8 +571,10 @@ export interface PastWindowGroup {
   groupId: string | null;
   name: string;
   color: string;
-  /** This group's share of the window's billable tokens (groups sum to 100). */
-  sharePct: number;
+  /** This group's billable tokens against the configured plan limit; the
+   *  groups of a window sum to the window's total utilization, which reads past
+   *  100 when the limit was overshot. */
+  limitPct: number;
   /** Billable tokens (cache reads excluded). */
   tokens: number;
 }
@@ -592,14 +594,15 @@ export interface WindowHistoryDTO {
 }
 
 /** Fold bucketed rows into per-window group splits, newest window first.
- *  No limit percentages here: Claude only reports official utilization for the
- *  window that is open right now, and the plan limits are cost-based, not
- *  token-based — so past windows report measured tokens and each group's share
- *  of them. Windows with no activity are dropped. */
+ *  Claude only reports official utilization for the window that is open right
+ *  now, so a past window is measured against the CONFIGURED plan limit
+ *  (`limitTokens`) — an estimate that can read past 100% on an overshoot.
+ *  Windows with no activity are dropped. */
 function buildPastWindows(
   rows: WindowAggRow[],
   starts: Date[],
   strideMs: number,
+  limitTokens: number,
   label: (id: string | null) => { name: string; color: string },
 ): PastWindow[] {
   const byBin = new Map<number, WindowAggRow[]>();
@@ -621,7 +624,7 @@ function buildPastWindows(
           .map((c) => ({
             groupId: c.groupId,
             ...label(c.groupId),
-            sharePct: pct(billableTokens(c.totals), tokens),
+            limitPct: pct(billableTokens(c.totals), limitTokens),
             tokens: billableTokens(c.totals),
           }))
           .sort((a, b) => b.tokens - a.tokens),
@@ -663,8 +666,14 @@ export async function getWindowHistory(userId: string, now: Date): Promise<Windo
   };
 
   return {
-    sessions: buildPastWindows(sessionRows, sessionStarts, FIVE_H_MS, label),
-    weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, label),
+    sessions: buildPastWindows(
+      sessionRows,
+      sessionStarts,
+      FIVE_H_MS,
+      settings.sessionLimitTokens,
+      label,
+    ),
+    weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, settings.weeklyLimitTokens, label),
   };
 }
 

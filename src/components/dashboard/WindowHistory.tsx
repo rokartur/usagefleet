@@ -72,9 +72,10 @@ function columnsOf(windows: PastWindow[]) {
 
 /**
  * Past limit windows, group by group — the "how did last session/week go"
- * counterpart to the live card. Shows measured tokens and each group's share
- * of the window: Claude only reports official utilization for the window that
- * is currently open, so a past window has no honest limit percentage.
+ * counterpart to the live card. Each group's cell shows its tokens against the
+ * configured plan limit, so a window that overshot reads past 100%. The
+ * percentage is an estimate: Claude only reports official utilization for the
+ * window that is currently open.
  */
 export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
   const [kind, setKind] = useState<Kind>("sessions");
@@ -88,7 +89,8 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
           <CardTitle>Past windows</CardTitle>
           <CardDescription>
             Completed {kind === "sessions" ? "5-hour" : "weekly"} windows, newest first. Billable
-            tokens (cache reads excluded) and each group&apos;s share of the window.
+            tokens (cache reads excluded) and each group&apos;s usage against your configured limit
+            — past 100% means the window went over.
           </CardDescription>
         </div>
         <Select
@@ -157,9 +159,15 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
                       <TableCell key={c.key}>
                         {g ? (
                           <div className="flex min-w-36 items-center gap-3">
-                            <UsageBar pct={g.sharePct} className="w-16 shrink-0" />
+                            <UsageBar pct={g.limitPct} className="w-16 shrink-0" />
                             <span className="tabular-nums">
-                              <span className="font-medium">{g.sharePct}%</span>
+                              <span
+                                className={
+                                  g.limitPct > 100 ? "font-medium text-destructive" : "font-medium"
+                                }
+                              >
+                                {g.limitPct}%
+                              </span>
                               <span className="text-muted-foreground">
                                 {" "}
                                 · {formatTokens(g.tokens)}
