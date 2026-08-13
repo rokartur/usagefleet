@@ -8,7 +8,7 @@ const cfg: Config = {
   statePath: "",
   projectsDir: "",
   desktopDir: null,
-  piDir: null,
+  piDirs: [],
   batchSize: 100,
 };
 const payload: BatchPayload = {
