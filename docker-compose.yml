@@ -20,9 +20,9 @@ services:
 
   web:
     build:
+      # Context is the monorepo root so the workspace install sees bun.lock.
       context: .
-      args:
-        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     depends_on:
       db:
@@ -31,7 +31,6 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-app}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env (>=32 chars)}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       # Set to "false" to block new account creation.
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
       # Set to the number of trusted reverse proxies in front of the app (or
@@ -42,6 +41,12 @@ services:
       # private repo so devices need no GitHub credential. Unset = no updates.
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-rokartur/usagefleet}
+      # Stripe billing — the device cap comes from the subscription, so all four
+      # are required. Point the Stripe webhook at <app>/api/auth/stripe/webhook.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?set STRIPE_SECRET_KEY in .env}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?set STRIPE_WEBHOOK_SECRET in .env}
+      STRIPE_PRICE_SOLO: ${STRIPE_PRICE_SOLO:?set STRIPE_PRICE_SOLO in .env}
+      STRIPE_PRICE_FLEET: ${STRIPE_PRICE_FLEET:?set STRIPE_PRICE_FLEET in .env}
       NODE_ENV: production
     ports:
       - "${WEB_PORT:-3000}:3000"

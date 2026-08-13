@@ -24,8 +24,7 @@ docker compose up --build -d      # migrations run automatically on boot
 ```
 
 Before `up`, set in `.env`: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`
-(≥32 chars, high entropy) and — if not on `localhost:3000` — `NEXT_PUBLIC_APP_URL`
-and `BETTER_AUTH_URL`.
+(≥32 chars, high entropy) and — if not on `localhost:3000` — `BETTER_AUTH_URL`.
 
 Generate the secret:
 
@@ -202,14 +201,16 @@ usagefleet init --endpoint https://claude-tracker.rokartur.com --token uf_xxx
 usagefleet install
 ```
 
-From source (Node ≥ 18 or bun):
+From source (bun):
 
 ```bash
-cd collector && npm install && npm run build && npm link
+bun install                                    # from the repo root
+cd apps/collector && bun run src/index.ts --help
 ```
 
 Installer flags (`--help` for all): `--no-service`, `--endpoint <url>`,
 `--bin-dir <dir>`, `--version <tag>` — PowerShell: `-NoService`, `-Endpoint`,
 `-BinDir`, `-Version`.
 
-Env vars, notification tuning and CLI commands: [collector/README.md](collector/README.md).
+Env vars, notification tuning and CLI commands:
+[apps/collector/README.md](apps/collector/README.md).

@@ -4,7 +4,7 @@ Self-hosted tracker for **Claude usage** across one subscription used on many
 **desktop** devices (macOS, Linux, Windows). Group devices and see each group's
 share of your **5-hour session** and **weekly** limits.
 
-- **Server** — Next.js 16 (App Router) + better-auth + Drizzle + PostgreSQL,
+- **Server** — TanStack Start + better-auth + Drizzle + PostgreSQL,
   shipped as two Docker containers (`web` + `db`).
 - **Collector** — a tiny Node CLI that tails the local JSONL logs of Claude Code
   (`~/.claude/projects/**/*.jsonl`), Claude Desktop agent-mode, and the
@@ -55,7 +55,7 @@ secret and stable; changing it invalidates all existing sessions.
 (enforced server-side by better-auth, not just hidden in the UI). Typical flow:
 sign up once, then set `ALLOW_SIGNUP=false` and `docker compose up -d` to apply.
 
-`web` runs Drizzle migrations at startup (idempotent), then serves Next.js. The
+`web` runs Drizzle migrations at startup (idempotent), then serves the app. The
 DB is reached over the compose network at `db:5432`; it is not exposed to the
 host by default. The `web` container has a `/api/health` healthcheck.
 
@@ -73,7 +73,7 @@ requests share one bucket. Your proxy should strip inbound `X-Forwarded-For`.
 `docker compose ps` shows `web` up and healthy, another process holds host port
 3000 (the container app listens fine inside — only the host→container forward
 fails). Pick a free port: set `WEB_PORT=3002` and the matching
-`NEXT_PUBLIC_APP_URL` / `BETTER_AUTH_URL` in `.env`, then `docker compose up -d`.
+`BETTER_AUTH_URL` in `.env`, then `docker compose up -d`.
 The auth client uses the same origin it's served from, so no rebuild is needed
 to change ports.
 
@@ -82,7 +82,7 @@ to change ports.
 1. Sign up at `/signup`.
 2. **Groups** → create groups (e.g. "Laptops", "Work desktops").
 3. **Devices** → add a device, assign a group, **copy the token** (shown once).
-4. Install the collector on that machine (see `collector/README.md`) with the
+4. Install the collector on that machine (see `apps/collector/README.md`) with the
    token, on a machine where you're signed into Claude Code. It auto-detects your
    subscription and reports real usage — the **Dashboard** fills in within a
    minute. No keys to configure in the web app.
@@ -92,24 +92,35 @@ to change ports.
 ```bash
 docker run -d --name usagefleet-db -e POSTGRES_DB=app -e POSTGRES_USER=app \
   -e POSTGRES_PASSWORD=app -p 5432:5432 postgres:17-alpine
-npm install
-npm run db:migrate     # apply migrations
-npm run dev            # http://localhost:3000
-npm test               # usage-math + collector unit tests
+cp .env.example .env   # one .env at the repo root serves compose and dev
+bun install            # installs every workspace
+bun run db:migrate     # apply migrations
+bun run dev            # http://localhost:3000
+bun run test           # usage-math + collector unit tests, both workspaces
 ```
 
-Schema changes: edit `src/db/schema.ts`, run `npm run db:generate`
-(drizzle-kit), commit the SQL under `drizzle/`. better-auth tables live in
-`src/db/auth-schema.ts` (regenerate with `npx @better-auth/cli generate`).
+The root scripts fan out with `bun run --filter`; run one workspace directly
+with `bun run --filter collector test` (or `cd apps/collector && bun test`).
+Root scripts pass the root `.env` down, so `cd apps/web && bun run dev` needs
+its own env.
+
+Schema changes: edit `apps/web/src/db/schema.ts`, run `bun run db:generate`
+(drizzle-kit), commit the SQL under `apps/web/drizzle/`. better-auth tables live
+in `apps/web/src/db/auth-schema.ts` (regenerate with
+`bunx @better-auth/cli generate`).
 
 ## Layout
 
+Bun workspaces — one lockfile, one `node_modules`, two apps.
+
 | Path | What |
 |------|------|
-| `src/db/` | Drizzle schema (auth + groups/devices/usage_event/user_settings) |
-| `src/lib/usage/` | fold + 5h blocks + weekly window + limits + pricing (pure, unit-tested) |
-| `src/lib/auth.ts` | better-auth (email/password); device auth is a separate hashed token |
-| `src/app/api/v1/usage/` | ingestion endpoint (`x-api-key`, dedup on `uuid`) |
-| `src/app/(dash)/` | dashboard, groups, devices, settings |
-| `collector/` | standalone Node CLI (`usagefleet`) |
-| `Dockerfile`, `docker-compose.yml` | two-container deployment |
+| `apps/web/` | TanStack Start app (`web` workspace) |
+| `apps/web/src/db/` | Drizzle schema (auth + subscription + groups/devices/usage_event) |
+| `apps/web/src/lib/usage/` | fold + 5h blocks + weekly window + limits + pricing (pure, unit-tested) |
+| `apps/web/src/lib/auth.ts` | better-auth (email/password + Stripe); device auth is a separate hashed token |
+| `apps/web/src/lib/plans.ts` | plan catalog; `billing.ts` turns a subscription into a device cap |
+| `apps/web/src/routes/api/v1/usage.ts` | ingestion endpoint (`x-api-key`, dedup on `uuid`) |
+| `apps/web/src/routes/_dash/` | dashboard, groups, devices, billing, settings |
+| `apps/collector/` | standalone CLI (`usagefleet`), zero runtime deps |
+| `apps/web/Dockerfile`, `docker-compose.yml` | two-container deployment (build context = repo root) |
