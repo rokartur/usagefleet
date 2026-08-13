@@ -570,9 +570,9 @@ export interface PastWindowGroup {
   groupId: string | null;
   name: string;
   color: string;
-  /** Usage against the group's budget slice (1/maxGroups of the window), the
-   *  same measure as the live Groups table: 100% = the group used exactly its
-   *  slice, past that it ate another group's. */
+  /** Usage against an even slice of the window (1/n, n = groups active in that
+   *  window): 100% = the group used exactly its slice, past that it ate into
+   *  another group's. */
   budgetPct: number;
   /** Billable tokens (cache reads excluded). */
   tokens: number;
@@ -595,14 +595,14 @@ export interface WindowHistoryDTO {
 /** Fold bucketed rows into per-window group splits, newest window first.
  *  Claude only reports official utilization for the window that is open right
  *  now, so a past window can't be measured against the account limit; each
- *  group is measured against its 1/maxGroups budget slice of the window
- *  instead, exactly like the live Groups table. Windows with no activity are
- *  dropped. */
+ *  group is measured against an even slice of the window instead, split between
+ *  the groups that were actually active in it — so a group alone in a window
+ *  reads 100%, and two groups read 100% each only if they split it evenly.
+ *  Windows with no activity are dropped. */
 function buildPastWindows(
   rows: WindowAggRow[],
   starts: Date[],
   strideMs: number,
-  maxGroups: number,
   label: (id: string | null) => { name: string; color: string },
 ): PastWindow[] {
   const byBin = new Map<number, WindowAggRow[]>();
@@ -624,10 +624,10 @@ function buildPastWindows(
           .map((c) => ({
             groupId: c.groupId,
             ...label(c.groupId),
-            // Share of the window scaled to the group's slice — rounded once,
-            // after the multiply, so the scaling can't amplify a rounding error.
+            // Share of the window scaled to the even slice — rounded once, after
+            // the multiply, so the scaling can't amplify a rounding error.
             budgetPct:
-              tokens > 0 ? Math.round((billableTokens(c.totals) / tokens) * 100 * maxGroups) : 0,
+              tokens > 0 ? Math.round((billableTokens(c.totals) / tokens) * 100 * cells.length) : 0,
             tokens: billableTokens(c.totals),
           }))
           .sort((a, b) => b.tokens - a.tokens),
@@ -669,8 +669,8 @@ export async function getWindowHistory(userId: string, now: Date): Promise<Windo
   };
 
   return {
-    sessions: buildPastWindows(sessionRows, sessionStarts, FIVE_H_MS, settings.maxGroups, label),
-    weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, settings.maxGroups, label),
+    sessions: buildPastWindows(sessionRows, sessionStarts, FIVE_H_MS, label),
+    weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, label),
   };
 }
 
