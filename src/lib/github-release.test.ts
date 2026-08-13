@@ -6,8 +6,8 @@ describe("parseSha256Sums", () => {
 
   it("reads sha256sum output, including the binary-mode star", () => {
     expect(
-      parseSha256Sums(`${sha}  claude-track-macos-arm64\n${"b".repeat(64)} *claude-track.js\n`),
-    ).toEqual({ "claude-track-macos-arm64": sha, "claude-track.js": "b".repeat(64) });
+      parseSha256Sums(`${sha}  usagefleet-macos-arm64\n${"b".repeat(64)} *usagefleet.js\n`),
+    ).toEqual({ "usagefleet-macos-arm64": sha, "usagefleet.js": "b".repeat(64) });
   });
 
   // The parsed hashes gate what a device is willing to execute, so anything

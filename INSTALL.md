@@ -3,11 +3,11 @@
 Two things get installed:
 
 - **Server** — Docker (`web` + `db`). Same steps on every OS; see [Server](#server-docker).
-- **Collector** — the `claude-track` CLI, installed on every machine you use
+- **Collector** — the `usagefleet` CLI, installed on every machine you use
   Claude on. Per-OS: [macOS](#collector--macos) · [Linux](#collector--linux) ·
   [Windows](#collector--windows).
 
-You need a device **token** (`ctk_…`) from the server's **Devices** page before
+You need a device **token** (`uf_…`) from the server's **Devices** page before
 installing a collector.
 
 ---
@@ -53,39 +53,39 @@ authenticated (`gh auth login`) because the repo is private. Signed into Claude
 Code (`claude`) if you want the real 5h/weekly limit numbers.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rokartur/claude-track/main/install.sh | sh -s -- --token ctk_xxx
+curl -fsSL https://raw.githubusercontent.com/rokartur/usagefleet/main/install.sh | sh -s -- --token uf_xxx
 ```
 
-Downloads `claude-track-macos-arm64`/`-x64`, verifies its SHA-256, installs to
+Downloads `usagefleet-macos-arm64`/`-x64`, verifies its SHA-256, installs to
 `/usr/local/bin` (or `~/.local/bin` if that isn't writable), strips the Gatekeeper
-quarantine flag, writes `~/.claude-track.json`, and starts a LaunchAgent.
+quarantine flag, writes `~/.usagefleet.json`, and starts a LaunchAgent.
 
 Verify:
 
 ```bash
-claude-track status      # config, tail state, detected Claude login
-claude-track run         # one scan — the dashboard fills in within a minute
+usagefleet status      # config, tail state, detected Claude login
+usagefleet run         # one scan — the dashboard fills in within a minute
 ```
 
 Service:
 
 | | |
 |---|---|
-| Agent | `~/Library/LaunchAgents/dev.claudetrack.collector.plist` |
-| Logs | `/tmp/claude-track.out.log`, `/tmp/claude-track.err.log` |
-| Restart | `launchctl kickstart -k gui/$(id -u)/dev.claudetrack.collector` |
-| Update | re-run the installer (or `claude-track install`) |
-| Remove | `claude-track uninstall` |
+| Agent | `~/Library/LaunchAgents/dev.usagefleet.collector.plist` |
+| Logs | `/tmp/usagefleet.out.log`, `/tmp/usagefleet.err.log` |
+| Restart | `launchctl kickstart -k gui/$(id -u)/dev.usagefleet.collector` |
+| Update | re-run the installer (or `usagefleet install`) |
+| Remove | `usagefleet uninstall` |
 
 Troubleshooting:
 
 - **"developer cannot be verified"** — the binary is unsigned; the installer
   removes the quarantine attribute. After a manual download run
-  `xattr -d com.apple.quarantine ./claude-track`.
+  `xattr -d com.apple.quarantine ./usagefleet`.
 - **Limits show nothing under the service** — a non-interactive LaunchAgent may be
   denied the login-Keychain read of `Claude Code-credentials`. Approve
   `/usr/bin/security` access once, or `export ANTHROPIC_API_KEY=…` *before*
-  `claude-track install` (it's baked into the agent).
+  `usagefleet install` (it's baked into the agent).
 - **`command not found`** — `~/.local/bin` isn't on your PATH; add
   `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc`.
 
@@ -97,7 +97,7 @@ Requirements: glibc x64 or arm64, `systemd` for autostart,
 [`gh`](https://cli.github.com/) authenticated (`gh auth login`).
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rokartur/claude-track/main/install.sh | sh -s -- --token ctk_xxx
+curl -fsSL https://raw.githubusercontent.com/rokartur/usagefleet/main/install.sh | sh -s -- --token uf_xxx
 ```
 
 Installs to `/usr/local/bin` (or `~/.local/bin`), writes a **user** systemd unit,
@@ -106,31 +106,31 @@ enables it, and runs `loginctl enable-linger $USER` so it survives logout.
 Verify:
 
 ```bash
-claude-track status
-systemctl --user status claude-track
+usagefleet status
+systemctl --user status usagefleet
 ```
 
 Service:
 
 | | |
 |---|---|
-| Unit | `~/.config/systemd/user/claude-track.service` |
-| Logs | `journalctl --user -u claude-track -f` |
-| Restart | `systemctl --user restart claude-track` |
-| Update | re-run the installer (or `claude-track install`) |
-| Remove | `claude-track uninstall` (then delete the unit file) |
+| Unit | `~/.config/systemd/user/usagefleet.service` |
+| Logs | `journalctl --user -u usagefleet -f` |
+| Restart | `systemctl --user restart usagefleet` |
+| Update | re-run the installer (or `usagefleet install`) |
+| Remove | `usagefleet uninstall` (then delete the unit file) |
 
 Troubleshooting:
 
 - **No systemd / installer couldn't drive `systemctl`** — it prints the manual
-  steps; or just run `claude-track watch` from your own supervisor.
+  steps; or just run `usagefleet watch` from your own supervisor.
 - **No desktop notifications** — install `notify-send`
   (`apt install libnotify-bin`, `dnf install libnotify`). A `--user` unit reaches
   the notification daemon only with a session bus (`DBUS_SESSION_BUS_ADDRESS`),
   which a graphical login provides.
 - **Claude login not detected** — on Linux the collector reads
   `~/.claude/.credentials.json`; sign in once with `claude`, or set
-  `ANTHROPIC_API_KEY` before `claude-track install`.
+  `ANTHROPIC_API_KEY` before `usagefleet install`.
 
 ---
 
@@ -140,11 +140,11 @@ Requirements: 64-bit Windows 10/11, PowerShell,
 [`gh`](https://cli.github.com/) authenticated (`gh auth login`).
 
 ```powershell
-$s = irm https://raw.githubusercontent.com/rokartur/claude-track/main/install.ps1
-& ([scriptblock]::Create($s)) -Token ctk_xxx
+$s = irm https://raw.githubusercontent.com/rokartur/usagefleet/main/install.ps1
+& ([scriptblock]::Create($s)) -Token uf_xxx
 ```
 
-Installs `claude-track.exe` to `%LOCALAPPDATA%\Programs\claude-track`, adds it to
+Installs `usagefleet.exe` to `%LOCALAPPDATA%\Programs\usagefleet`, adds it to
 your user PATH (open a new terminal to pick it up), unblocks the
 Mark-of-the-Web, and registers a hidden Scheduled Task that starts at logon.
 
@@ -154,27 +154,27 @@ Running `install.sh` from Git Bash/MSYS also works — it forwards your flags to
 Verify:
 
 ```powershell
-claude-track status
-claude-track run
+usagefleet status
+usagefleet run
 ```
 
 Service:
 
 | | |
 |---|---|
-| Task | `claude-track` — `schtasks /query /tn claude-track /v /fo list` |
-| Launcher + logs | `%LOCALAPPDATA%\claude-track\` (`claude-track.log`, truncated on each start) |
-| Restart | `schtasks /end /tn claude-track` then `schtasks /run /tn claude-track` |
+| Task | `usagefleet` — `schtasks /query /tn usagefleet /v /fo list` |
+| Launcher + logs | `%LOCALAPPDATA%\usagefleet\` (`usagefleet.log`, truncated on each start) |
+| Restart | `schtasks /end /tn usagefleet` then `schtasks /run /tn usagefleet` |
 | Update | re-run the installer (it stops the task first, so the .exe isn't locked) |
-| Remove | `claude-track uninstall` |
+| Remove | `usagefleet uninstall` |
 
 Troubleshooting:
 
 - **Script blocked** — the one-liner already runs via `[scriptblock]::Create`; for
   a downloaded file use
-  `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Token ctk_xxx`.
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Token uf_xxx`.
 - **SmartScreen warning** — the .exe is unsigned; the installer calls
-  `Unblock-File`. After a manual download: `Unblock-File .\claude-track.exe`.
+  `Unblock-File`. After a manual download: `Unblock-File .\usagefleet.exe`.
 - **Task XML rejected** — the installer falls back to a plain `onlogon` task; if
   even that fails it prints the exact `schtasks /create` line to run.
 - **No toasts** — check Settings → Notifications; the toast appears under
@@ -189,17 +189,17 @@ yourself:
 
 | Platform | Asset |
 |---|---|
-| macOS (Apple Silicon) | `claude-track-macos-arm64` |
-| macOS (Intel) | `claude-track-macos-x64` |
-| Linux (x64) | `claude-track-linux-x64` |
-| Linux (arm64) | `claude-track-linux-arm64` |
-| Windows (x64) | `claude-track-windows-x64.exe` |
+| macOS (Apple Silicon) | `usagefleet-macos-arm64` |
+| macOS (Intel) | `usagefleet-macos-x64` |
+| Linux (x64) | `usagefleet-linux-x64` |
+| Linux (arm64) | `usagefleet-linux-arm64` |
+| Windows (x64) | `usagefleet-windows-x64.exe` |
 
 ```bash
-gh release download -R rokartur/claude-track -p claude-track-linux-x64
-chmod +x claude-track-linux-x64 && mv claude-track-linux-x64 ~/.local/bin/claude-track
-claude-track init --endpoint https://claude-tracker.rokartur.com --token ctk_xxx
-claude-track install
+gh release download -R rokartur/usagefleet -p usagefleet-linux-x64
+chmod +x usagefleet-linux-x64 && mv usagefleet-linux-x64 ~/.local/bin/usagefleet
+usagefleet init --endpoint https://claude-tracker.rokartur.com --token uf_xxx
+usagefleet install
 ```
 
 From source (Node ≥ 18 or bun):

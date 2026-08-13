@@ -63,7 +63,7 @@ export function tailFile(
     // Skip past it so the file can't stall forever.
     if (length >= MAX_READ) {
       console.warn(
-        `claude-track: skipping a line > ${MAX_READ} bytes in ${filePath} at offset ${start}`,
+        `usagefleet: skipping a line > ${MAX_READ} bytes in ${filePath} at offset ${start}`,
       );
       return {
         records: [],

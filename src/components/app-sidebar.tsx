@@ -47,7 +47,7 @@ export function PageTitle() {
   const current = NAV.find((n) => pathname.startsWith(n.href));
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm">
-      <span className="hidden text-muted-foreground sm:inline">Claude Track</span>
+      <span className="hidden text-muted-foreground sm:inline">UsageFleet</span>
       <SlashIcon className="hidden size-3 text-muted-foreground/50 sm:inline" aria-hidden />
       <h1 className="truncate font-heading font-medium">{current?.label ?? "Dashboard"}</h1>
     </div>
@@ -124,8 +124,10 @@ export function AppSidebar({ email }: { email: string }) {
                 <GaugeIcon className="size-4" />
               </span>
               <span className="grid flex-1 text-left leading-tight">
-                <span className="truncate font-heading font-medium">Claude Track</span>
-                <span className="truncate text-xs text-muted-foreground">Usage across devices</span>
+                <span className="truncate font-heading font-medium">UsageFleet</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  Usage across groups and devices
+                </span>
               </span>
             </SidebarMenuButton>
           </SidebarMenuItem>

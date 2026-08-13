@@ -129,7 +129,7 @@ export async function runOnce(
       // the offset so it uploads once a fresh token is configured. Retrying the
       // remaining files would 401 identically, so stop this cycle and surface.
       log(
-        `auth rejected (401/403) — device token invalid or revoked; re-run \`claude-track init\` with a fresh token, then restart the service`,
+        `auth rejected (401/403) — device token invalid or revoked; re-run \`usagefleet init\` with a fresh token, then restart the service`,
       );
       result.failed = true;
       result.authFailed = true;

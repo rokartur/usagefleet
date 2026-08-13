@@ -1,9 +1,9 @@
 {
-  "name": "claude-track-collector",
+  "name": "usagefleet-collector",
   "version": "1.2.1",
-  "description": "Tails Claude Code, Claude Desktop, and pi agent JSONL logs and reports token usage to a Claude Track server.",
+  "description": "Tails Claude Code, Claude Desktop, and pi agent JSONL logs and reports token usage to a UsageFleet server.",
   "bin": {
-    "claude-track": "dist/index.js"
+    "usagefleet": "dist/index.js"
   },
   "files": [
     "dist"

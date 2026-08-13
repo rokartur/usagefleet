@@ -53,7 +53,7 @@ function TokenReveal({ token }: { token: string }) {
       </div>
       <FieldDescription>
         Configure the collector with{" "}
-        <code className="font-mono">CLAUDE_TRACK_TOKEN=&lt;token&gt;</code>
+        <code className="font-mono">USAGEFLEET_TOKEN=&lt;token&gt;</code>
       </FieldDescription>
     </div>
   );

@@ -3,7 +3,7 @@
 // credential and proxies downloads, which keeps the collector free of `gh` and
 // of any GitHub auth at all.
 
-const REPO = process.env.GITHUB_REPO ?? "rokartur/claude-track";
+const REPO = process.env.GITHUB_REPO ?? "rokartur/usagefleet";
 const SUMS_ASSET = "SHA256SUMS.txt";
 
 export interface ReleaseAsset {
@@ -38,7 +38,7 @@ async function gh(path: string, accept: string, revalidate?: number): Promise<Re
       accept,
       authorization: `Bearer ${token()}`,
       "x-github-api-version": "2022-11-28",
-      "user-agent": "claude-track",
+      "user-agent": "usagefleet",
     },
     ...(revalidate === undefined
       ? { cache: "no-store" as const }

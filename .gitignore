@@ -37,7 +37,7 @@ yarn-error.log*
 # collector build artifacts + local state
 /collector/node_modules
 /collector/dist
-.claude-track-state.json
+.usagefleet-state.json
 
 # bundled migrator (built inside the Docker image)
 /migrate.cjs

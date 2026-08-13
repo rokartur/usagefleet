@@ -34,13 +34,13 @@ export function blockMessage(view: GuardView): string | null {
       ? ` Resets ${until.toLocaleString([], { dateStyle: "short", timeStyle: "short" })}.`
       : "";
   return (
-    `claude-track: ${group} has used ${pct}% of its ${weekly ? "weekly" : "5h"} budget, ` +
+    `usagefleet: ${group} has used ${pct}% of its ${weekly ? "weekly" : "5h"} budget, ` +
     `so new prompts are blocked.${resets}`
   );
 }
 
 /**
- * Exit code for `claude-track guard`, the Claude Code `UserPromptSubmit` hook:
+ * Exit code for `usagefleet guard`, the Claude Code `UserPromptSubmit` hook:
  * 2 refuses the prompt (stderr is shown to the user), 0 lets it through.
  * Prints nothing on stdout — on this hook stdout is injected into the model's
  * context.

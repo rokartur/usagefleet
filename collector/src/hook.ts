@@ -8,7 +8,7 @@ const HOOK_TIMEOUT_S = 10;
 
 /** Recognises a guard hook we installed (at any binary path, from any version)
  *  so install is idempotent and uninstall is precise. */
-const GUARD_COMMAND = /claude-track.*\bguard\b/;
+const GUARD_COMMAND = /usagefleet.*\bguard\b/;
 
 interface HookCommand {
   type?: string;
@@ -26,7 +26,7 @@ interface ClaudeSettings {
   [key: string]: unknown;
 }
 
-/** `/path/to/claude-track guard`, quoted for the shell Claude Code runs it in. */
+/** `/path/to/usagefleet guard`, quoted for the shell Claude Code runs it in. */
 export function guardCommand(program: string[]): string {
   return program.map((p) => (p.includes(" ") ? `"${p}"` : p)).join(" ");
 }
@@ -99,13 +99,13 @@ function editSettings(
 }
 
 /**
- * Register `claude-track guard` as a Claude Code UserPromptSubmit hook, so a
+ * Register `usagefleet guard` as a Claude Code UserPromptSubmit hook, so a
  * group with blocking enabled actually refuses prompts. Called by
- * `claude-track install`; set CLAUDE_TRACK_HOOK=0 to keep settings.json
+ * `usagefleet install`; set USAGEFLEET_HOOK=0 to keep settings.json
  * untouched.
  */
 export function installPromptHook(program: string[]): void {
-  if (process.env.CLAUDE_TRACK_HOOK === "0") return;
+  if (process.env.USAGEFLEET_HOOK === "0") return;
   const command = guardCommand(program);
   editSettings(
     (s) => withGuardHook(s, command),

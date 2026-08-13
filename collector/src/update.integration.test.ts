@@ -11,12 +11,12 @@ const spawn = vi.fn(() => ({ unref: vi.fn() }));
 vi.mock("node:child_process", () => ({ spawn }));
 
 const { assetName, checkForUpdate } = await import("./update.js");
-const cfg = { endpoint: "https://srv.test", token: "ctk_x" };
+const cfg = { endpoint: "https://srv.test", token: "uf_x" };
 const ASSET = assetName(process.platform, process.arch) as string;
 
 /** Point the updater at a throwaway file instead of the running executable. */
 function fakeBinary(contents: string): string {
-  const path = join(mkdtempSync(join(tmpdir(), "ct-upd-")), "claude-track");
+  const path = join(mkdtempSync(join(tmpdir(), "uf-upd-")), "usagefleet");
   writeFileSync(path, contents);
   Object.defineProperty(process, "execPath", { value: path, configurable: true });
   return path;

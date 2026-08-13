@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-claude-track collector installer for Windows (mirror of install.sh).
+usagefleet collector installer for Windows (mirror of install.sh).
 
 .DESCRIPTION
 Downloads the latest standalone .exe from the project's GitHub Releases,
-verifies its SHA-256 checksum, installs it as `claude-track` on your PATH, and
+verifies its SHA-256 checksum, installs it as `usagefleet` on your PATH, and
 (when a token is available) registers it as an autostart Scheduled Task that
 runs hidden at logon.
 
@@ -12,11 +12,11 @@ The repo is PRIVATE - downloads use the GitHub CLI (`gh`). Install it from
 https://cli.github.com/ and run `gh auth login` once (or set GH_TOKEN).
 
 .EXAMPLE
-$s = irm https://raw.githubusercontent.com/rokartur/claude-track/main/install.ps1
-& ([scriptblock]::Create($s)) -Token ctk_xxx
+$s = irm https://raw.githubusercontent.com/rokartur/usagefleet/main/install.ps1
+& ([scriptblock]::Create($s)) -Token uf_xxx
 
 .EXAMPLE
-.\install.ps1 -Token ctk_xxx -Endpoint https://track.example.com
+.\install.ps1 -Token uf_xxx -Endpoint https://track.example.com
 
 .NOTES
 Re-run the same command any time to update: it pulls the latest binary and
@@ -25,13 +25,13 @@ restarts the task.
 [CmdletBinding()]
 param(
   # Device token from the server's Devices page; configures + enables autostart.
-  [string]$Token = $env:CLAUDE_TRACK_TOKEN,
+  [string]$Token = $env:USAGEFLEET_TOKEN,
   # Server URL (default: https://claude-tracker.rokartur.com).
-  [string]$Endpoint = $env:CLAUDE_TRACK_ENDPOINT,
-  # Install location (default: %LOCALAPPDATA%\Programs\claude-track).
-  [string]$BinDir = $env:CLAUDE_TRACK_BIN_DIR,
+  [string]$Endpoint = $env:USAGEFLEET_ENDPOINT,
+  # Install location (default: %LOCALAPPDATA%\Programs\usagefleet).
+  [string]$BinDir = $env:USAGEFLEET_BIN_DIR,
   # Pin a release tag instead of latest (e.g. v1.0.0.3).
-  [string]$Version = $(if ($env:CLAUDE_TRACK_VERSION) { $env:CLAUDE_TRACK_VERSION } else { 'latest' }),
+  [string]$Version = $(if ($env:USAGEFLEET_VERSION) { $env:USAGEFLEET_VERSION } else { 'latest' }),
   # Install the binary only; don't register autostart.
   [switch]$NoService,
   # Register autostart even without a token (must be configured already).
@@ -39,10 +39,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repo = 'rokartur/claude-track'
+$repo = 'rokartur/usagefleet'
 $defaultEndpoint = 'https://claude-tracker.rokartur.com'
-$asset = 'claude-track-windows-x64.exe'
-$task = 'claude-track'
+$asset = 'usagefleet-windows-x64.exe'
+$task = 'usagefleet'
 
 function Write-Info { param($m) Write-Host "==> $m" -ForegroundColor Blue }
 function Write-Warn { param($m) Write-Host "warning: $m" -ForegroundColor Yellow }
@@ -82,7 +82,7 @@ function Get-Asset {
   return ((Invoke-Native gh $a -Quiet) -eq 0)
 }
 
-$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("claude-track-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("usagefleet-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
 try {
   $downloaded = Join-Path $tmp $asset
@@ -112,9 +112,9 @@ try {
   }
 
   # ---- install --------------------------------------------------------------
-  if (-not $BinDir) { $BinDir = Join-Path $env:LOCALAPPDATA 'Programs\claude-track' }
+  if (-not $BinDir) { $BinDir = Join-Path $env:LOCALAPPDATA 'Programs\usagefleet' }
   New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
-  $dest = Join-Path $BinDir 'claude-track.exe'
+  $dest = Join-Path $BinDir 'usagefleet.exe'
 
   # Stop the autostart task first: Windows locks a running .exe against
   # overwrite, so an update would otherwise fail here.
@@ -124,7 +124,7 @@ try {
   }
   catch {
     if (-not (Test-Path -LiteralPath $dest)) { throw }
-    # Still locked (a `claude-track watch` running in some terminal): renaming a
+    # Still locked (a `usagefleet watch` running in some terminal): renaming a
     # running .exe aside IS allowed, so swap it out of the way and retry.
     Remove-Item -LiteralPath "$dest.old" -Force -ErrorAction SilentlyContinue
     Rename-Item -LiteralPath $dest -NewName ((Split-Path $dest -Leaf) + '.old') -Force
@@ -133,7 +133,7 @@ try {
   # Mark-of-the-Web: a downloaded .exe is blocked by SmartScreen until unblocked.
   Unblock-File -LiteralPath $dest -ErrorAction SilentlyContinue
 
-  Write-Info "Installed claude-track -> $dest"
+  Write-Info "Installed usagefleet -> $dest"
   if ((Invoke-Native $dest @('help') -Quiet) -eq 0) { Write-Info 'Binary runs OK.' }
   else { Write-Warn 'binary installed but did not run cleanly.' }
 
@@ -149,17 +149,17 @@ try {
   # ---- configure ------------------------------------------------------------
   if ($Token) {
     if (-not $Endpoint) { $Endpoint = $defaultEndpoint }
-    Write-Info "Configuring for $Endpoint (writing ~/.claude-track.json)..."
+    Write-Info "Configuring for $Endpoint (writing ~/.usagefleet.json)..."
     if ((Invoke-Native $dest @('init', '--endpoint', $Endpoint, '--token', $Token)) -ne 0) {
-      Die 'claude-track init failed - see the message above.'
+      Die 'usagefleet init failed - see the message above.'
     }
   }
 
   $configured = $false
   if ($Token -and $Endpoint) { $configured = $true }
-  elseif ($env:CLAUDE_TRACK_TOKEN -and $env:CLAUDE_TRACK_ENDPOINT) { $configured = $true }
+  elseif ($env:USAGEFLEET_TOKEN -and $env:USAGEFLEET_ENDPOINT) { $configured = $true }
   else {
-    $cfg = Join-Path $HOME '.claude-track.json'
+    $cfg = Join-Path $HOME '.usagefleet.json'
     if (Test-Path $cfg) {
       $raw = Get-Content $cfg -Raw
       $configured = ($raw -match '"endpoint"') -and ($raw -match '"token"')
@@ -170,25 +170,25 @@ try {
   if ($NoService) {
     Write-Host ''
     Write-Info 'Binary installed. Next steps:'
-    if (-not $configured) { Write-Host "  claude-track init --endpoint $defaultEndpoint --token ctk_xxx" }
-    Write-Host '  claude-track install        # enable autostart background task'
+    if (-not $configured) { Write-Host "  usagefleet init --endpoint $defaultEndpoint --token uf_xxx" }
+    Write-Host '  usagefleet install        # enable autostart background task'
   }
   elseif ($Service -or $configured) {
     Write-Info 'Enabling autostart task...'
     if ((Invoke-Native $dest @('install')) -ne 0) {
-      Die 'claude-track install failed - see the messages above.'
+      Die 'usagefleet install failed - see the messages above.'
     }
     Write-Host ''
-    Write-Info 'Done. claude-track is running and will start at logon.'
+    Write-Info 'Done. usagefleet is running and will start at logon.'
     Write-Info 'Update anytime by re-running this installer.'
   }
   else {
     Write-Host ''
     Write-Warn 'No token/endpoint configured - skipping autostart.'
     Write-Info 'Configure then enable it:'
-    Write-Host "  claude-track init --endpoint $defaultEndpoint --token ctk_xxx"
-    Write-Host '  claude-track install'
-    Write-Host 'Or re-run this installer with: -Token ctk_xxx'
+    Write-Host "  usagefleet init --endpoint $defaultEndpoint --token uf_xxx"
+    Write-Host '  usagefleet install'
+    Write-Host 'Or re-run this installer with: -Token uf_xxx'
   }
 }
 finally {

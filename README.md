@@ -1,4 +1,4 @@
-# Claude Track
+# UsageFleet
 
 Self-hosted tracker for **Claude usage** across one subscription used on many
 **desktop** devices (macOS, Linux, Windows). Group devices and see each group's
@@ -90,7 +90,7 @@ to change ports.
 ## Local development
 
 ```bash
-docker run -d --name ct-db -e POSTGRES_DB=app -e POSTGRES_USER=app \
+docker run -d --name usagefleet-db -e POSTGRES_DB=app -e POSTGRES_USER=app \
   -e POSTGRES_PASSWORD=app -p 5432:5432 postgres:17-alpine
 npm install
 npm run db:migrate     # apply migrations
@@ -111,5 +111,5 @@ Schema changes: edit `src/db/schema.ts`, run `npm run db:generate`
 | `src/lib/auth.ts` | better-auth (email/password); device auth is a separate hashed token |
 | `src/app/api/v1/usage/` | ingestion endpoint (`x-api-key`, dedup on `uuid`) |
 | `src/app/(dash)/` | dashboard, groups, devices, settings |
-| `collector/` | standalone Node CLI (`claude-track`) |
+| `collector/` | standalone Node CLI (`usagefleet`) |
 | `Dockerfile`, `docker-compose.yml` | two-container deployment |

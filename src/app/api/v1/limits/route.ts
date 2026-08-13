@@ -43,7 +43,7 @@ function toDate(v: string | null | undefined): Date | null {
  * account-wide utilization a collector reads locally cannot be split per group
  * without every device's events.
  *
- * Also the enforcement read: `claude-track guard` calls this on every prompt
+ * Also the enforcement read: `usagefleet guard` calls this on every prompt
  * and refuses the prompt when `blocked` is true.
  */
 export async function GET(req: Request) {

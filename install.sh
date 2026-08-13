@@ -1,8 +1,8 @@
 #!/bin/sh
-# claude-track collector installer (macOS + Linux).
+# usagefleet collector installer (macOS + Linux).
 #
 # Downloads the latest standalone binary for your OS/arch from the project's
-# GitHub Releases, verifies its SHA-256 checksum, installs it as `claude-track`
+# GitHub Releases, verifies its SHA-256 checksum, installs it as `usagefleet`
 # on your PATH, and (when a token is available) enables it as an autostart
 # background service.
 #
@@ -10,7 +10,7 @@
 # access and have run `gh auth login` once (or have GH_TOKEN/GITHUB_TOKEN set).
 #
 # Quick start (you only need a device token from the Devices page):
-#   curl -fsSL https://raw.githubusercontent.com/rokartur/claude-track/main/install.sh | sh -s -- --token ctk_xxx
+#   curl -fsSL https://raw.githubusercontent.com/rokartur/usagefleet/main/install.sh | sh -s -- --token uf_xxx
 #
 # On Windows (Git Bash/MSYS/Cygwin) this hands over to install.ps1 automatically,
 # keeping your flags — autostart there is a Scheduled Task, not launchd/systemd.
@@ -19,7 +19,7 @@
 # and restarts the service.
 #
 # Flags:
-#   --token <ctk_..>   device token; configures + enables the service automatically
+#   --token <uf_..>   device token; configures + enables the service automatically
 #   --endpoint <url>   server URL (default: https://claude-tracker.rokartur.com)
 #   --no-service       install the binary only; don't enable autostart
 #   --service          force-enable the service even without a token (must be configured already)
@@ -27,18 +27,18 @@
 #   --version <tag>    pin a release tag instead of latest (e.g. v1.0.0.3)
 #   -h, --help         show this help
 #
-# Env overrides: CLAUDE_TRACK_VERSION, CLAUDE_TRACK_BIN_DIR,
-#   CLAUDE_TRACK_ENDPOINT, CLAUDE_TRACK_TOKEN, GH_TOKEN/GITHUB_TOKEN.
+# Env overrides: USAGEFLEET_VERSION, USAGEFLEET_BIN_DIR,
+#   USAGEFLEET_ENDPOINT, USAGEFLEET_TOKEN, GH_TOKEN/GITHUB_TOKEN.
 set -eu
 
-REPO="rokartur/claude-track"
+REPO="rokartur/usagefleet"
 DEFAULT_ENDPOINT="https://claude-tracker.rokartur.com"
 
-ENDPOINT="${CLAUDE_TRACK_ENDPOINT:-}"
-TOKEN="${CLAUDE_TRACK_TOKEN:-}"
+ENDPOINT="${USAGEFLEET_ENDPOINT:-}"
+TOKEN="${USAGEFLEET_TOKEN:-}"
 SERVICE_MODE="auto"   # auto | force | skip
-BIN_DIR="${CLAUDE_TRACK_BIN_DIR:-}"
-VERSION="${CLAUDE_TRACK_VERSION:-latest}"
+BIN_DIR="${USAGEFLEET_BIN_DIR:-}"
+VERSION="${USAGEFLEET_VERSION:-latest}"
 
 info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -99,7 +99,7 @@ case "$arch" in
   x86_64|amd64)  arch_part="x64" ;;
   *) fail "unsupported architecture: $arch" ;;
 esac
-ASSET="claude-track-${os_part}-${arch_part}"
+ASSET="usagefleet-${os_part}-${arch_part}"
 
 # ---- release downloader (private repo → gh) ---------------------------------
 # gh honors GH_TOKEN/GITHUB_TOKEN automatically, so it also works headless/CI.
@@ -130,7 +130,7 @@ else
   sha256() { echo SKIP; }
 fi
 
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/claude-track.XXXXXX")"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/usagefleet.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
 info "Downloading $ASSET (${VERSION})..."
@@ -163,7 +163,7 @@ if [ -z "$BIN_DIR" ]; then
   fi
 fi
 mkdir -p "$BIN_DIR" || fail "cannot create install dir: $BIN_DIR"
-DEST="${BIN_DIR}/claude-track"
+DEST="${BIN_DIR}/usagefleet"
 
 # ---- install ----------------------------------------------------------------
 mv "${tmp}/${ASSET}" "$DEST"
@@ -175,7 +175,7 @@ if [ "$os" = "Darwin" ] && command -v xattr >/dev/null 2>&1; then
   xattr -d com.apple.quarantine "$DEST" 2>/dev/null || true
 fi
 
-info "Installed claude-track -> $DEST"
+info "Installed usagefleet -> $DEST"
 "$DEST" help >/dev/null 2>&1 && info "Binary runs OK." \
   || warn "binary installed but did not run cleanly — check your OS/arch."
 
@@ -189,15 +189,15 @@ esac
 # ---- configure (init) -------------------------------------------------------
 if [ -n "$TOKEN" ]; then
   [ -n "$ENDPOINT" ] || ENDPOINT="$DEFAULT_ENDPOINT"
-  info "Configuring for $ENDPOINT (writing ~/.claude-track.json)..."
+  info "Configuring for $ENDPOINT (writing ~/.usagefleet.json)..."
   "$DEST" init --endpoint "$ENDPOINT" --token "$TOKEN"
 fi
 
 # Is the collector configured (token+endpoint resolvable from flags/env/file)?
 have_config() {
   { [ -n "$TOKEN" ] && [ -n "$ENDPOINT" ]; } && return 0
-  [ -n "${CLAUDE_TRACK_TOKEN:-}" ] && [ -n "${CLAUDE_TRACK_ENDPOINT:-}" ] && return 0
-  f="${HOME}/.claude-track.json"
+  [ -n "${USAGEFLEET_TOKEN:-}" ] && [ -n "${USAGEFLEET_ENDPOINT:-}" ] && return 0
+  f="${HOME}/.usagefleet.json"
   [ -f "$f" ] && grep -q '"endpoint"' "$f" && grep -q '"token"' "$f"
 }
 
@@ -206,8 +206,8 @@ case "$SERVICE_MODE" in
   skip)
     echo
     info "Binary installed. Next steps:"
-    have_config || echo "  claude-track init --endpoint $DEFAULT_ENDPOINT --token ctk_xxx"
-    echo "  claude-track install        # enable autostart background service"
+    have_config || echo "  usagefleet init --endpoint $DEFAULT_ENDPOINT --token uf_xxx"
+    echo "  usagefleet install        # enable autostart background service"
     ;;
   force)
     info "Enabling autostart service..."
@@ -218,15 +218,15 @@ case "$SERVICE_MODE" in
       info "Enabling autostart service..."
       "$DEST" install
       echo
-      info "Done. claude-track is running and will start on login."
+      info "Done. usagefleet is running and will start on login."
       info "Update anytime by re-running this installer."
     else
       echo
       warn "No token/endpoint configured — skipping autostart."
       info "Configure then enable it:"
-      echo "  claude-track init --endpoint $DEFAULT_ENDPOINT --token ctk_xxx"
-      echo "  claude-track install"
-      echo "Or re-run this installer with: --token ctk_xxx"
+      echo "  usagefleet init --endpoint $DEFAULT_ENDPOINT --token uf_xxx"
+      echo "  usagefleet install"
+      echo "Or re-run this installer with: --token uf_xxx"
     fi
     ;;
 esac

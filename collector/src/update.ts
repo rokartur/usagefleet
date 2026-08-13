@@ -18,8 +18,8 @@ export function assetName(platform: string, arch: string): string | null {
           : null;
   const cpu = arch === "arm64" ? "arm64" : arch === "x64" ? "x64" : null;
   if (!os || !cpu) return null;
-  if (os === "windows") return cpu === "x64" ? "claude-track-windows-x64.exe" : null;
-  return `claude-track-${os}-${cpu}`;
+  if (os === "windows") return cpu === "x64" ? "usagefleet-windows-x64.exe" : null;
+  return `usagefleet-${os}-${cpu}`;
 }
 
 interface LatestResponse {
@@ -52,7 +52,7 @@ export function swapIn(downloaded: string, target: string): void {
  *
  * Every failure path is a silent no-op — a self-updater that breaks a working
  * install is worse than one that skips a release. `force` is the manual
- * `claude-track update`, which ignores CLAUDE_TRACK_UPDATE=0 but still refuses
+ * `usagefleet update`, which ignores USAGEFLEET_UPDATE=0 but still refuses
  * to touch a dev build.
  */
 export async function checkForUpdate(
@@ -64,7 +64,7 @@ export async function checkForUpdate(
     if (force) log("update: this is a dev build — install a release binary first.");
     return null;
   }
-  if (!force && process.env.CLAUDE_TRACK_UPDATE === "0") return null;
+  if (!force && process.env.USAGEFLEET_UPDATE === "0") return null;
 
   const asset = assetName(process.platform, process.arch);
   if (!asset) return null;

@@ -89,13 +89,13 @@ async function fetchOauthModelLimits(token: string): Promise<ModelLimit[]> {
     headers: {
       authorization: `Bearer ${token}`,
       "anthropic-beta": "oauth-2025-04-20",
-      "user-agent": "claude-code/2.1.5 (claude-track)",
+      "user-agent": "claude-code/2.1.5 (usagefleet)",
     },
     signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) return [];
   const body: unknown = await res.json().catch(() => null);
-  if (process.env.CLAUDE_TRACK_DEBUG_HEADERS) {
+  if (process.env.USAGEFLEET_DEBUG_HEADERS) {
     console.error(`[debug] oauth/usage: ${JSON.stringify(body)}`);
   }
   return parseOauthUsage(body);
@@ -192,7 +192,7 @@ export async function fetchLimits(creds: ClaudeCreds): Promise<LimitsReport> {
   if (creds.source === "sub") {
     headers["authorization"] = `Bearer ${creds.token}`;
     headers["anthropic-beta"] = "oauth-2025-04-20";
-    headers["user-agent"] = "claude-code/2.1.5 (claude-track)";
+    headers["user-agent"] = "claude-code/2.1.5 (usagefleet)";
   } else {
     headers["x-api-key"] = creds.token;
   }
@@ -213,8 +213,8 @@ export async function fetchLimits(creds: ClaudeCreds): Promise<LimitsReport> {
   // rejected response ALSO lacks the headers, the feature is unavailable; throw
   // so the caller logs it instead of POSTing an all-null report silently.
   // Diagnostic: dump every rate-limit header so unrecognized per-model names
-  // can be discovered in the field (CLAUDE_TRACK_DEBUG_HEADERS=1).
-  if (process.env.CLAUDE_TRACK_DEBUG_HEADERS) {
+  // can be discovered in the field (USAGEFLEET_DEBUG_HEADERS=1).
+  if (process.env.USAGEFLEET_DEBUG_HEADERS) {
     for (const [k, v] of res.headers.entries()) {
       if (k.includes("ratelimit")) console.error(`[debug] ${k}: ${v}`);
     }

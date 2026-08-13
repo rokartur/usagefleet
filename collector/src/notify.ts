@@ -42,7 +42,7 @@ function notifyLinux(title: string, message: string, urgency: Urgency): void {
   spawnQuiet(
     "notify-send",
     // `--` ends option parsing so a title/message can never be read as a flag.
-    ["-a", "claude-track", "-u", urgency, "--", oneLine(title), oneLine(message)],
+    ["-a", "usagefleet", "-u", urgency, "--", oneLine(title), oneLine(message)],
     () => {
       spawnQuiet("kdialog", ["--title", oneLine(title), "--passivepopup", oneLine(message), "10"]);
     },

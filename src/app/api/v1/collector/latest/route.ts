@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * What the newest collector release is, for `claude-track update`. Devices
+ * What the newest collector release is, for `usagefleet update`. Devices
  * compare `tag` against the one baked into their binary and pull the matching
  * asset from /api/v1/collector/download.
  *

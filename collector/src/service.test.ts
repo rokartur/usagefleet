@@ -14,8 +14,8 @@ describe("looksLikeCompiledBinary", () => {
     // help and exited.
     expect(
       looksLikeCompiledBinary(
-        "/$bunfs/root/claude-track-macos-arm64",
-        "/Users/me/.local/bin/claude-track",
+        "/$bunfs/root/usagefleet-macos-arm64",
+        "/Users/me/.local/bin/usagefleet",
       ),
     ).toBe(true);
   });
@@ -23,52 +23,52 @@ describe("looksLikeCompiledBinary", () => {
   it("detects a bun --compile binary on Windows (~BUN path)", () => {
     expect(
       looksLikeCompiledBinary(
-        "B:\\~BUN\\root\\claude-track-windows-x64.exe",
-        "C:\\Users\\me\\claude-track.exe",
+        "B:\\~BUN\\root\\usagefleet-windows-x64.exe",
+        "C:\\Users\\me\\usagefleet.exe",
       ),
     ).toBe(true);
   });
 
   it("treats a missing argv[1] as a compiled binary", () => {
-    expect(looksLikeCompiledBinary(undefined, "/x/claude-track")).toBe(true);
+    expect(looksLikeCompiledBinary(undefined, "/x/usagefleet")).toBe(true);
   });
 
   it("treats argv[1] === execPath as a compiled binary", () => {
-    expect(looksLikeCompiledBinary("/x/claude-track", "/x/claude-track")).toBe(true);
+    expect(looksLikeCompiledBinary("/x/usagefleet", "/x/usagefleet")).toBe(true);
   });
 });
 
 describe("windowsLauncherVbs", () => {
   const script = windowsLauncherVbs(
-    ["C:\\Program Files\\ct\\claude-track.exe", "watch"],
+    ["C:\\Program Files\\usagefleet\\usagefleet.exe", "watch"],
     [
-      ["CLAUDE_TRACK_TOKEN", 'ctk_a"b'],
-      ["CLAUDE_TRACK_BROKEN", "line1\nline2"],
+      ["USAGEFLEET_TOKEN", 'uf_a"b'],
+      ["USAGEFLEET_BROKEN", "line1\nline2"],
     ],
-    "C:\\logs\\claude-track.log",
+    "C:\\logs\\usagefleet.log",
   );
 
   it("runs the collector hidden, logged, and waits for it", () => {
     // window style 0 = no console window; True = wait, so the Scheduled Task
     // instance lives as long as the collector (restart-on-failure works).
     // Unescaped, the VBS literal is the canonical cmd form:
-    //   cmd /c ""C:\..\claude-track.exe" "watch" > "C:\logs\claude-track.log" 2>&1"
+    //   cmd /c ""C:\..\usagefleet.exe" "watch" > "C:\logs\usagefleet.log" 2>&1"
     expect(script).toContain(
-      'sh.Run "cmd /c """"C:\\Program Files\\ct\\claude-track.exe"" ""watch"" > ""C:\\logs\\claude-track.log"" 2>&1""", 0, True',
+      'sh.Run "cmd /c """"C:\\Program Files\\usagefleet\\usagefleet.exe"" ""watch"" > ""C:\\logs\\usagefleet.log"" 2>&1""", 0, True',
     );
   });
 
   it("escapes quotes in env values and drops unrepresentable newlines", () => {
-    expect(script).toContain('env("CLAUDE_TRACK_TOKEN") = "ctk_a""b"');
-    expect(script).not.toContain("CLAUDE_TRACK_BROKEN");
+    expect(script).toContain('env("USAGEFLEET_TOKEN") = "uf_a""b"');
+    expect(script).not.toContain("USAGEFLEET_BROKEN");
   });
 });
 
 describe("windowsTaskXml", () => {
   it("escapes the user id and points the action at the launcher", () => {
-    const xml = windowsTaskXml("C:\\ct\\watch.vbs", "AC&ME\\me");
+    const xml = windowsTaskXml("C:\\usagefleet\\watch.vbs", "AC&ME\\me");
     expect(xml).toContain("<UserId>AC&amp;ME\\me</UserId>");
-    expect(xml).toContain('<Arguments>//B //Nologo "C:\\ct\\watch.vbs"</Arguments>');
+    expect(xml).toContain('<Arguments>//B //Nologo "C:\\usagefleet\\watch.vbs"</Arguments>');
     expect(xml).toContain("<LogonTrigger>");
   });
 });

@@ -8,8 +8,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "Claude Track",
-  description: "Track Claude usage across grouped devices.",
+  title: "UsageFleet",
+  description: "Track AI usage across groups and devices.",
 };
 
 export default function RootLayout({

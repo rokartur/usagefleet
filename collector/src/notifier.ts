@@ -13,16 +13,16 @@ export interface NotifyConfig {
 const DEFAULT_THRESHOLDS = [80, 95];
 
 /** Resolve notify config from env. Enabled by default; disable with
- *  CLAUDE_TRACK_NOTIFY=0 (also: false/off/no). Thresholds from
- *  CLAUDE_TRACK_NOTIFY_THRESHOLDS as a comma list (e.g. "50,80,95"). */
+ *  USAGEFLEET_NOTIFY=0 (also: false/off/no). Thresholds from
+ *  USAGEFLEET_NOTIFY_THRESHOLDS as a comma list (e.g. "50,80,95"). */
 export function loadNotifyConfig(
   env: Record<string, string | undefined> = process.env,
 ): NotifyConfig {
-  const flag = env.CLAUDE_TRACK_NOTIFY;
+  const flag = env.USAGEFLEET_NOTIFY;
   const enabled = flag == null || !/^(0|false|off|no)$/i.test(flag.trim());
 
   let thresholds = DEFAULT_THRESHOLDS;
-  const raw = env.CLAUDE_TRACK_NOTIFY_THRESHOLDS;
+  const raw = env.USAGEFLEET_NOTIFY_THRESHOLDS;
   if (raw && raw.trim()) {
     const parsed = raw
       .split(",")

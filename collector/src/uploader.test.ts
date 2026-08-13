@@ -4,7 +4,7 @@ import type { BatchPayload, Config } from "./types.js";
 
 const cfg: Config = {
   endpoint: "https://x.test",
-  token: "ctk_test",
+  token: "uf_test",
   statePath: "",
   projectsDir: "",
   desktopDir: null,

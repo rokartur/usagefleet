@@ -27,29 +27,29 @@ export function readFileConfig(): FileConfig {
   }
 }
 
-/** Resolve config from env first, then ~/.claude-track.json. */
+/** Resolve config from env first, then ~/.usagefleet.json. */
 export function loadConfig(): Config {
   const file = readFileConfig();
   // Use `||` (not `??`) so an empty-string env var falls back to the config
-  // file — launchd/systemd units may inject empty CLAUDE_TRACK_* values.
-  const endpoint = (process.env.CLAUDE_TRACK_ENDPOINT || file.endpoint || "").replace(/\/+$/, "");
-  const token = process.env.CLAUDE_TRACK_TOKEN || file.token || "";
-  if (!endpoint) throw new Error("CLAUDE_TRACK_ENDPOINT is not set");
-  if (!token) throw new Error("CLAUDE_TRACK_TOKEN is not set");
+  // file — launchd/systemd units may inject empty USAGEFLEET_* values.
+  const endpoint = (process.env.USAGEFLEET_ENDPOINT || file.endpoint || "").replace(/\/+$/, "");
+  const token = process.env.USAGEFLEET_TOKEN || file.token || "";
+  if (!endpoint) throw new Error("USAGEFLEET_ENDPOINT is not set");
+  if (!token) throw new Error("USAGEFLEET_TOKEN is not set");
   // Guard batch size: "0" (infinite loop), NaN (silent drop), fractional → 100.
-  const parsedBatch = Math.floor(Number(process.env.CLAUDE_TRACK_BATCH));
+  const parsedBatch = Math.floor(Number(process.env.USAGEFLEET_BATCH));
   const batchSize = Number.isFinite(parsedBatch) && parsedBatch > 0 ? parsedBatch : 100;
   return {
     endpoint,
     token,
     statePath: defaultStatePath(),
-    projectsDir: process.env.CLAUDE_TRACK_PROJECTS || file.projectsDir || defaultProjectsDir(),
+    projectsDir: process.env.USAGEFLEET_PROJECTS || file.projectsDir || defaultProjectsDir(),
     desktopDir: resolveOptionalDir(
-      process.env.CLAUDE_TRACK_DESKTOP,
+      process.env.USAGEFLEET_DESKTOP,
       file.desktopDir,
       defaultDesktopSessionsDir(),
     ),
-    piDirs: resolvePiDirs(process.env.CLAUDE_TRACK_PI, file.piDir),
+    piDirs: resolvePiDirs(process.env.USAGEFLEET_PI, file.piDir),
     batchSize,
   };
 }
@@ -72,7 +72,7 @@ export function resolvePiDirs(
   return [...new Set(raw.map((d) => d.trim()).filter((d) => d.length > 0))];
 }
 
-/** Optional scan root (CLAUDE_TRACK_DESKTOP / CLAUDE_TRACK_PI): env "off"/"0"
+/** Optional scan root (USAGEFLEET_DESKTOP / USAGEFLEET_PI): env "off"/"0"
  *  disables, env or config-file path overrides, else the auto-detected default. */
 function resolveOptionalDir(
   env: string | undefined,

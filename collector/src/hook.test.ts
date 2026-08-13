@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { guardCommand, withGuardHook, withoutGuardHook } from "./hook.js";
 
-const CMD = '"/Users/x/Library/Application Support/claude-track/claude-track" guard';
+const CMD = '"/Users/x/Library/Application Support/usagefleet/usagefleet" guard';
 
 describe("guardCommand", () => {
   it("quotes only the arguments that need it", () => {
-    expect(guardCommand(["/Users/x/Library/Application Support/ct/claude-track", "guard"])).toBe(
-      '"/Users/x/Library/Application Support/ct/claude-track" guard',
-    );
-    expect(guardCommand(["/usr/bin/node", "/opt/ct/index.js", "guard"])).toBe(
-      "/usr/bin/node /opt/ct/index.js guard",
+    expect(
+      guardCommand(["/Users/x/Library/Application Support/usagefleet/usagefleet", "guard"]),
+    ).toBe('"/Users/x/Library/Application Support/usagefleet/usagefleet" guard');
+    expect(guardCommand(["/usr/bin/node", "/opt/usagefleet/index.js", "guard"])).toBe(
+      "/usr/bin/node /opt/usagefleet/index.js guard",
     );
   });
 });
@@ -22,7 +22,7 @@ describe("withGuardHook", () => {
   });
 
   it("replaces a guard hook left by an older install at a different path", () => {
-    const stale = withGuardHook({}, "/old/path/claude-track guard");
+    const stale = withGuardHook({}, "/old/path/usagefleet guard");
     const fresh = withGuardHook(stale, CMD);
     expect(fresh.hooks?.UserPromptSubmit).toHaveLength(1);
     expect(fresh.hooks?.UserPromptSubmit[0].hooks?.[0].command).toBe(CMD);

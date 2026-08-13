@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { getDashboard } from "../src/lib/data";
 
 async function main() {
-  const userId = JSON.parse(readFileSync("/tmp/ct-seed.json", "utf8")).userId;
+  const userId = JSON.parse(readFileSync("/tmp/usagefleet-seed.json", "utf8")).userId;
   const d = await getDashboard(userId, new Date());
   console.log(
     JSON.stringify(

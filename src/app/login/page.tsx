@@ -12,7 +12,7 @@ export default async function LoginPage() {
       <Card className="w-full max-w-sm [--card-spacing:--spacing(6)]">
         <CardHeader>
           <CardTitle className="text-lg">Sign in</CardTitle>
-          <CardDescription>Welcome back to Claude Track.</CardDescription>
+          <CardDescription>Welcome back to UsageFleet.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
           <AuthForm mode="login" />

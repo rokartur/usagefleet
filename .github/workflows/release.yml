@@ -49,14 +49,14 @@ jobs:
             echo "→ $2"
             bun build "$ENTRY" --compile --target="$1" --outfile "dist/$2"
           }
-          build bun-darwin-arm64  claude-track-macos-arm64
-          build bun-darwin-x64    claude-track-macos-x64
-          build bun-linux-x64     claude-track-linux-x64
-          build bun-linux-arm64   claude-track-linux-arm64
-          build bun-windows-x64   claude-track-windows-x64.exe
-          # Portable Node bundle (run with: node claude-track.js <cmd>)
-          bun build "$ENTRY" --target=node --outfile dist/claude-track.js
-          chmod +x dist/claude-track-macos-* dist/claude-track-linux-* || true
+          build bun-darwin-arm64  usagefleet-macos-arm64
+          build bun-darwin-x64    usagefleet-macos-x64
+          build bun-linux-x64     usagefleet-linux-x64
+          build bun-linux-arm64   usagefleet-linux-arm64
+          build bun-windows-x64   usagefleet-windows-x64.exe
+          # Portable Node bundle (run with: node usagefleet.js <cmd>)
+          bun build "$ENTRY" --target=node --outfile dist/usagefleet.js
+          chmod +x dist/usagefleet-macos-* dist/usagefleet-linux-* || true
 
       - name: Checksums
         working-directory: collector/dist
@@ -66,46 +66,46 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
-          name: claude-track ${{ steps.meta.outputs.tag }}
+          name: usagefleet ${{ steps.meta.outputs.tag }}
           body: |
-            Standalone `claude-track` collector binaries (built from `${{ github.sha }}`).
+            Standalone `usagefleet` collector binaries (built from `${{ github.sha }}`).
 
             Easiest install (downloads, verifies, enables autostart):
 
             ```bash
             # macOS / Linux
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh -s -- --token ctk_xxx
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh -s -- --token uf_xxx
             ```
 
             ```powershell
             # Windows
             $s = irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1
-            & ([scriptblock]::Create($s)) -Token ctk_xxx
+            & ([scriptblock]::Create($s)) -Token uf_xxx
             ```
 
             Or grab the binary for your OS manually (make it executable first on
             macOS/Linux):
 
             ```bash
-            ./claude-track init --endpoint https://your-server --token ctk_xxx
-            ./claude-track install   # autostart: launchd / systemd / Task Scheduler
+            ./usagefleet init --endpoint https://your-server --token uf_xxx
+            ./usagefleet install   # autostart: launchd / systemd / Task Scheduler
             ```
 
             | OS | Asset |
             |----|-------|
-            | macOS (Apple Silicon) | `claude-track-macos-arm64` |
-            | macOS (Intel) | `claude-track-macos-x64` |
-            | Linux (x64) | `claude-track-linux-x64` |
-            | Linux (arm64) | `claude-track-linux-arm64` |
-            | Windows (x64) | `claude-track-windows-x64.exe` |
-            | Any (needs Node) | `claude-track.js` |
+            | macOS (Apple Silicon) | `usagefleet-macos-arm64` |
+            | macOS (Intel) | `usagefleet-macos-x64` |
+            | Linux (x64) | `usagefleet-linux-x64` |
+            | Linux (arm64) | `usagefleet-linux-arm64` |
+            | Windows (x64) | `usagefleet-windows-x64.exe` |
+            | Any (needs Node) | `usagefleet.js` |
           make_latest: true
           generate_release_notes: true
           files: |
-            collector/dist/claude-track-macos-arm64
-            collector/dist/claude-track-macos-x64
-            collector/dist/claude-track-linux-x64
-            collector/dist/claude-track-linux-arm64
-            collector/dist/claude-track-windows-x64.exe
-            collector/dist/claude-track.js
+            collector/dist/usagefleet-macos-arm64
+            collector/dist/usagefleet-macos-x64
+            collector/dist/usagefleet-linux-x64
+            collector/dist/usagefleet-linux-arm64
+            collector/dist/usagefleet-windows-x64.exe
+            collector/dist/usagefleet.js
             collector/dist/SHA256SUMS.txt

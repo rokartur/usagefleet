@@ -8,11 +8,11 @@ describe("assetName", () => {
   // Must stay in lockstep with the asset names release.yml publishes and
   // install.sh downloads — a typo here means a silently un-updatable platform.
   it("matches the published release assets", () => {
-    expect(assetName("darwin", "arm64")).toBe("claude-track-macos-arm64");
-    expect(assetName("darwin", "x64")).toBe("claude-track-macos-x64");
-    expect(assetName("linux", "x64")).toBe("claude-track-linux-x64");
-    expect(assetName("linux", "arm64")).toBe("claude-track-linux-arm64");
-    expect(assetName("win32", "x64")).toBe("claude-track-windows-x64.exe");
+    expect(assetName("darwin", "arm64")).toBe("usagefleet-macos-arm64");
+    expect(assetName("darwin", "x64")).toBe("usagefleet-macos-x64");
+    expect(assetName("linux", "x64")).toBe("usagefleet-linux-x64");
+    expect(assetName("linux", "arm64")).toBe("usagefleet-linux-arm64");
+    expect(assetName("win32", "x64")).toBe("usagefleet-windows-x64.exe");
   });
 
   it("returns null where no binary is published", () => {
@@ -24,9 +24,9 @@ describe("assetName", () => {
 
 describe("swapIn", () => {
   it("replaces the target and leaves no leftovers", () => {
-    const dir = mkdtempSync(join(tmpdir(), "ct-swap-"));
-    const target = join(dir, "claude-track");
-    const downloaded = join(dir, ".claude-track.download");
+    const dir = mkdtempSync(join(tmpdir(), "uf-swap-"));
+    const target = join(dir, "usagefleet");
+    const downloaded = join(dir, ".usagefleet.download");
     writeFileSync(target, "old");
     writeFileSync(downloaded, "new");
 

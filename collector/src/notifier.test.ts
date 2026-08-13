@@ -8,26 +8,26 @@ describe("loadNotifyConfig", () => {
 
   it("disables on falsey flags (case-insensitive)", () => {
     for (const v of ["0", "false", "off", "NO", " Off "]) {
-      expect(loadNotifyConfig({ CLAUDE_TRACK_NOTIFY: v }).enabled).toBe(false);
+      expect(loadNotifyConfig({ USAGEFLEET_NOTIFY: v }).enabled).toBe(false);
     }
   });
 
   it("stays enabled for other values", () => {
-    expect(loadNotifyConfig({ CLAUDE_TRACK_NOTIFY: "1" }).enabled).toBe(true);
-    expect(loadNotifyConfig({ CLAUDE_TRACK_NOTIFY: "yes" }).enabled).toBe(true);
+    expect(loadNotifyConfig({ USAGEFLEET_NOTIFY: "1" }).enabled).toBe(true);
+    expect(loadNotifyConfig({ USAGEFLEET_NOTIFY: "yes" }).enabled).toBe(true);
   });
 
   it("parses, dedups, sorts, and bounds thresholds", () => {
-    expect(
-      loadNotifyConfig({ CLAUDE_TRACK_NOTIFY_THRESHOLDS: "95, 50,80, 80" }).thresholds,
-    ).toEqual([50, 80, 95]);
+    expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: "95, 50,80, 80" }).thresholds).toEqual([
+      50, 80, 95,
+    ]);
   });
 
   it("drops out-of-range / non-numeric entries and falls back when empty", () => {
-    expect(loadNotifyConfig({ CLAUDE_TRACK_NOTIFY_THRESHOLDS: "0,101,-5,abc" }).thresholds).toEqual(
-      [80, 95],
-    );
-    expect(loadNotifyConfig({ CLAUDE_TRACK_NOTIFY_THRESHOLDS: "  " }).thresholds).toEqual([80, 95]);
+    expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: "0,101,-5,abc" }).thresholds).toEqual([
+      80, 95,
+    ]);
+    expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: "  " }).thresholds).toEqual([80, 95]);
   });
 });
 

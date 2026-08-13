@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export function defaultProjectsDir(): string {
-  return process.env.CLAUDE_TRACK_PROJECTS ?? join(homedir(), ".claude", "projects");
+  return process.env.USAGEFLEET_PROJECTS ?? join(homedir(), ".claude", "projects");
 }
 
 /** Claude Desktop's Electron userData dir, per-OS. Mirrors the app's own
@@ -49,13 +49,13 @@ export function claudeSettingsPath(): string {
 }
 
 export function defaultStatePath(): string {
-  return process.env.CLAUDE_TRACK_STATE ?? join(homedir(), ".claude-track-state.json");
+  return process.env.USAGEFLEET_STATE ?? join(homedir(), ".usagefleet-state.json");
 }
 
 export function defaultConfigPath(): string {
-  return process.env.CLAUDE_TRACK_CONFIG ?? join(homedir(), ".claude-track.json");
+  return process.env.USAGEFLEET_CONFIG ?? join(homedir(), ".usagefleet.json");
 }
 
 export function defaultNotifyStatePath(): string {
-  return process.env.CLAUDE_TRACK_NOTIFY_STATE ?? join(homedir(), ".claude-track-notify.json");
+  return process.env.USAGEFLEET_NOTIFY_STATE ?? join(homedir(), ".usagefleet-notify.json");
 }

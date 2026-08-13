@@ -28,7 +28,7 @@ export default async function SignupPage() {
       <Card className="w-full max-w-sm [--card-spacing:--spacing(6)]">
         <CardHeader>
           <CardTitle className="text-lg">Create account</CardTitle>
-          <CardDescription>Start tracking your Claude usage.</CardDescription>
+          <CardDescription>Track usage across groups and devices.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
           <AuthForm mode="signup" />

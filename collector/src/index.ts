@@ -68,20 +68,20 @@ async function cmdLimits(): Promise<void> {
 
 async function cmdWatch(): Promise<void> {
   const cfg = loadConfig();
-  const raw = Number(flag("interval") ?? process.env.CLAUDE_TRACK_INTERVAL ?? 15);
+  const raw = Number(flag("interval") ?? process.env.USAGEFLEET_INTERVAL ?? 15);
   const interval = Math.max(1, Number.isFinite(raw) && raw > 0 ? raw : 15) * 1000;
   // The limits ping hits the real Messages API (1 billable token) — don't run it
-  // every usage-scan tick. Report at most once per CLAUDE_TRACK_LIMITS_INTERVAL
+  // every usage-scan tick. Report at most once per USAGEFLEET_LIMITS_INTERVAL
   // seconds (default 300), decoupled from the much faster usage poll.
-  const rawLimits = Number(process.env.CLAUDE_TRACK_LIMITS_INTERVAL ?? 300);
+  const rawLimits = Number(process.env.USAGEFLEET_LIMITS_INTERVAL ?? 300);
   const limitsInterval =
     Math.max(interval / 1000, Number.isFinite(rawLimits) && rawLimits > 0 ? rawLimits : 300) * 1000;
   let lastLimitsAt = 0;
-  // Self-update: once at startup, then daily. CLAUDE_TRACK_UPDATE=0 opts out.
+  // Self-update: once at startup, then daily. USAGEFLEET_UPDATE=0 opts out.
   const updateInterval = 24 * 60 * 60 * 1000;
   let lastUpdateAt = 0;
   console.log(
-    `[${ts()}] claude-track watching ${cfg.projectsDir}${cfg.desktopDir ? ` + ${cfg.desktopDir}` : ""}${cfg.piDirs.map((d) => ` + ${d}`).join("")} every ${interval / 1000}s → ${cfg.endpoint}`,
+    `[${ts()}] usagefleet watching ${cfg.projectsDir}${cfg.desktopDir ? ` + ${cfg.desktopDir}` : ""}${cfg.piDirs.map((d) => ` + ${d}`).join("")} every ${interval / 1000}s → ${cfg.endpoint}`,
   );
   let stopping = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -136,10 +136,10 @@ async function cmdWatch(): Promise<void> {
 function cmdNotifyTest(): void {
   const cfg = loadNotifyConfig();
   if (!cfg.enabled) {
-    console.log("Notifications are disabled (CLAUDE_TRACK_NOTIFY=0).");
+    console.log("Notifications are disabled (USAGEFLEET_NOTIFY=0).");
     return;
   }
-  sendNotification("claude-track", "Test notification — desktop alerts are working.", {
+  sendNotification("usagefleet", "Test notification — desktop alerts are working.", {
     urgency: "normal",
   });
   console.log(
@@ -171,10 +171,10 @@ async function cmdStatus(): Promise<void> {
 }
 
 function cmdInit(): void {
-  const endpoint = flag("endpoint") ?? process.env.CLAUDE_TRACK_ENDPOINT;
-  const token = flag("token") ?? process.env.CLAUDE_TRACK_TOKEN;
+  const endpoint = flag("endpoint") ?? process.env.USAGEFLEET_ENDPOINT;
+  const token = flag("token") ?? process.env.USAGEFLEET_TOKEN;
   if (!endpoint || !token) {
-    console.error("Usage: claude-track init --endpoint <url> --token <device-token>");
+    console.error("Usage: usagefleet init --endpoint <url> --token <device-token>");
     process.exit(1);
   }
   const path = defaultConfigPath();
@@ -191,33 +191,33 @@ function cmdInit(): void {
 }
 
 function help(): void {
-  console.log(`claude-track v${COLLECTOR_VERSION} — Claude usage collector
+  console.log(`usagefleet v${COLLECTOR_VERSION} — Claude usage collector
 
 Usage:
-  claude-track run                 Scan once, upload usage + report limits
-  claude-track watch [--interval s] Poll continuously (default 15s)
-  claude-track limits              Report only your real 5h/weekly limit usage
-  claude-track guard               Exit 2 if this device's group is over a blocking limit
+  usagefleet run                 Scan once, upload usage + report limits
+  usagefleet watch [--interval s] Poll continuously (default 15s)
+  usagefleet limits              Report only your real 5h/weekly limit usage
+  usagefleet guard               Exit 2 if this device's group is over a blocking limit
                                    (use as a Claude Code UserPromptSubmit hook)
-  claude-track update              Update to the latest release now (watch does this daily)
-  claude-track notify-test         Fire a test desktop notification
-  claude-track status              Show resolved config + state + Claude login
-  claude-track init --endpoint <url> --token <t>   Write ~/.claude-track.json
-  claude-track install             Install as a background service (launchd/systemd/Task Scheduler)
+  usagefleet update              Update to the latest release now (watch does this daily)
+  usagefleet notify-test         Fire a test desktop notification
+  usagefleet status              Show resolved config + state + Claude login
+  usagefleet init --endpoint <url> --token <t>   Write ~/.usagefleet.json
+  usagefleet install             Install as a background service (launchd/systemd/Task Scheduler)
                                    and register the guard as a Claude Code hook
-  claude-track uninstall           Remove the background service and the hook
+  usagefleet uninstall           Remove the background service and the hook
 
-Config (env overrides ~/.claude-track.json):
-  CLAUDE_TRACK_ENDPOINT   server base URL (e.g. https://track.example.com)
-  CLAUDE_TRACK_TOKEN      device token from the Devices page
-  CLAUDE_TRACK_PROJECTS   override ~/.claude/projects (Claude Code)
-  CLAUDE_TRACK_DESKTOP    override Claude Desktop sessions dir ("off" to disable)
-  CLAUDE_TRACK_PI         override pi sessions dirs, comma-separated ("off" to disable)
-  CLAUDE_TRACK_INTERVAL   watch interval seconds
-  CLAUDE_TRACK_NOTIFY     desktop notifications on/off (default on; 0 to disable)
-  CLAUDE_TRACK_HOOK       register the guard in ~/.claude/settings.json on install (0 to skip)
-  CLAUDE_TRACK_UPDATE     daily self-update while watching (0 to disable)
-  CLAUDE_TRACK_NOTIFY_THRESHOLDS  comma list of % alerts (default 80,95)`);
+Config (env overrides ~/.usagefleet.json):
+  USAGEFLEET_ENDPOINT   server base URL (e.g. https://track.example.com)
+  USAGEFLEET_TOKEN      device token from the Devices page
+  USAGEFLEET_PROJECTS   override ~/.claude/projects (Claude Code)
+  USAGEFLEET_DESKTOP    override Claude Desktop sessions dir ("off" to disable)
+  USAGEFLEET_PI         override pi sessions dirs, comma-separated ("off" to disable)
+  USAGEFLEET_INTERVAL   watch interval seconds
+  USAGEFLEET_NOTIFY     desktop notifications on/off (default on; 0 to disable)
+  USAGEFLEET_HOOK       register the guard in ~/.claude/settings.json on install (0 to skip)
+  USAGEFLEET_UPDATE     daily self-update while watching (0 to disable)
+  USAGEFLEET_NOTIFY_THRESHOLDS  comma list of % alerts (default 80,95)`);
 }
 
 async function main(): Promise<void> {
