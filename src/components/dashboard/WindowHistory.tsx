@@ -73,8 +73,10 @@ function columnsOf(windows: PastWindow[]) {
 /**
  * Past limit windows, group by group — the "how did last session/week go"
  * counterpart to the live card. Each group's cell reads like the live Groups
- * table: usage against its 1/maxGroups budget slice of the window, so a group
- * that ate into another's slice shows past 100% with the excess spelled out.
+ * table: usage against its 1/maxGroups budget slice of the account limit, with
+ * the excess spelled out past 100%. The limit is calibrated from the currently
+ * open window (tokens vs the utilization Claude reports for it), since Claude
+ * reports nothing for windows that already closed.
  */
 export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
   const [kind, setKind] = useState<Kind>("sessions");
@@ -88,8 +90,8 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
           <CardTitle>Past windows</CardTitle>
           <CardDescription>
             Completed {kind === "sessions" ? "5-hour" : "weekly"} windows, newest first. Billable
-            tokens (cache reads excluded) and each group&apos;s usage against its budget slice —
-            past 100% means it ate into another group&apos;s share.
+            tokens (cache reads excluded) and each group&apos;s usage against its budget slice of
+            the account limit — past 100% means it ate into another group&apos;s share.
           </CardDescription>
         </div>
         <Select
