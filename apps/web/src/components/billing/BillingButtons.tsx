@@ -24,27 +24,36 @@ function useStripeRedirect() {
   return [pending, go] as const;
 }
 
-/** Starts Stripe checkout, or switches an existing subscription to `plan`. */
+/** Starts Stripe checkout, or switches an existing subscription to `plan`.
+ *  The two paths return different URLs: checkout uses success/cancelUrl, while
+ *  a plan switch sends the subscriber to Stripe's update-confirm page and comes
+ *  back to `returnUrl` — which defaults to "/", so it has to be given here. */
 export function SubscribeButton({
   plan,
   label,
-  variant = "default",
+  seats,
+  disabled,
+  ...buttonProps
 }: {
   plan: PaidPlan;
   label: string;
-  variant?: React.ComponentProps<typeof Button>["variant"];
-}) {
+  /** Devices to buy on the custom plan. Becomes the Stripe line-item quantity,
+   *  so it is both what we charge for and what the device cap reads back. */
+  seats?: number;
+} & Omit<React.ComponentProps<typeof Button>, "onClick" | "children">) {
   const [pending, go] = useStripeRedirect();
   return (
     <Button
-      variant={variant}
-      disabled={pending}
+      {...buttonProps}
+      disabled={pending || disabled}
       onClick={() =>
         go("checkout", () =>
           authClient.subscription.upgrade({
             plan,
+            seats,
             successUrl: BILLING_URL,
             cancelUrl: BILLING_URL,
+            returnUrl: BILLING_URL,
           }),
         )
       }

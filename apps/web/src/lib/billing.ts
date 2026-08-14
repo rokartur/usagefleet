@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { devices, subscription } from "@/db/schema";
-import { FREE_DEVICES, isPaidPlan, PLANS, type PlanId } from "@/lib/plans";
+import { isPaidPlan, planDevices, type PlanId } from "@/lib/plans";
 
 /** Stripe keeps a subscription alive while it retries a failed charge
  *  (`past_due`) and cancels it on its own if dunning fails — don't yank a
@@ -12,6 +12,9 @@ export interface AccountPlan {
   plan: PlanId;
   /** Active (non-revoked) devices this account may hold. */
   deviceLimit: number;
+  /** Devices bought on the custom plan, i.e. the Stripe line-item quantity.
+   *  `null` on every fixed tier, whose cap comes from the catalog instead. */
+  seats: number | null;
   /** Stripe subscription status, or null when on the free plan. */
   status: string | null;
   /** Subscription ends at `periodEnd` instead of renewing. */
@@ -33,9 +36,11 @@ export async function accountPlan(userId: string): Promise<AccountPlan> {
     .limit(1);
 
   const plan: PlanId = row && isPaidPlan(row.plan) ? row.plan : "free";
+  const seats = plan === "custom" ? (row?.seats ?? null) : null;
   return {
     plan,
-    deviceLimit: plan === "free" ? FREE_DEVICES : PLANS[plan].devices,
+    seats,
+    deviceLimit: planDevices(plan, seats),
     status: row?.status ?? null,
     cancelAtPeriodEnd: row?.cancelAtPeriodEnd ?? false,
     periodEnd: row?.periodEnd ?? null,
