@@ -1,0 +1,17 @@
+---
+services:
+  web:
+    # Own tag: sharing the default one with the production build makes
+    # `docker compose up` reuse whichever image was built last.
+    image: usagefleet-web-dev
+    build:
+      target: dev
+    restart: "no"
+    environment:
+      NODE_ENV: development
+    volumes:
+      - .:/repo
+      - web_node_modules:/repo/node_modules
+
+volumes:
+  web_node_modules:

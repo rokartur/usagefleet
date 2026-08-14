@@ -14,7 +14,13 @@ COPY apps/web/package.json apps/web/
 COPY apps/collector/package.json apps/collector/
 RUN bun install --frozen-lockfile
 
-# ---- builder: vite build (nitro output) + bundle the migrator to plain JS ----
+# ---- dev: bind-mounted source with Vite HMR ----
+FROM deps AS dev
+WORKDIR /repo/apps/web
+EXPOSE 3000
+CMD ["sh", "-c", "bun install --frozen-lockfile && bun run db:migrate && exec bun run dev --host 0.0.0.0"]
+
+# ---- builder: Vite build (Nitro output) + bundle the migrator to plain JS ----
 FROM oven/bun:1-alpine AS builder
 WORKDIR /repo
 COPY --from=deps /repo/node_modules ./node_modules
@@ -24,30 +30,27 @@ COPY . .
 WORKDIR /repo/apps/web
 RUN bun run build
 # Bundle migrate.ts (+ drizzle migrator + postgres) into one self-contained CJS
-# file so the runtime needs neither drizzle-kit nor bun.
+# file so the runtime needs no node_modules.
 RUN /repo/node_modules/.bin/esbuild src/scripts/migrate.ts \
       --bundle --platform=node --format=cjs --outfile=migrate.cjs
 
-# ---- runner: nitro output on Node, non-root ----
-# `.output` bundles every server dependency, so the runner ships no node_modules
-# and bun is only used to install and build.
-FROM node:22-alpine AS runner
+# ---- runner: Nitro output on Bun, non-root ----
+# `.output` bundles every server dependency, so the runner ships no node_modules.
+FROM oven/bun:1-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000
-RUN addgroup --system --gid 1001 nodejs \
- && adduser  --system --uid 1001 nodejs
 
-COPY --from=builder --chown=nodejs:nodejs /repo/apps/web/.output ./.output
+COPY --from=builder --chown=bun:bun /repo/apps/web/.output ./.output
 
 # Migration assets (SQL + bundled migrator), kept at /app for the entrypoint.
-COPY --from=builder --chown=nodejs:nodejs /repo/apps/web/drizzle ./drizzle
-COPY --from=builder --chown=nodejs:nodejs /repo/apps/web/migrate.cjs ./migrate.cjs
-COPY --chown=nodejs:nodejs apps/web/docker-entrypoint.sh ./docker-entrypoint.sh
+COPY --from=builder --chown=bun:bun /repo/apps/web/drizzle ./drizzle
+COPY --from=builder --chown=bun:bun /repo/apps/web/migrate.cjs ./migrate.cjs
+COPY --chown=bun:bun apps/web/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
 
-USER nodejs
+USER 1000:1000
 EXPOSE 3000
 ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["node", ".output/server/index.mjs"]
+CMD ["bun", ".output/server/index.mjs"]

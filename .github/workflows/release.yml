@@ -74,12 +74,12 @@ jobs:
 
             ```bash
             # macOS / Linux
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh -s -- --token uf_xxx
+            curl -sSL https://usagefleet.com/install.sh | sh -s -- --token uf_xxx
             ```
 
             ```powershell
             # Windows
-            $s = irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1
+            $s = irm https://usagefleet.com/install.ps1
             & ([scriptblock]::Create($s)) -Token uf_xxx
             ```
 

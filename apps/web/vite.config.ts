@@ -13,7 +13,6 @@ export default defineConfig({
     tanstackStart(),
     // react's plugin must come after start's plugin
     viteReact(),
-    // The build runs under Bun, so pin Node to match the Docker runner.
-    nitro({ preset: "node" }),
+    nitro({ preset: "bun" }),
   ],
 });

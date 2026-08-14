@@ -23,6 +23,9 @@ services:
       # Context is the monorepo root so the workspace install sees bun.lock.
       context: .
       dockerfile: apps/web/Dockerfile
+      # Explicit so a dev-target image built from docker-compose.dev.yml can
+      # never be reused here (the dev stage has no source baked in).
+      target: runner
     restart: unless-stopped
     depends_on:
       db:
@@ -33,6 +36,12 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       # Set to "false" to block new account creation.
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
+      # GitHub and Google OAuth apps — the only sign-in methods. Callback URLs
+      # must be <BETTER_AUTH_URL>/api/auth/callback/{github,google}.
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?set GITHUB_CLIENT_ID in .env}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?set GITHUB_CLIENT_SECRET in .env}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?set GOOGLE_CLIENT_ID in .env}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?set GOOGLE_CLIENT_SECRET in .env}
       # Set to the number of trusted reverse proxies in front of the app (or
       # "true" for one) so rate limiting reads a real client IP from
       # X-Forwarded-For. Leave "false" for direct exposure — see .env.example.
@@ -41,21 +50,23 @@ services:
       # private repo so devices need no GitHub credential. Unset = no updates.
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-rokartur/usagefleet}
-      # Stripe billing — the device cap comes from the subscription, so all four
+      # Stripe billing — the device cap comes from the subscription, so all five
       # are required. Point the Stripe webhook at <app>/api/auth/stripe/webhook.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?set STRIPE_SECRET_KEY in .env}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?set STRIPE_WEBHOOK_SECRET in .env}
       STRIPE_PRICE_SOLO: ${STRIPE_PRICE_SOLO:?set STRIPE_PRICE_SOLO in .env}
       STRIPE_PRICE_FLEET: ${STRIPE_PRICE_FLEET:?set STRIPE_PRICE_FLEET in .env}
+      # Per-unit price, multiplied by the chosen device count.
+      STRIPE_PRICE_CUSTOM: ${STRIPE_PRICE_CUSTOM:?set STRIPE_PRICE_CUSTOM in .env}
       NODE_ENV: production
     ports:
       - "${WEB_PORT:-3000}:3000"
     healthcheck:
-      # The standalone runner image has no curl/wget — use node's built-in fetch.
+      # The standalone runner image has no curl/wget — use Bun's built-in fetch.
       test:
         [
           "CMD",
-          "node",
+          "bun",
           "-e",
           "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
