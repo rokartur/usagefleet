@@ -110,4 +110,19 @@ describe("parseLine", () => {
     expect(parseLine("not json")).toBeNull();
     expect(parseLine("")).toBeNull();
   });
+
+  // All VALID JSON, so the try/catch around JSON.parse does not stop them. Only
+  // "null" ever threw — property access on null is a TypeError, while `(123).type`
+  // and `[].type` are merely undefined — and that throw escapes tailFile, leaving
+  // the file's offset unadvanced so the collector re-reads and re-throws on that
+  // file every cycle, silently losing every later record in it. The rest are here
+  // to pin the guard's shape, not because they crashed.
+  it("returns null for JSON that parses to a non-object", () => {
+    for (const line of ["null", "123", '"a string"', "true", "[]", "[1,2]"]) {
+      expect(() => parseLine(line)).not.toThrow();
+      expect(parseLine(line)).toBeNull();
+      expect(() => parseLine(line, "pi")).not.toThrow();
+      expect(parseLine(line, "pi")).toBeNull();
+    }
+  });
 });

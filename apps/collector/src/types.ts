@@ -8,7 +8,8 @@ export type OsName = "mac" | "linux" | "windows" | string;
 export type UsageSource = "cli" | "desktop" | "pi";
 
 /** Wire record sent to POST /api/v1/usage. Field names match the server's
- *  zod schema (src/app/api/v1/usage/route.ts). */
+ *  `RecordSchema` (apps/web/src/routes/api/v1/usage.ts); a mismatch is a 400,
+ *  which the uploader treats as permanently invalid and skips. */
 export interface UsageRecord {
   uuid: string;
   messageId: string | null;

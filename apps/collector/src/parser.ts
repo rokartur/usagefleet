@@ -88,12 +88,20 @@ function parsePiLine(o: Record<string, unknown>): UsageRecord | null {
 export function parseLine(line: string, source: UsageSource = "cli"): UsageRecord | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
-  let o: Record<string, unknown>;
+  // JSON.parse is typed `any`, so a valid-JSON line that is not an object sails
+  // past the try/catch. A bare `null` line then throws on the first property
+  // access below, and that throw escapes tailFile and leaves the file's offset
+  // unadvanced forever, silently dropping every later record in it. Numbers,
+  // strings and arrays never threw (`(123).type` is just undefined); they are in
+  // the guard so the `as Record<string, unknown>` cast below is not a lie.
+  let parsed: unknown;
   try {
-    o = JSON.parse(trimmed);
+    parsed = JSON.parse(trimmed);
   } catch {
     return null;
   }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const o = parsed as Record<string, unknown>;
   if (source === "pi") return parsePiLine(o);
   if (o.type !== "assistant") return null;
   const message = o.message as { id?: string; model?: string; usage?: RawUsage } | undefined;
