@@ -1,7 +1,14 @@
 import { Ban, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmAction } from "@/components/ConfirmAction";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { assignDeviceGroup, deleteDevice, revokeDevice } from "@/lib/actions";
 
 /** Moves a device between groups on change — no separate Save button. */
@@ -16,28 +23,42 @@ export function DeviceGroupSelect({
   groupId: string | null;
   groups: { id: string; name: string }[];
 }) {
+  const form = useRef<HTMLFormElement>(null);
+  const [selected, setSelected] = useState(groupId ?? "");
+  const items = groups.map((g) => ({ value: g.id, label: g.name }));
+
+  // Submit once the pick has landed in the select's hidden input: during
+  // onValueChange the form still holds the previous group.
+  useEffect(() => {
+    if (selected !== (groupId ?? "")) form.current?.requestSubmit();
+  }, [selected, groupId]);
+
   return (
     <ActionForm
+      ref={form}
       action={assignDeviceGroup}
       loadingMessage={`Moving ${deviceName}…`}
       successMessage={`${deviceName} moved`}
       errorMessage={`Couldn't move ${deviceName}. Please try again.`}
     >
       <input type="hidden" name="deviceId" value={deviceId} />
-      <NativeSelect
-        key={groupId ?? ""}
+      <Select
         name="groupId"
-        size="sm"
-        defaultValue={groupId ?? ""}
-        aria-label={`Group for ${deviceName}`}
-        onChange={(e) => e.currentTarget.form?.requestSubmit()}
+        value={selected}
+        onValueChange={(next) => setSelected(next ?? "")}
+        items={items}
       >
-        {groups.map((g) => (
-          <NativeSelectOption key={g.id} value={g.id}>
-            {g.name}
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
+        <SelectTrigger size="sm" aria-label={`Group for ${deviceName}`}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </ActionForm>
   );
 }

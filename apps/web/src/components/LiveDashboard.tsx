@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PlugZapIcon } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { CheckIcon } from "lucide-react";
+import { InstallCommand } from "@/components/InstallCommand";
 import { ResetCountdown } from "@/components/ResetCountdown";
+import { Button } from "@/components/ui/button";
 import { GroupTable } from "@/components/dashboard/GroupTable";
 import { UsageBar } from "@/components/usage-ui";
 import { Badge } from "@/components/ui/badge";
@@ -13,13 +16,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
-import {
   Table,
   TableBody,
   TableCell,
@@ -29,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import type { DashboardDTO, ModelLimitDTO, SpendPeriod } from "@/lib/data";
 import { formatRelative, formatTokens, formatUsd } from "@/lib/format";
+import { TOKEN_PLACEHOLDER } from "@/lib/install-command";
 import { cn } from "@/lib/utils";
 import { billableTokens } from "@/lib/usage";
 
@@ -81,7 +78,7 @@ function OfficialCard({
 
 /** One per-model official limit: Claude's account-wide figure for the model,
  *  then the per-group split — each row is that group's usage against its own
- *  slice (1/maxGroups), the same budget-relative measure as the group table. */
+ *  slice (1/group count), the same budget-relative measure as the group table. */
 function ModelLimitCard({ limit }: { limit: ModelLimitDTO }) {
   return (
     <Card>
@@ -144,7 +141,127 @@ function SpendRow({ label, period }: { label: string; period: SpendPeriod }) {
   );
 }
 
-export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
+/** What the dashboard needs to tell a fresh account which step it is on.
+ *  `reportedEver` is any authenticated collector call (see devices.lastSeenAt),
+ *  which separates "installer never ran" from "runs, but found no Claude
+ *  login" — the two failures that look identical from an empty dashboard. */
+export interface SetupState {
+  deviceName: string | null;
+  reportedEver: boolean;
+}
+
+function Step({
+  n,
+  title,
+  state,
+  children,
+}: {
+  n: number;
+  title: string;
+  state: "done" | "now" | "waiting";
+  children?: React.ReactNode;
+}) {
+  return (
+    <li className="flex gap-4 border-t py-4">
+      <span
+        className={cn(
+          "mt-0.5 w-4 shrink-0 text-sm tabular-nums",
+          state === "now" ? "text-foreground" : "text-muted-foreground",
+        )}
+        aria-hidden
+      >
+        {state === "done" ? <CheckIcon className="size-4 text-emerald-500" /> : n}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <p className={cn("text-sm", state === "waiting" && "text-muted-foreground")}>{title}</p>
+        {children}
+      </div>
+      <span className="shrink-0 text-sm text-muted-foreground">
+        {state === "done" ? "done" : state === "now" ? "now" : "waiting"}
+      </span>
+    </li>
+  );
+}
+
+/** The whole dashboard until the first report lands: which of the three setup
+ *  steps you are on, and the exact command for the one you're on. */
+function SetupRail({ setup }: { setup: SetupState | null }) {
+  const device = setup?.deviceName;
+  const machine = device ?? "that machine";
+  const reported = setup?.reportedEver ?? false;
+
+  return (
+    <section>
+      <h2 className="text-sm font-medium">No data yet</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Three steps, about a minute. This page fills in on its own.
+      </p>
+      <ol className="mt-5 [&>li:last-child]:border-b">
+        <Step
+          n={1}
+          title={device ? `Device added: ${device}` : "Add a device"}
+          state={device ? "done" : "now"}
+        >
+          {!device && (
+            <div className="flex flex-col gap-2">
+              <Button render={<Link to="/devices" />} className="w-fit">
+                Add device
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                One device is one machine you use Claude on. You get its token there.
+              </p>
+            </div>
+          )}
+        </Step>
+
+        <Step
+          n={2}
+          title={`Run the installer on ${machine}`}
+          state={reported ? "done" : device ? "now" : "waiting"}
+        >
+          {device && !reported && (
+            <div className="flex flex-col gap-2">
+              <InstallCommand token={TOKEN_PLACEHOLDER} />
+              <p className="text-xs text-muted-foreground">
+                Put in the token you copied when you added {machine}. Lost it? Tokens are shown
+                once, so add the device again on{" "}
+                <Link to="/devices" className="underline underline-offset-2">
+                  Devices
+                </Link>
+                .
+              </p>
+            </div>
+          )}
+        </Step>
+
+        <Step n={3} title="First usage report" state={reported ? "now" : "waiting"}>
+          <p className="text-xs text-muted-foreground">
+            {reported ? (
+              <>
+                {machine} is reporting, but no Claude limits came with it yet. Run{" "}
+                <code className="font-mono">usagefleet status</code> there: it prints whether it
+                found your Claude login.
+              </>
+            ) : (
+              <>
+                Arrives within a minute of the installer finishing, then every five. Your 5-hour and
+                weekly numbers replace this list.
+              </>
+            )}
+          </p>
+        </Step>
+      </ol>
+    </section>
+  );
+}
+
+export function LiveDashboard({
+  initial,
+  setup,
+}: {
+  initial: DashboardDTO;
+  setup: SetupState | null;
+}) {
   const [dash, setDash] = useState<DashboardDTO>(initial);
   const [lastOk, setLastOk] = useState(() => Date.now());
   // `now` advances once a second (below) so the staleness check stays a pure
@@ -202,25 +319,7 @@ export function LiveDashboard({ initial }: { initial: DashboardDTO }) {
   const stale = pollDown || reportAge > DATA_STALE_MS;
   const statusLabel = pollDown ? "reconnecting…" : stale ? "collector offline" : "live";
 
-  if (!dash.connected) {
-    return (
-      <Card className="py-8">
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <PlugZapIcon />
-            </EmptyMedia>
-            <EmptyTitle>No usage reported yet</EmptyTitle>
-            <EmptyDescription>
-              Install the collector and run it on a machine where you&apos;re signed into Claude
-              Code. It auto-detects your subscription (or API key) and reports your real 5-hour and
-              weekly limit usage — no keys to paste here. See <code>apps/collector/README.md</code>.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </Card>
-    );
-  }
+  if (!dash.connected) return <SetupRail setup={setup} />;
 
   const sourceLabel =
     dash.source === "sub" ? "subscription" : dash.source === "api" ? "API key" : "—";

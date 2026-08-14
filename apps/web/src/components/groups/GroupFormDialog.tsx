@@ -12,10 +12,62 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { createGroup, updateGroup } from "@/lib/actions";
+import { GROUP_COLORS, randomGroupColor } from "@/lib/group-colors";
+import { cn } from "@/lib/utils";
+
+/** Swatch picker over the shared palette. Native radios rather than buttons:
+ *  arrow-key navigation and form serialisation come for free, so the only state
+ *  is the colour a new group opens on. */
+function ColorField({ selected }: { selected?: string }) {
+  const [initial] = useState(() => selected ?? randomGroupColor());
+  // A group saved with a hex outside the palette keeps its swatch, otherwise
+  // editing it would silently show nothing selected.
+  const swatches = GROUP_COLORS.some((c) => c.hex === initial)
+    ? GROUP_COLORS
+    : [{ name: initial, hex: initial }, ...GROUP_COLORS];
+
+  return (
+    <FieldSet>
+      <FieldLegend variant="label" className="mb-2">
+        Color
+      </FieldLegend>
+      <div className="flex flex-wrap gap-2">
+        {swatches.map((c) => (
+          <label key={c.hex} className="cursor-pointer">
+            <input
+              type="radio"
+              name="color"
+              value={c.hex}
+              defaultChecked={c.hex === initial}
+              aria-label={c.name}
+              className="peer sr-only"
+            />
+            <span
+              style={{ backgroundColor: c.hex }}
+              className={cn(
+                "block size-6 rounded-full ring-offset-2 ring-offset-background",
+                "peer-checked:ring-2 peer-checked:ring-foreground",
+                "peer-focus-visible:ring-2 peer-focus-visible:ring-ring",
+              )}
+            />
+          </label>
+        ))}
+      </div>
+      <FieldDescription>Used for this group everywhere in the charts.</FieldDescription>
+    </FieldSet>
+  );
+}
 
 /** Create (no `group`) or rename/recolor (with `group`) — one dialog, since the
  *  fields and the server-action shape are identical. */
@@ -86,17 +138,7 @@ export function GroupFormDialog({
                 placeholder="e.g. Laptops"
               />
             </Field>
-            <Field orientation="horizontal">
-              <FieldLabel htmlFor="group-color">Color</FieldLabel>
-              <input
-                id="group-color"
-                name="color"
-                type="color"
-                defaultValue={group?.color ?? "#6366f1"}
-                className="h-8 w-14 shrink-0 cursor-pointer rounded-lg border bg-transparent p-1"
-              />
-              <FieldDescription>Used for this group everywhere in the charts.</FieldDescription>
-            </Field>
+            <ColorField selected={group?.color} />
           </FieldGroup>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" type="button" />}>Cancel</DialogClose>

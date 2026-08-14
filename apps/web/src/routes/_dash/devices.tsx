@@ -9,22 +9,14 @@ import {
   RevokeDeviceButton,
 } from "@/components/devices/DeviceActions";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { accountPlan } from "@/lib/billing";
 import { backfillUngroupedDevices, listDevices, listGroups } from "@/lib/data";
 import { OS_LABEL, formatRelative } from "@/lib/format";
@@ -100,100 +92,96 @@ function DevicesPage() {
             </span>
           )}
         </p>
-        <AddDeviceForm groups={groupOptions} atCap={atCap} />
+        {/* When there are none, the empty state below carries the button. */}
+        {devices.length > 0 && <AddDeviceForm groups={groupOptions} atCap={atCap} />}
       </div>
 
       {devices.length === 0 ? (
-        <Card className="py-8">
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <MonitorSmartphoneIcon />
-              </EmptyMedia>
-              <EmptyTitle>No devices yet</EmptyTitle>
-              <EmptyDescription>
-                Add a device to get a collector token, then run the collector on that machine.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        </Card>
+        <Empty className="py-16">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <MonitorSmartphoneIcon />
+            </EmptyMedia>
+            <EmptyTitle>No devices yet</EmptyTitle>
+            <EmptyDescription>
+              A device is one machine you use Claude on. Adding it here gives you a token and the
+              one-line installer for that machine.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <AddDeviceForm groups={groupOptions} atCap={atCap} />
+            <p className="text-xs text-muted-foreground">
+              Takes about a minute. The dashboard stays empty until one device reports.
+            </p>
+          </EmptyContent>
+        </Empty>
       ) : (
         sections.map((s) => (
-          <Card key={s.key}>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <span
-                  className="size-2.5 rounded-full"
-                  style={{ backgroundColor: s.color }}
-                  aria-hidden
-                />
-                {s.name}
-                {/* Counts active devices only, like the page header — revoked
-                    ones stay listed but don't hold a slot. */}
-                <Badge variant="secondary" className="font-normal">
-                  {s.items.filter((d) => !d.revoked).length} active
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {s.items.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No devices in this group.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Device</TableHead>
-                      <TableHead>Last seen</TableHead>
-                      <TableHead>Group</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {s.items.map((d) => (
-                      <TableRow key={d.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{d.name}</span>
-                            {d.os && (
-                              <Badge variant="outline" className="font-normal">
-                                {OS_LABEL[d.os] ?? d.os}
-                              </Badge>
-                            )}
-                            {d.revoked && <Badge variant="destructive">revoked</Badge>}
-                            {parked.has(d.id) && (
-                              <Badge variant="destructive">over plan limit</Badge>
-                            )}
-                          </div>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {d.hostname ? `${d.hostname} · ` : ""}
-                            token {d.tokenPrefix}…
-                            {d.collectorVersion ? ` · v${d.collectorVersion}` : ""}
-                          </p>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatRelative(d.lastSeenAt)}
-                        </TableCell>
-                        <TableCell>
-                          <DeviceGroupSelect
-                            deviceId={d.id}
-                            deviceName={d.name}
-                            groupId={d.groupId}
-                            groups={groupOptions}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            {!d.revoked && <RevokeDeviceButton id={d.id} name={d.name} />}
-                            <DeleteDeviceButton id={d.id} name={d.name} />
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+          <section key={s.key}>
+            <h2 className="flex items-center gap-2 text-sm font-medium">
+              <span
+                className="size-2 rounded-full"
+                style={{ backgroundColor: s.color }}
+                aria-hidden
+              />
+              {s.name}
+              {/* Counts active devices only, like the page header — revoked
+                  ones stay listed but don't hold a slot. */}
+              <span className="font-normal text-muted-foreground">
+                {s.items.filter((d) => !d.revoked).length} active
+              </span>
+            </h2>
+            {s.items.length === 0 ? (
+              <p className="mt-2 border-t border-b py-3.5 text-sm text-muted-foreground">
+                No devices in this group. Move one here with the group picker on any row.
+              </p>
+            ) : (
+              <ul className="mt-2 [&>li:last-child]:border-b">
+                {s.items.map((d) => (
+                  <li key={d.id} className="flex items-center gap-4 border-t py-3.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium">{d.name}</span>
+                        {d.os && (
+                          <Badge variant="outline" className="font-normal">
+                            {OS_LABEL[d.os] ?? d.os}
+                          </Badge>
+                        )}
+                        {d.revoked && <Badge variant="destructive">revoked</Badge>}
+                        {parked.has(d.id) && <Badge variant="destructive">over plan limit</Badge>}
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {d.hostname ? `${d.hostname} · ` : ""}
+                        token {d.tokenPrefix}…
+                        {d.collectorVersion ? ` · v${d.collectorVersion}` : ""}
+                      </p>
+                    </div>
+                    {/* Never seen means the installer hasn't run yet on that
+                        machine — worth spotting from across the list. */}
+                    <span
+                      className={
+                        d.lastSeenAt
+                          ? "text-sm text-muted-foreground"
+                          : "text-sm text-amber-600 dark:text-amber-500"
+                      }
+                    >
+                      {formatRelative(d.lastSeenAt)}
+                    </span>
+                    <DeviceGroupSelect
+                      deviceId={d.id}
+                      deviceName={d.name}
+                      groupId={d.groupId}
+                      groups={groupOptions}
+                    />
+                    <div className="flex gap-1">
+                      {!d.revoked && <RevokeDeviceButton id={d.id} name={d.name} />}
+                      <DeleteDeviceButton id={d.id} name={d.name} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         ))
       )}
     </>
