@@ -8,4 +8,4 @@ export const authClient = createAuthClient({
   plugins: [stripeClient({ subscription: true })],
 });
 
-export const { signIn, signUp, signOut, useSession } = authClient;
+export const { signIn, signOut, useSession } = authClient;
