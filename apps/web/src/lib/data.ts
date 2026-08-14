@@ -111,7 +111,7 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
         ${usageEvents.cacheReadTokens} AS cache_read_tokens
       FROM ${usageEvents}
       WHERE ${usageEvents.userId} = ${userId}
-        ${since ? sql`AND ${usageEvents.ts} >= ${since}` : sql``}
+        ${since ? sql`AND ${usageEvents.ts} >= ${since.toISOString()}::timestamptz` : sql``}
       ORDER BY ${FOLD_KEY}, ${ROW_TOTAL} DESC, ${usageEvents.ts} ASC
     )
     SELECT
