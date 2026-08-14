@@ -6,7 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 // Self-hosted replacement for next/font/google; sets the --font-inter var that
 // styles/globals.css feeds into --font-sans.
 import "@fontsource-variable/inter";
-import appCss from "@/styles/globals.css?url";
+import "@/styles/globals.css";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -16,7 +16,6 @@ export const Route = createRootRoute({
       { title: "UsageFleet" },
       { name: "description", content: "Track AI usage across groups and devices." },
     ],
-    links: [{ rel: "stylesheet", href: appCss }],
   }),
   shellComponent: RootDocument,
 });
