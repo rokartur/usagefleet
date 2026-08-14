@@ -33,6 +33,7 @@ import {
   type UsageRecord,
   weekWindowStart,
 } from "@/lib/usage";
+import { createPromiseCache } from "@/lib/promise-cache";
 
 // The logical-message fold key: (messageId, requestId) when present, else the
 // row's own uuid. Prefixed so a uuid can never collide with a messageId pair.
@@ -82,16 +83,21 @@ export async function loadRecentEvents(userId: string, cutoff: Date): Promise<Us
 }
 
 /**
- * Folded, per-(UTC day × group × model) token aggregates over the user's ENTIRE
- * history — the cheap foundation for the day / month / all-time usage figures.
+ * Folded, per-(UTC day × group × model) token aggregates — the cheap foundation
+ * for the day / month / all-time usage figures.
  *
  * Folding (collapse streamed segments to the largest per logical message — see
  * fold.ts) is done IN SQL via DISTINCT ON so the whole table never has to be
  * pulled into Node: the result is one small row per active (day, group, model)
  * cell. Rows with no real tokens (e.g. "<synthetic>" placeholders) are dropped
  * by the HAVING clause. Days are bucketed in UTC to match the JS timelines.
+ *
+ * `since` bounds the scan (UTC, inclusive). Unbounded, this walks and sorts the
+ * account's entire event history, so `cachedDailyRows` is the only caller that
+ * omits it — it backs the all-time view, which has no smaller question to ask,
+ * and puts a 60s cache in front rather than running the scan per request.
  */
-export async function loadDailyAggregates(userId: string): Promise<DailyAggRow[]> {
+export async function loadDailyAggregates(userId: string, since?: Date): Promise<DailyAggRow[]> {
   const result = await db.execute(sql`
     WITH folded AS (
       SELECT DISTINCT ON (${FOLD_KEY})
@@ -105,6 +111,7 @@ export async function loadDailyAggregates(userId: string): Promise<DailyAggRow[]
         ${usageEvents.cacheReadTokens} AS cache_read_tokens
       FROM ${usageEvents}
       WHERE ${usageEvents.userId} = ${userId}
+        ${since ? sql`AND ${usageEvents.ts} >= ${since}` : sql``}
       ORDER BY ${FOLD_KEY}, ${ROW_TOTAL} DESC, ${usageEvents.ts} ASC
     )
     SELECT
@@ -413,12 +420,17 @@ export async function getLiveDashboard(userId: string, now: Date): Promise<LiveD
     ) -
       5 * 60 * 1000,
   );
-  // Events, the group list and the all-time daily aggregates are independent —
-  // one round-trip.
+  // Events, the group list and the daily aggregates are independent — one
+  // round-trip. This is a per-request path (5s dashboard poll, plus the
+  // collector guard on every prompt), and the only thing it takes from the
+  // aggregates is the current month, so the scan is bounded to that month
+  // rather than the whole history. Both sides bucket in UTC, so the bound is
+  // exact.
+  const monthStart = new Date(`${monthKey(now)}-01T00:00:00.000Z`);
   const [events, groupRows, aggRows] = await Promise.all([
     loadRecentEvents(userId, earliest),
     db.select().from(groups).where(eq(groups.ownerId, userId)),
-    loadDailyAggregates(userId),
+    loadDailyAggregates(userId, monthStart),
   ]);
 
   // Every group that exists claims an equal slice of the account limit. The
@@ -484,6 +496,8 @@ export async function getLiveDashboard(userId: string, now: Date): Promise<LiveD
   await refreshPrices();
   const weeklyFolded = foldEvents(filterByWindow(events, weekStart, now));
   const monthK = monthKey(now);
+  // Redundant while aggRows is loaded with the matching `since` bound above, and
+  // kept so this stays correct if that bound is ever widened.
   const monthRows = aggRows.filter((r) => r.day.startsWith(monthK));
   const spend: Spend = {
     week: {
@@ -785,11 +799,26 @@ export interface HistoryDTO {
   devices: { id: string; name: string; groupId: string | null }[];
 }
 
+/**
+ * The all-time aggregate scan, cached per user for a minute.
+ *
+ * This is the one unbounded scan left (see `loadDailyAggregates`) and it runs in
+ * the dashboard loader, which `AutoRefresh` invalidates every 60s per open tab —
+ * so uncached, N tabs recompute the account's whole history N times a minute to
+ * render a chart that moves daily.
+ *
+ * Only the scan is cached, never the whole `HistoryDTO`: that also carries group
+ * and device names, which mutations change and then expect to see immediately
+ * via `router.invalidate()`. Caching those would show a renamed group under its
+ * old name, and hide a newly added device, for up to a minute.
+ */
+const cachedDailyRows = createPromiseCache(60_000, (userId: string) => loadDailyAggregates(userId));
+
 export async function getHistory(userId: string): Promise<HistoryDTO> {
   await refreshPrices();
   const [settings, rows, groupRows, deviceRows] = await Promise.all([
     ensureSettings(userId),
-    loadDailyAggregates(userId),
+    cachedDailyRows(userId),
     db.select().from(groups).where(eq(groups.ownerId, userId)),
     db
       .select({ id: devices.id, name: devices.name, groupId: devices.groupId })

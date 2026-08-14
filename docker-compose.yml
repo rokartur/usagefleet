@@ -60,7 +60,11 @@ services:
       STRIPE_PRICE_CUSTOM: ${STRIPE_PRICE_CUSTOM:?set STRIPE_PRICE_CUSTOM in .env}
       NODE_ENV: production
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      # Loopback only: TRUST_PROXY tells the app to believe X-Forwarded-For, and
+      # nothing can distinguish a proxied request from a direct one that forged
+      # the header, so the port must not be reachable except through the proxy.
+      # A proxy on another host needs this changed AND the port firewalled.
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
     healthcheck:
       # The standalone runner image has no curl/wget — use Bun's built-in fetch.
       test:

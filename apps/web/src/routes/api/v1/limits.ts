@@ -1,32 +1,35 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { and, eq } from "drizzle-orm";
-import { z } from "zod";
+import { type } from "arktype";
 import { db } from "@/db";
 import { devices, groups, userSettings } from "@/db/schema";
 import { getLiveDashboard, recordLimitSample } from "@/lib/data";
 import { deviceWithinPlan, overPlanLimit } from "@/lib/billing";
 import { authenticateDevice } from "@/lib/device-auth";
-import { bodyTooLarge } from "@/lib/rate-limit";
+import { readJsonCapped } from "@/lib/rate-limit";
 
-const LimitsSchema = z.object({
-  source: z.enum(["sub", "api"]),
-  fiveHourPct: z.number().int().min(0).max(100).nullish(),
-  sevenDayPct: z.number().int().min(0).max(100).nullish(),
-  fiveHourResetsAt: z.string().nullish(),
-  sevenDayResetsAt: z.string().nullish(),
+const PCT = "0 <= number.integer <= 100 | null";
+
+const LimitsSchema = type({
+  source: "'sub' | 'api'",
+  "fiveHourPct?": PCT,
+  "sevenDayPct?": PCT,
+  "fiveHourResetsAt?": "string | null",
+  "sevenDayResetsAt?": "string | null",
   // Per-model limits from the dynamic rate-limit headers (e.g. Fable weekly).
   // Keys are constrained to header-safe charsets so junk can't land in jsonb.
-  modelLimits: z
-    .array(
-      z.object({
-        model: z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,63}$/),
-        window: z.string().regex(/^\d{1,3}[hdwm]$/),
-        pct: z.number().int().min(0).max(100).nullish(),
-        resetsAt: z.string().nullish(),
-      }),
-    )
-    .max(16)
-    .nullish(),
+  // Note arktype keeps undeclared keys rather than stripping them, so what
+  // actually bounds this column is the explicit field-by-field map below —
+  // storing a validated object wholesale would put attacker keys in jsonb.
+  "modelLimits?": type({
+    model: "/^[a-z0-9][a-z0-9_.-]{0,63}$/",
+    window: "/^\\d{1,3}[hdwm]$/",
+    "pct?": PCT,
+    "resetsAt?": "string | null",
+  })
+    .array()
+    .atMostLength(16)
+    .or("null"),
 });
 
 function toDate(v: string | null | undefined): Date | null {
@@ -98,22 +101,14 @@ async function GET(req: Request) {
 }
 
 async function POST(req: Request) {
-  if (bodyTooLarge(req, 64 * 1024)) {
-    return Response.json({ error: "payload too large" }, { status: 413 });
-  }
   const auth = await authenticateDevice(req, "limits");
   if ("response" in auth) return auth.response;
   const { device } = auth;
   if (!(await deviceWithinPlan(device))) return overPlanLimit();
 
-  const parsed = LimitsSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) {
-    return Response.json(
-      { error: "invalid payload", issues: parsed.error.issues },
-      { status: 400 },
-    );
-  }
-  const b = parsed.data;
+  const body = await readJsonCapped(req, 64 * 1024, LimitsSchema);
+  if (!body.ok) return body.response;
+  const b = body.value;
   const now = new Date();
 
   const set = {

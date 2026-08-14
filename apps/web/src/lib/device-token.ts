@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 const PREFIX = "uf_";
 
@@ -19,11 +19,4 @@ export function generateDeviceToken(): {
     tokenHash: hashToken(token),
     tokenPrefix: token.slice(0, 12),
   };
-}
-
-/** Constant-time compare of two hex hashes. */
-export function hashesEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a, "hex");
-  const bb = Buffer.from(b, "hex");
-  return ab.length === bb.length && timingSafeEqual(ab, bb);
 }

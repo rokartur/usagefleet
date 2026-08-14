@@ -1,84 +1,61 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
+import { type } from "arktype";
 import { db } from "@/db";
 import { devices, usageEvents } from "@/db/schema";
 import { deviceWithinPlan, overPlanLimit } from "@/lib/billing";
-import { hashToken } from "@/lib/device-token";
-import { bodyTooLarge, clientIp, rateLimit, tooMany } from "@/lib/rate-limit";
+import { authenticateDevice } from "@/lib/device-auth";
+import { readJsonCapped } from "@/lib/rate-limit";
 
 const MAX_BODY = 8 * 1024 * 1024; // 8 MB (1000 records * generous per-record)
 
-const RecordSchema = z.object({
-  uuid: z.string().min(1),
-  messageId: z.string().nullish(),
-  requestId: z.string().nullish(),
-  model: z.string().nullish(),
-  sessionId: z.string().nullish(),
-  timestamp: z.string().refine((v) => !Number.isNaN(new Date(v).getTime()), "invalid timestamp"),
-  cwd: z.string().nullish(),
-  gitBranch: z.string().nullish(),
-  version: z.string().nullish(),
-  // Cap below Postgres int4 max (2^31-1) so a corrupt/malicious value is a clean
-  // 400 instead of a numeric-overflow 500 that rejects the whole batch. Real
-  // per-message counts are bounded by the context window (~1M), far below this.
-  inputTokens: z.number().int().nonnegative().max(2_000_000_000).default(0),
-  outputTokens: z.number().int().nonnegative().max(2_000_000_000).default(0),
-  cacheCreationTokens: z.number().int().nonnegative().max(2_000_000_000).default(0),
-  cacheReadTokens: z.number().int().nonnegative().max(2_000_000_000).default(0),
-  serviceTier: z.string().nullish(),
+// Identifiers and labels are free-form text from the collector, so every one of
+// them needs an explicit ceiling: MAX_BODY alone allows 1000 records whose
+// strings soak up the whole 8 MB and land in the database verbatim.
+const ID = 200;
+const LABEL = 512;
+
+// Cap below Postgres int4 max (2^31-1) so a corrupt/malicious value is a clean
+// 400 instead of a numeric-overflow 500 that rejects the whole batch. Real
+// per-message counts are bounded by the context window (~1M), far below this.
+const TOKENS = `0 <= number.integer <= 2000000000 = 0` as const;
+
+const RecordSchema = type({
+  uuid: `1 <= string <= ${ID}`,
+  "messageId?": `string <= ${ID} | null`,
+  "requestId?": `string <= ${ID} | null`,
+  "model?": `string <= ${ID} | null`,
+  "sessionId?": `string <= ${ID} | null`,
+  timestamp: type(`string <= 64`).and("string.date"),
+  "cwd?": `string <= ${LABEL} | null`,
+  "gitBranch?": `string <= ${LABEL} | null`,
+  "version?": `string <= ${ID} | null`,
+  inputTokens: TOKENS,
+  outputTokens: TOKENS,
+  cacheCreationTokens: TOKENS,
+  cacheReadTokens: TOKENS,
+  "serviceTier?": `string <= ${ID} | null`,
   // Which app produced the record. Older collectors omit it → 'cli'.
-  source: z.enum(["cli", "desktop", "pi"]).nullish(),
+  "source?": "'cli' | 'desktop' | 'pi' | null",
 });
 
-const BatchSchema = z.object({
-  os: z.enum(["mac", "linux", "windows"]).optional(),
-  hostname: z.string().optional(),
-  collectorVersion: z.string().optional(),
-  records: z.array(RecordSchema).max(1000),
+const BatchSchema = type({
+  "os?": "'mac' | 'linux' | 'windows'",
+  "hostname?": `string <= ${LABEL}`,
+  "collectorVersion?": `string <= ${ID}`,
+  records: RecordSchema.array().atMostLength(1000),
 });
-
-function bearerOrApiKey(req: Request): string | null {
-  const k = req.headers.get("x-api-key");
-  if (k) return k;
-  const auth = req.headers.get("authorization");
-  if (auth?.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
-  return null;
-}
 
 async function POST(req: Request) {
-  if (bodyTooLarge(req, MAX_BODY)) {
-    return Response.json({ error: "payload too large" }, { status: 413 });
-  }
-  const token = bearerOrApiKey(req);
-  if (!token) {
-    // throttle pre-auth traffic by IP
-    const rl = rateLimit(`ingest-ip:${clientIp(req)}`, 60, 60_000);
-    if (!rl.ok) return tooMany(rl.retryAfter);
-    return Response.json({ error: "missing token" }, { status: 401 });
-  }
-
-  const tokenHash = hashToken(token);
-  const rl = rateLimit(`ingest:${tokenHash}`, 240, 60_000); // 240 req/min/device
-  if (!rl.ok) return tooMany(rl.retryAfter);
-
-  const device = (
-    await db.select().from(devices).where(eq(devices.tokenHash, tokenHash)).limit(1)
-  )[0];
-  if (!device || device.revoked) {
-    return Response.json({ error: "invalid token" }, { status: 401 });
-  }
+  const auth = await authenticateDevice(req, "ingest", 240); // 240 req/min/device
+  if ("response" in auth) return auth.response;
+  const { device } = auth;
   if (!(await deviceWithinPlan(device))) return overPlanLimit();
 
-  const parsed = BatchSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) {
-    return Response.json(
-      { error: "invalid payload", issues: parsed.error.issues },
-      { status: 400 },
-    );
-  }
-  const batch = parsed.data;
+  const body = await readJsonCapped(req, MAX_BODY, BatchSchema);
+  if (!body.ok) return body.response;
+  const batch = body.value;
 
   let accepted = 0;
   if (batch.records.length > 0) {

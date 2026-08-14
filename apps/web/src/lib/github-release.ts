@@ -3,6 +3,8 @@
 // credential and proxies downloads, which keeps the collector free of `gh` and
 // of any GitHub auth at all.
 
+import { createPromiseCache } from "@/lib/promise-cache";
+
 const REPO = process.env.GITHUB_REPO ?? "rokartur/usagefleet";
 const SUMS_ASSET = "SHA256SUMS.txt";
 
@@ -30,22 +32,35 @@ function token(): string {
   return t;
 }
 
-/** `revalidate` is for small JSON only — asset bodies are far past the data
- *  cache's size limit and must stream straight through. */
-async function gh(path: string, accept: string, revalidate?: number): Promise<Response> {
-  const res = await fetch(`https://api.github.com${path}`, {
-    headers: {
-      accept,
-      authorization: `Bearer ${token()}`,
-      "x-github-api-version": "2022-11-28",
-      "user-agent": "usagefleet",
-    },
-    ...(revalidate === undefined
-      ? { cache: "no-store" as const }
-      : // Releases move rarely and every device polls daily; let the platform
-        // collapse that into one upstream request per minute.
-        { next: { revalidate } }),
-  });
+/** Metadata calls are small and sit in front of a shared promise cache, so a hung
+ *  connection would stall every waiter for the whole TTL with nothing to clear it
+ *  (the failure cleanup only runs on rejection, and a hang never rejects). Asset
+ *  bodies opt out: aborting mid-stream would break a slow but healthy download. */
+const META_TIMEOUT_MS = 10_000;
+
+async function gh(path: string, accept: string, timeoutMs?: number): Promise<Response> {
+  const auth = `Bearer ${token()}`; // hoisted: its own ReleaseUnavailable is already right
+  let res: Response;
+  try {
+    res = await fetch(`https://api.github.com${path}`, {
+      cache: "no-store",
+      signal: timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs),
+      headers: {
+        accept,
+        authorization: auth,
+        "x-github-api-version": "2022-11-28",
+        "user-agent": "usagefleet",
+      },
+    });
+  } catch (err) {
+    // A timeout rejects with a DOMException and a dropped connection with a
+    // TypeError; neither is a ReleaseUnavailable, so without this both sail past
+    // the `instanceof` checks in the routes and 500 a public endpoint instead of
+    // returning the documented 503.
+    throw new ReleaseUnavailable(
+      `GitHub ${path} → ${err instanceof Error ? err.name : "network error"}`,
+    );
+  }
   if (!res.ok) throw new ReleaseUnavailable(`GitHub ${path} → ${res.status}`);
   return res;
 }
@@ -60,9 +75,29 @@ export function parseSha256Sums(text: string): Record<string, string> {
   return out;
 }
 
-export async function latestRelease(): Promise<LatestRelease> {
-  const res = await gh(`/repos/${REPO}/releases/latest`, "application/vnd.github+json", 60);
-  const release = (await res.json()) as {
+const cachedRelease = createPromiseCache(60_000, fetchLatestRelease);
+
+/**
+ * The latest release, cached for a minute.
+ *
+ * Releases move rarely but every device polls daily and each lookup costs two
+ * GitHub API calls, so uncached this makes the 5000/hr token quota the real
+ * ceiling on fleet size — and once it is spent, every install and self-update
+ * fails.
+ */
+export function latestRelease(): Promise<LatestRelease> {
+  return cachedRelease(REPO);
+}
+
+async function fetchLatestRelease(): Promise<LatestRelease> {
+  const res = await gh(
+    `/repos/${REPO}/releases/latest`,
+    "application/vnd.github+json",
+    META_TIMEOUT_MS,
+  );
+  // The abort signal covers the body too, so a stalled read rejects here rather
+  // than at the fetch — same reason as in `gh`, it must not escape as a 500.
+  const release = (await readOrUnavailable(res, (r) => r.json())) as {
     tag_name?: string;
     assets?: Array<{ name?: string; id?: number }>;
   };
@@ -75,14 +110,30 @@ export async function latestRelease(): Promise<LatestRelease> {
   return {
     tag: release.tag_name,
     assets,
-    sha256: sums ? parseSha256Sums(await (await gh(assetPath(sums.id), OCTET, 60)).text()) : {},
+    sha256: sums
+      ? parseSha256Sums(
+          await readOrUnavailable(await gh(assetPath(sums.id), OCTET, META_TIMEOUT_MS), (r) =>
+            r.text(),
+          ),
+        )
+      : {},
   };
+}
+
+async function readOrUnavailable<T>(res: Response, read: (res: Response) => Promise<T>) {
+  try {
+    return await read(res);
+  } catch (err) {
+    throw new ReleaseUnavailable(
+      `GitHub body → ${err instanceof Error ? err.name : "read failed"}`,
+    );
+  }
 }
 
 /** Raw bytes of a release asset. GitHub 302s to a signed storage URL; undici
  *  drops the Authorization header across that origin change, which is exactly
  *  what the storage backend requires. */
-export function assetBody(assetId: number): Promise<Response> {
+function assetBody(assetId: number): Promise<Response> {
   return gh(assetPath(assetId), OCTET);
 }
 

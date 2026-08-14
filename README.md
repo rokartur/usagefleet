@@ -46,7 +46,8 @@ sed -i '' "s|^BETTER_AUTH_SECRET=.*|BETTER_AUTH_SECRET=$SECRET|" .env   # macOS
 #   POSTGRES_PASSWORD
 #   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET      (github.com/settings/developers)
 #   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET      (console.cloud.google.com/apis/credentials)
-#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_SOLO, STRIPE_PRICE_FLEET
+#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
+#   STRIPE_PRICE_SOLO, STRIPE_PRICE_FLEET, STRIPE_PRICE_CUSTOM
 # BETTER_AUTH_URL defaults to http://localhost:3000 — set it for any other host,
 # it is what the OAuth callback URLs must match.
 
@@ -90,13 +91,26 @@ client IP from `X-Forwarded-For`. Leave it `false` for direct exposure: the
 header is client-forgeable, so it's ignored and anonymous requests share one
 bucket. Your proxy should strip inbound `X-Forwarded-For`.
 
+Setting it is also what makes the invalid-token throttle work at all: with no
+trusted proxy there is no attributable client, so bad-token attempts cannot be
+charged to anyone and that gate is off.
+
+`TRUST_PROXY` is a promise that the app port is only reachable *through* the
+proxy — nothing in the app can tell a proxied request from one that arrived
+directly carrying a hand-written `X-Forwarded-For`. Compose therefore publishes
+on `127.0.0.1` only. If your proxy runs on another host, change the binding in
+`docker-compose.yml` and firewall the port yourself; do not leave it open on
+`0.0.0.0` with `TRUST_PROXY` set, or every rate limit becomes opt-out.
+
 A deployment that serves the public installer (`curl | sh`) has to set this. The
 installer's download route is anonymous on purpose, so on the shared bucket one
 person installing spends the limit for everyone else.
 
 > Rate limits (and better-auth's login throttle) are in-memory: they reset on
 > container restart and assume a **single** `web` instance. Add a shared store
-> before running multiple replicas.
+> before running multiple replicas. The bucket table is capped, so memory stays
+> bounded under a flood of distinct keys — at the cost of resetting some windows
+> early while the flood lasts.
 
 **Port already in use?** If `curl localhost:3000` returns `000` even though
 `docker compose ps` shows `web` up and healthy, another process holds host port
