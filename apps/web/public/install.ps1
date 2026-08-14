@@ -3,16 +3,15 @@
 usagefleet collector installer for Windows (mirror of install.sh).
 
 .DESCRIPTION
-Downloads the latest standalone .exe from the project's GitHub Releases,
-verifies its SHA-256 checksum, installs it as `usagefleet` on your PATH, and
-(when a token is available) registers it as an autostart Scheduled Task that
-runs hidden at logon.
+Downloads the latest standalone .exe, verifies its SHA-256 checksum, installs
+it as `usagefleet` on your PATH, and (when a token is available) registers it
+as an autostart Scheduled Task that runs hidden at logon.
 
-The repo is PRIVATE - downloads use the GitHub CLI (`gh`). Install it from
-https://cli.github.com/ and run `gh auth login` once (or set GH_TOKEN).
+No GitHub account or `gh` needed: the server holds the one GitHub credential
+and serves the binary itself. The source repo stays private.
 
 .EXAMPLE
-$s = irm https://raw.githubusercontent.com/rokartur/usagefleet/main/install.ps1
+$s = irm https://usagefleet.com/install.ps1
 & ([scriptblock]::Create($s)) -Token uf_xxx
 
 .EXAMPLE
@@ -26,21 +25,19 @@ restarts the task.
 param(
   # Device token from the server's Devices page; configures + enables autostart.
   [string]$Token = $env:USAGEFLEET_TOKEN,
-  # Server URL (default: https://claude-tracker.rokartur.com).
-  [string]$Endpoint = $env:USAGEFLEET_ENDPOINT,
+  # Server URL, for self-hosted deployments. Serves the binary too.
+  [string]$Endpoint = $(if ($env:USAGEFLEET_ENDPOINT) { $env:USAGEFLEET_ENDPOINT } else { 'https://usagefleet.com' }),
   # Install location (default: %LOCALAPPDATA%\Programs\usagefleet).
   [string]$BinDir = $env:USAGEFLEET_BIN_DIR,
-  # Pin a release tag instead of latest (e.g. v1.0.0.3).
-  [string]$Version = $(if ($env:USAGEFLEET_VERSION) { $env:USAGEFLEET_VERSION } else { 'latest' }),
   # Install the binary only; don't register autostart.
   [switch]$NoService,
   # Register autostart even without a token (must be configured already).
-  [switch]$Service
+  [switch]$Service,
+  # Install without verifying the SHA-256 (last resort; a tampered binary would run).
+  [switch]$SkipChecksum
 )
 
 $ErrorActionPreference = 'Stop'
-$repo = 'rokartur/usagefleet'
-$defaultEndpoint = 'https://claude-tracker.rokartur.com'
 $asset = 'usagefleet-windows-x64.exe'
 $task = 'usagefleet'
 
@@ -50,9 +47,9 @@ function Die { param($m) Write-Host "error: $m" -ForegroundColor Red; exit 1 }
 
 # While $ErrorActionPreference is 'Stop', PowerShell 5.1 turns anything a native
 # command writes to stderr into a terminating NativeCommandError - and both
-# `schtasks /end` on a missing task and `gh auth status` answer on stderr as a
-# matter of course. Run native tools with the preference relaxed and judge them
-# by their exit code, which is the only thing we actually care about.
+# `schtasks /end` on a missing task and the collector's own probes answer on
+# stderr as a matter of course. Run native tools with the preference relaxed and
+# judge them by their exit code, which is the only thing we actually care about.
 function Invoke-Native {
   param([Parameter(Mandatory)][string]$File, [string[]]$ArgList = @(), [switch]$Quiet)
   # Assigning here shadows the script-scope preference for this call only.
@@ -65,42 +62,45 @@ if ([Environment]::Is64BitOperatingSystem -eq $false) {
   Die 'unsupported architecture: only 64-bit Windows is published.'
 }
 
-# ---- release downloader (private repo -> gh) --------------------------------
-if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-  Die "the GitHub CLI 'gh' is required (the repo is private). Install it: https://cli.github.com/ - then run 'gh auth login'."
-}
-if ((Invoke-Native gh @('auth', 'status') -Quiet) -ne 0 -and -not ($env:GH_TOKEN -or $env:GITHUB_TOKEN)) {
-  Die "gh is not authenticated. Run 'gh auth login' (or set GH_TOKEN) and retry."
-}
-
-$tagArgs = @()
-if ($Version -ne 'latest') { $tagArgs = @($Version) }
-
+# ---- release downloader -----------------------------------------------------
+# The server proxies the private repo's release assets, so this needs no GitHub
+# account, no `gh`, and no token - just the endpoint.
 function Get-Asset {
   param([string]$Name, [string]$Dest)
-  $a = @('release', 'download') + $tagArgs + @('-R', $repo, '-p', $Name, '-O', $Dest, '--clobber')
-  return ((Invoke-Native gh $a -Quiet) -eq 0)
+  $uri = "$($Endpoint.TrimEnd('/'))/api/v1/collector/asset?asset=$([uri]::EscapeDataString($Name))"
+  try {
+    # -UseBasicParsing keeps this working on PowerShell 5.1 without IE engine.
+    Invoke-WebRequest -Uri $uri -OutFile $Dest -UseBasicParsing
+    return $true
+  }
+  catch { return $false }
 }
 
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("usagefleet-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
 try {
   $downloaded = Join-Path $tmp $asset
-  Write-Info "Downloading $asset ($Version)..."
+  Write-Info "Downloading $asset from $Endpoint..."
   if (-not (Get-Asset $asset $downloaded)) {
-    Die "could not download $asset - check 'gh auth status', your repo access, and that a release with this asset exists."
+    Die "could not download $asset from $Endpoint - check the server is reachable and has a published release for your platform (retry in a few minutes if you were rate limited)."
   }
 
   # ---- verify checksum ------------------------------------------------------
+  # Verification failure is fatal, never a warning: whatever can serve a tampered
+  # binary can also make SHA256SUMS.txt unavailable, so degrading to a warning
+  # hands the attacker the bypass for free. -SkipChecksum is the explicit way out.
   $sums = Join-Path $tmp 'SHA256SUMS.txt'
-  if (Get-Asset 'SHA256SUMS.txt' $sums) {
+  if ($SkipChecksum) {
+    Write-Warn "-SkipChecksum given - installing $asset WITHOUT verifying it"
+  }
+  elseif (Get-Asset 'SHA256SUMS.txt' $sums) {
     $want = (Get-Content $sums | ForEach-Object {
         $parts = $_ -split '\s+', 2
         if ($parts.Count -eq 2 -and $parts[1].TrimStart('*') -eq $asset) { $parts[0] }
       } | Select-Object -First 1)
     $got = (Get-FileHash -Algorithm SHA256 $downloaded).Hash.ToLower()
     if (-not $want) {
-      Write-Warn "no checksum entry for $asset - skipping verification"
+      Die "no checksum entry for $asset - refusing to install unverified (re-run with -SkipChecksum to override)"
     }
     elseif ($want.ToLower() -ne $got) {
       Die "checksum mismatch for $asset (want $want, got $got) - refusing to install"
@@ -108,7 +108,7 @@ try {
     else { Write-Info 'Checksum OK.' }
   }
   else {
-    Write-Warn 'could not fetch SHA256SUMS.txt - skipping checksum verification'
+    Die "could not fetch SHA256SUMS.txt from $Endpoint - refusing to install unverified (re-run with -SkipChecksum to override)"
   }
 
   # ---- install --------------------------------------------------------------
@@ -148,8 +148,7 @@ try {
 
   # ---- configure ------------------------------------------------------------
   if ($Token) {
-    if (-not $Endpoint) { $Endpoint = $defaultEndpoint }
-    Write-Info "Configuring for $Endpoint (writing ~/.usagefleet.json)..."
+    Write-Info "Configuring for $Endpoint (writing ~/.config/usagefleet/config.json)..."
     if ((Invoke-Native $dest @('init', '--endpoint', $Endpoint, '--token', $Token)) -ne 0) {
       Die 'usagefleet init failed - see the message above.'
     }
@@ -159,8 +158,12 @@ try {
   if ($Token -and $Endpoint) { $configured = $true }
   elseif ($env:USAGEFLEET_TOKEN -and $env:USAGEFLEET_ENDPOINT) { $configured = $true }
   else {
-    $cfg = Join-Path $HOME '.usagefleet.json'
-    if (Test-Path $cfg) {
+    $base = if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME '.config' }
+    # Second path is a pre-consolidation install; the collector migrates it on
+    # its next write, but until then that is where the token still lives.
+    $cfg = @((Join-Path $base 'usagefleet\config.json'), (Join-Path $HOME '.usagefleet.json')) |
+      Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($cfg) {
       $raw = Get-Content $cfg -Raw
       $configured = ($raw -match '"endpoint"') -and ($raw -match '"token"')
     }
@@ -170,7 +173,7 @@ try {
   if ($NoService) {
     Write-Host ''
     Write-Info 'Binary installed. Next steps:'
-    if (-not $configured) { Write-Host "  usagefleet init --endpoint $defaultEndpoint --token uf_xxx" }
+    if (-not $configured) { Write-Host "  usagefleet init --endpoint $Endpoint --token uf_xxx" }
     Write-Host '  usagefleet install        # enable autostart background task'
   }
   elseif ($Service -or $configured) {
@@ -186,7 +189,7 @@ try {
     Write-Host ''
     Write-Warn 'No token/endpoint configured - skipping autostart.'
     Write-Info 'Configure then enable it:'
-    Write-Host "  usagefleet init --endpoint $defaultEndpoint --token uf_xxx"
+    Write-Host "  usagefleet init --endpoint $Endpoint --token uf_xxx"
     Write-Host '  usagefleet install'
     Write-Host 'Or re-run this installer with: -Token uf_xxx'
   }

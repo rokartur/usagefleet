@@ -46,8 +46,13 @@ export function rateLimit(key: string, limit: number, windowMs: number): RateRes
  *
  * Default (no trusted proxy, e.g. the direct-exposed compose port): ignore all
  * client-supplied headers and use a single shared bucket. Strict but unspoofable
- * — legitimate ingestion always carries a device token and is keyed on its hash,
- * not the IP, so this only throttles anonymous (missing-token) spam.
+ * — device ingestion is keyed on the token hash, not the IP, so this mostly
+ * throttles anonymous spam.
+ *
+ * The exception is the public installer download (/api/v1/collector/asset),
+ * which is anonymous by design: on the shared bucket its limit applies to every
+ * caller at once, so a public deployment MUST set TRUST_PROXY or the
+ * `curl | sh` install will throttle strangers against each other.
  */
 export function clientIp(req: Request): string {
   const trust = process.env.TRUST_PROXY;

@@ -85,3 +85,38 @@ export async function latestRelease(): Promise<LatestRelease> {
 export function assetBody(assetId: number): Promise<Response> {
   return gh(assetPath(assetId), OCTET);
 }
+
+/**
+ * The named asset of the latest release, streamed back as a download response,
+ * including the 400/404/503 cases.
+ *
+ * The two collector download routes serve exactly these bytes and differ only
+ * in how they authorize the caller, so the GitHub side lives here once.
+ */
+export async function serveLatestAsset(name: string | null): Promise<Response> {
+  if (!name) return Response.json({ error: "missing asset" }, { status: 400 });
+
+  try {
+    // The release's own asset list is the allowlist — an exact-name lookup, so
+    // the parameter can never reach GitHub as an arbitrary path.
+    const release = await latestRelease();
+    const asset = release.assets.find((a) => a.name === name);
+    if (!asset) return Response.json({ error: "unknown asset" }, { status: 404 });
+
+    const upstream = await assetBody(asset.id);
+    const length = upstream.headers.get("content-length");
+    return new Response(upstream.body, {
+      headers: {
+        "content-type": "application/octet-stream",
+        "content-disposition": `attachment; filename="${asset.name}"`,
+        "cache-control": "no-store",
+        ...(length ? { "content-length": length } : {}),
+      },
+    });
+  } catch (err) {
+    if (err instanceof ReleaseUnavailable) {
+      return Response.json({ error: "no release available" }, { status: 503 });
+    }
+    throw err;
+  }
+}

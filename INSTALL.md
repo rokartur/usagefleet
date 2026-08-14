@@ -26,6 +26,30 @@ docker compose up --build -d      # migrations run automatically on boot
 Before `up`, set in `.env`: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`
 (≥32 chars, high entropy) and — if not on `localhost:3000` — `BETTER_AUTH_URL`.
 
+Sign-in and billing are also required, and `docker compose` aborts rather than
+starting half-configured if any is missing:
+
+| Variable | Where to get it |
+|----------|-----------------|
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | [github.com/settings/developers](https://github.com/settings/developers), callback `<BETTER_AUTH_URL>/api/auth/callback/github` |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [Google Cloud credentials](https://console.cloud.google.com/apis/credentials), callback `<BETTER_AUTH_URL>/api/auth/callback/google` |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_SOLO`, `STRIPE_PRICE_FLEET`, `STRIPE_PRICE_CUSTOM` | Stripe dashboard |
+
+Solo and Fleet are flat monthly prices. **Custom must be a per-unit price**
+("$0.35 per device / month", no package or tier pricing): the chosen device
+count is sent as the line-item quantity, so Stripe multiplies it out and the
+device cap is read back from that same quantity.
+
+The amounts are yours to pick — the app reads them back from these price ids and
+renders whatever Stripe says, so nothing quotes a number you aren't charging.
+Prices are cached per process, so restart `web` after editing one in Stripe.
+
+Plan switches go through Stripe's customer portal, so in
+[Billing → Customer portal](https://dashboard.stripe.com/settings/billing/portal)
+turn on "Customers can switch plans", list all three products, and allow
+quantity changes so Custom subscribers can resize. Without it, Stripe rejects
+the switch and Billing shows an error toast.
+
 Generate the secret:
 
 ```bash
@@ -47,17 +71,23 @@ the README are Unix-only. Everything else (rate limiting, reverse proxy,
 
 ## Collector — macOS
 
-Requirements: macOS 12+ (Apple Silicon or Intel), [`gh`](https://cli.github.com/)
-authenticated (`gh auth login`) because the repo is private. Signed into Claude
-Code (`claude`) if you want the real 5h/weekly limit numbers.
+Requirements: macOS 12+ (Apple Silicon or Intel), `curl` or `wget`. Signed into
+Claude Code (`claude`) if you want the real 5h/weekly limit numbers.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rokartur/usagefleet/main/install.sh | sh -s -- --token uf_xxx
+curl -sSL https://usagefleet.com/install.sh | sh
+```
+
+Pass a device token from the Devices page to configure and start it in the same
+step:
+
+```bash
+curl -sSL https://usagefleet.com/install.sh | sh -s -- --token uf_xxx
 ```
 
 Downloads `usagefleet-macos-arm64`/`-x64`, verifies its SHA-256, installs to
 `/usr/local/bin` (or `~/.local/bin` if that isn't writable), strips the Gatekeeper
-quarantine flag, writes `~/.usagefleet.json`, and starts a LaunchAgent.
+quarantine flag, writes `~/.config/usagefleet/config.json`, and starts a LaunchAgent.
 
 Verify:
 
@@ -71,7 +101,8 @@ Service:
 | | |
 |---|---|
 | Agent | `~/Library/LaunchAgents/dev.usagefleet.collector.plist` |
-| Logs | `/tmp/usagefleet.out.log`, `/tmp/usagefleet.err.log` |
+| Logs | `~/Library/Logs/usagefleet/usagefleet.out.log`, `usagefleet.err.log` |
+| Config | `~/.config/usagefleet/config.json` (settings + tail state, mode `600`) |
 | Restart | `launchctl kickstart -k gui/$(id -u)/dev.usagefleet.collector` |
 | Update | re-run the installer (or `usagefleet install`) |
 | Remove | `usagefleet uninstall` |
@@ -92,11 +123,10 @@ Troubleshooting:
 
 ## Collector — Linux
 
-Requirements: glibc x64 or arm64, `systemd` for autostart,
-[`gh`](https://cli.github.com/) authenticated (`gh auth login`).
+Requirements: glibc x64 or arm64, `curl` or `wget`, `systemd` for autostart.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rokartur/usagefleet/main/install.sh | sh -s -- --token uf_xxx
+curl -sSL https://usagefleet.com/install.sh | sh -s -- --token uf_xxx
 ```
 
 Installs to `/usr/local/bin` (or `~/.local/bin`), writes a **user** systemd unit,
@@ -135,11 +165,10 @@ Troubleshooting:
 
 ## Collector — Windows
 
-Requirements: 64-bit Windows 10/11, PowerShell,
-[`gh`](https://cli.github.com/) authenticated (`gh auth login`).
+Requirements: 64-bit Windows 10/11, PowerShell.
 
 ```powershell
-$s = irm https://raw.githubusercontent.com/rokartur/usagefleet/main/install.ps1
+$s = irm https://usagefleet.com/install.ps1
 & ([scriptblock]::Create($s)) -Token uf_xxx
 ```
 
@@ -197,7 +226,7 @@ yourself:
 ```bash
 gh release download -R rokartur/usagefleet -p usagefleet-linux-x64
 chmod +x usagefleet-linux-x64 && mv usagefleet-linux-x64 ~/.local/bin/usagefleet
-usagefleet init --endpoint https://claude-tracker.rokartur.com --token uf_xxx
+usagefleet init --endpoint https://usagefleet.com --token uf_xxx
 usagefleet install
 ```
 
@@ -209,8 +238,9 @@ cd apps/collector && bun run src/index.ts --help
 ```
 
 Installer flags (`--help` for all): `--no-service`, `--endpoint <url>`,
-`--bin-dir <dir>`, `--version <tag>` — PowerShell: `-NoService`, `-Endpoint`,
-`-BinDir`, `-Version`.
+`--bin-dir <dir>` — PowerShell: `-NoService`, `-Endpoint`, `-BinDir`.
+The installer always fetches the latest release; `--endpoint` is for self-hosted
+deployments, which serve their own installer and binaries.
 
 Env vars, notification tuning and CLI commands:
 [apps/collector/README.md](apps/collector/README.md).
