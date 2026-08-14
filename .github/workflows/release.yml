@@ -25,6 +25,17 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # These binaries self-install onto user machines, so nothing ships until
+      # the linter and the suite agree it should.
+      - name: Lint
+        run: bun run lint
+
+      - name: Test
+        run: bun run test
+
       - name: Compute version
         id: meta
         run: |
