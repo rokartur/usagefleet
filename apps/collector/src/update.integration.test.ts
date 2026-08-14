@@ -14,17 +14,23 @@ const { assetName, checkForUpdate } = await import("./update.js");
 const cfg = { endpoint: "https://srv.test", token: "uf_x" };
 const ASSET = assetName(process.platform, process.arch) as string;
 
-/** Point the updater at a throwaway file instead of the running executable. */
+/** Point the updater at a throwaway file instead of the running executable.
+ *  argv[1] is set to the same path because that is what a compiled single-file
+ *  build looks like — the updater refuses to run otherwise (see the script-build
+ *  test below). */
 function fakeBinary(contents: string): string {
   const path = join(mkdtempSync(join(tmpdir(), "uf-upd-")), "usagefleet");
   writeFileSync(path, contents);
   Object.defineProperty(process, "execPath", { value: path, configurable: true });
+  process.argv[1] = path;
   return path;
 }
 
 const realExecPath = process.execPath;
+const realArgv1 = process.argv[1];
 afterEach(() => {
   Object.defineProperty(process, "execPath", { value: realExecPath, configurable: true });
+  process.argv[1] = realArgv1 as string;
   vi.unstubAllGlobals();
   spawn.mockClear();
 });
@@ -69,5 +75,30 @@ describe("checkForUpdate", () => {
 
     await expect(checkForUpdate(cfg, () => {})).resolves.toBeNull();
     expect(readFileSync(bin, "utf8")).toBe("old binary");
+  });
+
+  // The swap replaces process.execPath. Under the published `usagefleet.js`
+  // bundle that is the user's own `node`, so updating would destroy their Node
+  // install rather than the collector.
+  it("refuses to update a script build, where execPath is the user's node", async () => {
+    const bin = fakeBinary("the user's node");
+    process.argv[1] = join(tmpdir(), "usagefleet.js"); // a real, separate script
+    stubServer("new binary");
+
+    await expect(checkForUpdate(cfg, () => {})).resolves.toBeNull();
+    expect(readFileSync(bin, "utf8")).toBe("the user's node");
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  // Self-update fetches an executable and runs it: over plaintext that is RCE.
+  it("refuses to self-update over a non-https endpoint", async () => {
+    const bin = fakeBinary("old binary");
+    stubServer("new binary");
+
+    await expect(
+      checkForUpdate({ endpoint: "http://srv.test", token: "uf_x" }, () => {}),
+    ).resolves.toBeNull();
+    expect(readFileSync(bin, "utf8")).toBe("old binary");
+    expect(spawn).not.toHaveBeenCalled();
   });
 });

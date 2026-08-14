@@ -1,15 +1,13 @@
 #!/usr/bin/env node
-import { chmodSync, writeFileSync } from "node:fs";
-import { COLLECTOR_VERSION, reportLimitsOnce, runOnce } from "./collector.js";
+import { reportLimitsOnce, runOnce } from "./collector.js";
 import { detectClaudeCreds } from "./claude-creds.js";
-import { loadConfig, readFileConfig } from "./config.js";
+import { loadConfig } from "./config.js";
 import { runGuard } from "./guard.js";
 import { sendNotification } from "./notify.js";
 import { loadNotifyConfig } from "./notifier.js";
 import { detectOs } from "./os.js";
-import { defaultConfigPath } from "./paths.js";
 import { RELEASE_TAG } from "./release.js";
-import { loadState } from "./state.js";
+import { readStore, storePath, updateStore } from "./store.js";
 import { checkForUpdate } from "./update.js";
 
 function flag(name: string): string | undefined {
@@ -47,7 +45,7 @@ async function cmdRun(): Promise<void> {
   const cfg = loadConfig();
   const r = await runOnce(cfg, (m) => console.log(`[${ts()}] ${m}`));
   console.log(
-    `[${ts()}] scanned ${r.files} files · sent ${r.sent} · accepted ${r.accepted} · duplicates ${r.duplicates}${r.failed ? " · FAILED" : ""}`,
+    `[${ts()}] scanned ${r.files} files · sent ${r.sent} · accepted ${r.accepted} · duplicates ${r.duplicates}${r.dropped > 0 ? ` · DROPPED ${r.dropped}` : ""}${r.failed ? " · FAILED" : ""}`,
   );
   const limits = await reportLimitsOnce(cfg, (m) => console.log(`[${ts()}] ${m}`));
   if (limits) {
@@ -91,8 +89,12 @@ async function cmdWatch(): Promise<void> {
     running = true;
     try {
       const r = await runOnce(cfg, (m) => console.log(`[${ts()}] ${m}`));
-      if (r.sent > 0) {
-        console.log(`[${ts()}] sent ${r.sent} · accepted ${r.accepted} · dup ${r.duplicates}`);
+      // Dropped records are real data loss, so they must show up even in a
+      // cycle that uploaded nothing.
+      if (r.sent > 0 || r.dropped > 0) {
+        console.log(
+          `[${ts()}] sent ${r.sent} · accepted ${r.accepted} · dup ${r.duplicates}${r.dropped > 0 ? ` · DROPPED ${r.dropped}` : ""}`,
+        );
       }
       const nowMs = Date.now();
       if (nowMs - lastUpdateAt >= updateInterval) {
@@ -149,13 +151,14 @@ function cmdNotifyTest(): void {
 
 async function cmdStatus(): Promise<void> {
   const cfg = loadConfig();
-  const state = loadState(cfg.statePath);
+  const state = readStore(cfg.storePath).state;
   const tracked = Object.keys(state.files).length;
   const bytes = Object.values(state.files).reduce((a, f) => a + f.offset, 0);
   console.log(`os:        ${detectOs()}`);
   console.log(
     `release:   ${RELEASE_TAG}${RELEASE_TAG === "dev" ? " (local build \u2014 self-update disabled)" : ""}`,
   );
+  console.log(`config:    ${cfg.storePath}`);
   console.log(`endpoint:  ${cfg.endpoint}`);
   console.log(`token:     ${cfg.token.slice(0, 8)}…`);
   console.log(`projects:  ${cfg.projectsDir}`);
@@ -177,21 +180,18 @@ function cmdInit(): void {
     console.error("Usage: usagefleet init --endpoint <url> --token <device-token>");
     process.exit(1);
   }
-  const path = defaultConfigPath();
-  // Merge over any existing config so projectsDir etc. survive, and enforce
-  // 0600 even when the file already existed (the mode option only applies on create).
-  const merged = { ...readFileConfig(), endpoint, token };
-  writeFileSync(path, JSON.stringify(merged, null, 2) + "\n", { mode: 0o600 });
-  try {
-    chmodSync(path, 0o600);
-  } catch {
-    /* best-effort on platforms without POSIX perms */
-  }
+  const path = storePath();
+  // Merges over whatever is already there, so tail offsets and projectsDir
+  // survive a re-init and the device does not re-upload its whole history.
+  updateStore(path, (store) => {
+    store.endpoint = endpoint;
+    store.token = token;
+  });
   console.log(`Wrote ${path}`);
 }
 
 function help(): void {
-  console.log(`usagefleet v${COLLECTOR_VERSION} — Claude usage collector
+  console.log(`usagefleet v${RELEASE_TAG} — Claude usage collector
 
 Usage:
   usagefleet run                 Scan once, upload usage + report limits
@@ -202,12 +202,13 @@ Usage:
   usagefleet update              Update to the latest release now (watch does this daily)
   usagefleet notify-test         Fire a test desktop notification
   usagefleet status              Show resolved config + state + Claude login
-  usagefleet init --endpoint <url> --token <t>   Write ~/.usagefleet.json
+  usagefleet init --endpoint <url> --token <t>   Write ~/.config/usagefleet/config.json
   usagefleet install             Install as a background service (launchd/systemd/Task Scheduler)
                                    and register the guard as a Claude Code hook
   usagefleet uninstall           Remove the background service and the hook
 
-Config (env overrides ~/.usagefleet.json):
+Config (env overrides ~/.config/usagefleet/config.json, which holds settings,
+tail offsets and notification marks; USAGEFLEET_CONFIG relocates it):
   USAGEFLEET_ENDPOINT   server base URL (e.g. https://track.example.com)
   USAGEFLEET_TOKEN      device token from the Devices page
   USAGEFLEET_PROJECTS   override ~/.claude/projects (Claude Code)

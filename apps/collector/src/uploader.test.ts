@@ -5,7 +5,7 @@ import type { BatchPayload, Config } from "./types.js";
 const cfg: Config = {
   endpoint: "https://x.test",
   token: "uf_test",
-  statePath: "",
+  storePath: "",
   projectsDir: "",
   desktopDir: null,
   piDirs: [],
@@ -53,4 +53,16 @@ describe("uploadBatch failure classification", () => {
     mockFetch(422);
     expect(await uploadBatch(payload, cfg)).toEqual({ ok: false, fatal: "invalid" });
   });
+
+  // "invalid" is the one verdict that lets the caller advance past data and lose
+  // it forever, so it is a whitelist: anything not provably malformed retries.
+  // 402 is what the server answers for a device parked outside its plan —
+  // classifying that as invalid silently shredded the machine's whole history.
+  it.each([402, 404, 408, 409, 413, 451])(
+    "%i → transient (the records are fine; keep the offset)",
+    async (status) => {
+      mockFetch(status);
+      expect(await uploadBatch(payload, cfg)).toEqual({ ok: false, fatal: "transient" });
+    },
+  );
 });

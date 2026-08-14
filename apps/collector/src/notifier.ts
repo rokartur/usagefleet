@@ -1,7 +1,7 @@
-import { readFileSync, writeFileSync } from "node:fs";
 import type { LimitsReport } from "./claude-limits.js";
 import { sendNotification, type Urgency } from "./notify.js";
-import { defaultNotifyStatePath } from "./paths.js";
+import { freshWindow, readStore, storePath, updateStore } from "./store.js";
+import type { NotifyState, WindowNotifyState } from "./types.js";
 
 export interface NotifyConfig {
   enabled: boolean;
@@ -38,20 +38,6 @@ export function loadNotifyConfig(
 /** Per-window high-water mark so each threshold notifies at most once per
  *  window. `resetsAt` ties the mark to a specific window — when it changes the
  *  window has rolled over and the mark clears. */
-interface WindowNotifyState {
-  lastBucket: number;
-  resetsAt: string | null;
-}
-
-export interface NotifyState {
-  fiveHour: WindowNotifyState;
-  sevenDay: WindowNotifyState;
-}
-
-function freshWindow(): WindowNotifyState {
-  return { lastBucket: 0, resetsAt: null };
-}
-
 export function emptyNotifyState(): NotifyState {
   return { fiveHour: freshWindow(), sevenDay: freshWindow() };
 }
@@ -92,27 +78,6 @@ export function evaluateWindow(
   return { fire: null, next: { lastBucket, resetsAt } };
 }
 
-function loadNotifyState(path: string): NotifyState {
-  try {
-    const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<NotifyState>;
-    return {
-      fiveHour: { ...freshWindow(), ...raw.fiveHour },
-      sevenDay: { ...freshWindow(), ...raw.sevenDay },
-    };
-  } catch {
-    return emptyNotifyState();
-  }
-}
-
-function saveNotifyState(path: string, state: NotifyState): void {
-  // Best-effort: a write failure must never break the collector cycle.
-  try {
-    writeFileSync(path, JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
-  } catch {
-    /* read-only fs / permissions — notifications just may re-fire next time */
-  }
-}
-
 /** Relative "resets in 12m" / "resets in 2h" suffix, or "" if unknown/past. */
 function resetSuffix(resetsAt: string | null): string {
   if (!resetsAt) return "";
@@ -130,19 +95,19 @@ function urgencyFor(bucket: number): Urgency {
 }
 
 /**
- * Notify on freshly-crossed 5h/weekly thresholds, deduped across runs via a
- * small state file. Best-effort and self-contained: it owns its state IO and
- * never throws out to the caller.
+ * Notify on freshly-crossed 5h/weekly thresholds, deduped across runs via the
+ * store's `notify` section. Best-effort and self-contained: it owns its state
+ * IO and never throws out to the caller.
  */
 export function maybeNotify(
   report: LimitsReport,
   cfg: NotifyConfig = loadNotifyConfig(),
   log: (msg: string) => void = () => {},
-  statePath: string = defaultNotifyStatePath(),
+  path: string = storePath(),
 ): void {
   if (!cfg.enabled || cfg.thresholds.length === 0) return;
   try {
-    const state = loadNotifyState(statePath);
+    const state = readStore(path).notify;
     const five = evaluateWindow(
       state.fiveHour,
       report.fiveHourPct,
@@ -173,7 +138,9 @@ export function maybeNotify(
       log(`notified: weekly at ${report.sevenDayPct}% (crossed ${seven.fire}%)`);
     }
 
-    saveNotifyState(statePath, { fiveHour: five.next, sevenDay: seven.next });
+    updateStore(path, (store) => {
+      store.notify = { fiveHour: five.next, sevenDay: seven.next };
+    });
   } catch (err) {
     log(`notify skipped: ${(err as Error).message}`);
   }

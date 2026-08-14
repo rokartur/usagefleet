@@ -2,7 +2,9 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { isSecureEndpoint } from "./config.js";
 import { RELEASE_TAG } from "./release.js";
+import { looksLikeCompiledBinary } from "./service.js";
 import type { Config } from "./types.js";
 
 /** Release asset for this machine, mirroring the names install.sh downloads.
@@ -36,14 +38,28 @@ export function swapIn(downloaded: string, target: string): void {
   const old = `${target}.old`;
   rmSync(old, { force: true });
   renameSync(target, old);
-  renameSync(downloaded, target);
+  try {
+    renameSync(downloaded, target);
+  } catch (err) {
+    // The target path is now empty and it is the service's ExecStart: without
+    // this rollback a failed swap (ENOSPC, EPERM, AV interference) leaves the
+    // machine with no collector binary at all and only a reinstall fixes it.
+    renameSync(old, target);
+    throw err;
+  }
   try {
     chmodSync(target, 0o755);
   } catch {
     /* non-POSIX fs */
   }
-  // Still locked on Windows while the old process lives; `install` sweeps it.
-  rmSync(old, { force: true });
+  try {
+    rmSync(old, { force: true });
+  } catch {
+    // Windows keeps the old image locked while this process lives, and throwing
+    // here would abort a swap that already succeeded — so the caller would never
+    // spawn `install` and the service would never restart onto the new binary.
+    // `install` sweeps the leftover.
+  }
 }
 
 /**
@@ -62,6 +78,20 @@ export async function checkForUpdate(
 ): Promise<string | null> {
   if (RELEASE_TAG === "dev") {
     if (force) log("update: this is a dev build — install a release binary first.");
+    return null;
+  }
+  // The swap replaces process.execPath, which is only the collector when this is
+  // a compiled single-file binary. Under the published `usagefleet.js` bundle
+  // execPath is the user's own `node`, and updating would overwrite it.
+  if (!looksLikeCompiledBinary(process.argv[1], process.execPath)) {
+    if (force) log("update: script build — re-run install.sh to get the self-updating binary.");
+    return null;
+  }
+  // Self-update fetches an executable and runs it, so a MITM on a plaintext
+  // endpoint is remote code execution. loadConfig already rejects non-https,
+  // but this path is too dangerous to depend on a caller upstream.
+  if (!isSecureEndpoint(cfg.endpoint)) {
+    if (force) log("update: refusing to self-update over a non-https endpoint.");
     return null;
   }
   if (!force && process.env.USAGEFLEET_UPDATE === "0") return null;

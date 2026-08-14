@@ -35,25 +35,54 @@ export interface BatchPayload {
   records: UsageRecord[];
 }
 
+/** Per-log tail position. Only these two fields decide anything: the inode
+ *  detects rotation, the offset resumes the read. Older state files carry extra
+ *  keys (dev/size/mtimeMs) that were never read; they are simply ignored. */
 export interface FileState {
   inode: number;
-  dev: number;
-  size: number;
   offset: number;
-  mtimeMs: number;
 }
 
+/** Tail progress: which logs we have read and how far. */
 export interface StateFile {
-  version: 1;
   deviceId: string;
   files: Record<string, FileState>;
   updatedAt: string;
 }
 
+/** High-water mark for one limit window, so a threshold alerts once per window. */
+export interface WindowNotifyState {
+  lastBucket: number;
+  resetsAt: string | null;
+}
+
+export interface NotifyState {
+  fiveHour: WindowNotifyState;
+  sevenDay: WindowNotifyState;
+}
+
+/**
+ * Everything the CLI persists, in one file (see store.ts). Settings the user
+ * sets live at the top level; the two machine-managed sections are nested so a
+ * writer can replace its own section without touching anyone else's.
+ */
+export interface Store {
+  version: 1;
+  endpoint?: string;
+  token?: string;
+  projectsDir?: string;
+  desktopDir?: string;
+  /** One path, or several (pi's session root moves with PI_CODING_AGENT_DIR). */
+  piDir?: string | string[];
+  state: StateFile;
+  notify: NotifyState;
+}
+
 export interface Config {
   endpoint: string;
   token: string;
-  statePath: string;
+  /** The single JSON file backing every persisted value (see store.ts). */
+  storePath: string;
   projectsDir: string;
   /** Claude Desktop agent-mode sessions root to also scan, or null to disable. */
   desktopDir: string | null;

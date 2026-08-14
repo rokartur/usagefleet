@@ -10,18 +10,18 @@ UsageFleet server. Read-only on the log files. Zero runtime dependencies (Node �
 
 One line — downloads the prebuilt binary for your OS, verifies its checksum,
 configures it, and enables autostart. You only need a device **token** from the
-server's Devices page (endpoint defaults to `https://claude-tracker.rokartur.com`):
+server's Devices page (endpoint defaults to `https://usagefleet.com`):
 
 **macOS / Linux:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rokartur/usagefleet/main/install.sh | sh -s -- --token uf_xxx
+curl -sSL https://usagefleet.com/install.sh | sh -s -- --token uf_xxx
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-$s = irm https://raw.githubusercontent.com/rokartur/usagefleet/main/install.ps1
+$s = irm https://usagefleet.com/install.ps1
 & ([scriptblock]::Create($s)) -Token uf_xxx
 ```
 
@@ -31,15 +31,14 @@ $s = irm https://raw.githubusercontent.com/rokartur/usagefleet/main/install.ps1
 Step-by-step per OS — service paths, logs, update/uninstall, troubleshooting:
 **[../INSTALL.md](../INSTALL.md)**.
 
-The repo is **private**, so the installer pulls releases through the GitHub CLI.
-Install [`gh`](https://cli.github.com/) and run `gh auth login` once first (or set
-`GH_TOKEN`). Autostart uses launchd (macOS), systemd `--user` (Linux) and
-Task Scheduler (Windows).
+The source repo is **private**, but you need no GitHub account: the server holds
+the one credential and serves the binary itself. Autostart uses launchd (macOS),
+systemd `--user` (Linux) and Task Scheduler (Windows).
 
 **Update** any time by re-running the same command — it fetches the latest
 binary and restarts the service. Flags: `--no-service` (binary only),
-`--endpoint <url>`, `--bin-dir <dir>`, `--version <tag>`; `--help` for all
-(PowerShell: `-NoService`, `-Endpoint`, `-BinDir`, `-Version`).
+`--endpoint <url>` (self-hosted deployments), `--bin-dir <dir>`; `--help` for
+all (PowerShell: `-NoService`, `-Endpoint`, `-BinDir`).
 
 ### Install from source
 
@@ -56,14 +55,22 @@ Get a device **token** from the server's Devices page, then either:
 
 ```bash
 usagefleet init --endpoint https://track.example.com --token uf_xxx
-# writes ~/.usagefleet.json
+# writes ~/.config/usagefleet/config.json
 ```
 
-or set env vars (they override the config file):
+That one file (mode `600`) holds everything the CLI persists — your settings
+plus the two machine-managed sections, `state` (per-log tail offsets) and
+`notify` (which alert thresholds already fired). Delete it to start clean.
+`XDG_CONFIG_HOME` is honoured. Installs predating the consolidation are folded
+in automatically from `~/.usagefleet.json`, `~/.usagefleet-state.json` and
+`~/.usagefleet-notify.json` on first write; those files are then unused and
+safe to delete.
+
+Or set env vars (they override the config file):
 
 | Variable | Meaning |
 |----------|---------|
-| `USAGEFLEET_ENDPOINT` | server base URL |
+| `USAGEFLEET_ENDPOINT` | server base URL. Must be `https://` (loopback may be `http://`): it carries the device token on every request, and self-update executes a binary fetched from it |
 | `USAGEFLEET_TOKEN` | device token |
 | `USAGEFLEET_PROJECTS` | override `~/.claude/projects` (Claude Code logs) |
 | `USAGEFLEET_DESKTOP` | override the Claude Desktop agent-mode sessions dir (auto-detected per-OS); set `off`/`0` to skip desktop collection |
@@ -72,8 +79,10 @@ or set env vars (they override the config file):
 | `USAGEFLEET_LIMITS_INTERVAL` | how often to ping for real 5h/weekly limits, seconds (default 300; decoupled from the faster usage poll so the 1-token ping doesn't run every cycle) |
 | `USAGEFLEET_NOTIFY` | desktop notifications on/off (default **on**; set `0`/`false`/`off` to disable) |
 | `USAGEFLEET_NOTIFY_THRESHOLDS` | comma list of utilization % that trigger an alert (default `80,95`) |
-| `USAGEFLEET_NOTIFY_STATE` | override `~/.usagefleet-notify.json` (notification dedup state) |
-| `USAGEFLEET_STATE` | override `~/.usagefleet-state.json` |
+| `USAGEFLEET_BATCH` | records per upload request (default 100, capped at the server's limit of 1000) |
+| `USAGEFLEET_CONFIG` | override the whole config file path (default `~/.config/usagefleet/config.json`) |
+| `USAGEFLEET_UPDATE` | set `0` to turn the daily self-update check off |
+| `USAGEFLEET_HOOK` | set `0` to keep the prompt-blocking hook out of `~/.claude/settings.json` |
 
 ### Setting the token per shell
 
@@ -121,9 +130,12 @@ set USAGEFLEET_TOKEN=uf_xxx
 
 > Prefer not to put a long-lived token in shell history/rc files? Use
 > `usagefleet init --endpoint <url> --token <t>` instead — it writes
-> `~/.usagefleet.json` (mode `600`), which the collector reads automatically.
-> When run as a service, `usagefleet install` bakes the current
-> `USAGEFLEET_*` env values into the launchd/systemd unit.
+> `~/.config/usagefleet/config.json` (mode `600`), which the collector reads
+> automatically. `init` merges, so re-running it rotates the token without
+> resetting your tail offsets.
+> When run as a service, `usagefleet install` bakes every `USAGEFLEET_*` value
+> that is currently set (plus `ANTHROPIC_API_KEY`) into the launchd/systemd unit.
+> The unit is written mode `600`, since it holds those secrets.
 
 ## Run
 
@@ -149,13 +161,15 @@ the device token) — the collector never needs `gh` or a GitHub token. The
 server needs `GITHUB_TOKEN` set; without it the endpoints answer 503 and
 collectors simply stay on their current version.
 
-Every failure is a no-op: bad checksum, offline server, unknown platform and
-locally-built (`dev`) binaries all leave the install untouched. Set
-`USAGEFLEET_UPDATE=0` to turn the daily check off.
+Every failure is a no-op: bad checksum, offline server, unknown platform,
+locally-built (`dev`) binaries, a non-`https` endpoint, and script builds
+(`node usagefleet.js`, where the running executable is your `node` rather than
+the collector) all leave the install untouched. A swap that fails partway rolls
+the previous binary back. Set `USAGEFLEET_UPDATE=0` to turn the daily check off.
 
-The collector tracks a per-file byte offset in `~/.usagefleet-state.json`, so
-each line is sent once; it handles rotation/truncation and never sends a partial
-line. Delivery is at-least-once — the server dedups on `uuid`.
+The collector tracks a per-file byte offset in the config file's `state`
+section, so each line is sent once; it handles rotation/truncation and never
+sends a partial line. Delivery is at-least-once — the server dedups on `uuid`.
 
 ### Real limit % (auto-detected)
 
@@ -176,7 +190,7 @@ are uploaded.
 ### Blocking prompts over the limit
 
 A group can be set to **refuse new prompts** once it has burned its budget slice
-(1/`maxGroups` of the account limit) for a window. Two switches per group, both
+(1/group count of the account limit) for a window. Two switches per group, both
 off by default — flip them in the database:
 
 ```sql
@@ -252,7 +266,8 @@ restarts the service, so it doubles as the update step.
 
 - **macOS** — installs a LaunchAgent (`~/Library/LaunchAgents`, RunAtLoad +
   KeepAlive) and boots it (bootout → bootstrap → kickstart). Logs at
-  `/tmp/usagefleet.*.log`.
+  `~/Library/Logs/usagefleet/usagefleet.*.log` (not `/tmp`, which is
+  world-writable). The plist is written mode `600`: it holds your token.
 - **Linux** — writes a `--user` unit and runs `systemctl --user daemon-reload`,
   `enable --now`, `restart`, plus `loginctl enable-linger $USER` automatically so
   it survives logout. If `systemctl` can't be driven, it prints the manual steps.

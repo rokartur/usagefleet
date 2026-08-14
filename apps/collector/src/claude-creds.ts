@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export interface ClaudeCreds {
   source: "sub" | "api";
@@ -70,7 +71,9 @@ function fromMacKeychain(): OAuthBlob | null {
 function persist(blob: OAuthBlob, from: "file" | "keychain"): void {
   const json = JSON.stringify(blob);
   if (from === "file") {
-    writeFileSync(credentialsFilePath(), json, { mode: 0o600 });
+    // Atomic: an interrupted write here truncates the user's live credentials
+    // and logs them out of Claude Code entirely.
+    writeFileAtomic(credentialsFilePath(), json, 0o600);
     return;
   }
   // The password must go in argv: `security`'s stdin prompt reads at most 128

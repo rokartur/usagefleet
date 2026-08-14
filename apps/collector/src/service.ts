@@ -2,27 +2,15 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { readFileConfig } from "./config.js";
 import { installPromptHook, uninstallPromptHook } from "./hook.js";
+import { readStore } from "./store.js";
 
 const LABEL = "dev.usagefleet.collector";
 /** Scheduled Task name on Windows (mirrors the launchd label / systemd unit). */
 const TASK = "usagefleet";
 
-// Env vars worth baking into the service so it behaves like the install shell.
-const PASSTHROUGH_ENV = [
-  "USAGEFLEET_ENDPOINT",
-  "USAGEFLEET_TOKEN",
-  "USAGEFLEET_PROJECTS",
-  "USAGEFLEET_STATE",
-  "USAGEFLEET_CONFIG",
-  "USAGEFLEET_INTERVAL",
-  "USAGEFLEET_BATCH",
-  "USAGEFLEET_NOTIFY",
-  "USAGEFLEET_NOTIFY_THRESHOLDS",
-  "USAGEFLEET_NOTIFY_STATE",
-  "ANTHROPIC_API_KEY",
-] as const;
+/** Extra env var the service needs that does not carry the USAGEFLEET_ prefix. */
+const EXTRA_PASSTHROUGH_ENV = "ANTHROPIC_API_KEY";
 
 /** Stable per-user dir where a compiled binary is copied so the service doesn't
  *  break if the user moves/deletes the originally-downloaded file. */
@@ -36,10 +24,17 @@ function stableBinDir(): string {
   return join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "usagefleet");
 }
 
-/** Where the Windows launcher sends the collector's stdout/stderr (launchd has
- *  /tmp logs, systemd has the journal — a hidden task has nowhere else to go). */
+/** Where the Windows launcher sends the collector's stdout/stderr (systemd has
+ *  the journal — a hidden task has nowhere else to go). */
 function windowsLogPath(): string {
   return join(stableBinDir(), "usagefleet.log");
+}
+
+/** launchd log dir. Not /tmp: that is world-writable, so any other local account
+ *  could pre-create the log path as a symlink and have the agent write through
+ *  it as this user. ~/Library/Logs is the platform's answer and is user-owned. */
+function macLogDir(): string {
+  return join(homedir(), "Library", "Logs", "usagefleet");
 }
 
 function windowsVbsPath(): string {
@@ -113,9 +108,16 @@ function systemdUnitPath(): string {
   return join(homedir(), ".config", "systemd", "user", "usagefleet.service");
 }
 
-/** Env vars that are actually set, for baking into the unit. */
+/** Env vars that are actually set, for baking into the unit so the service
+ *  behaves like the install shell. Derived from the USAGEFLEET_ prefix rather
+ *  than a hand-kept allowlist: that list had already drifted, silently dropping
+ *  USAGEFLEET_PI, USAGEFLEET_DESKTOP and USAGEFLEET_LIMITS_INTERVAL, so a
+ *  documented override did nothing once the collector ran as a service. */
 function presentEnv(): Array<[string, string]> {
-  return PASSTHROUGH_ENV.filter((k) => process.env[k]).map((k) => [k, process.env[k] as string]);
+  return Object.entries(process.env).filter(
+    (entry): entry is [string, string] =>
+      !!entry[1] && (entry[0].startsWith("USAGEFLEET_") || entry[0] === EXTRA_PASSTHROUGH_ENV),
+  );
 }
 
 /** Escape a string for a VBScript double-quoted literal (only `"` is special). */
@@ -237,9 +239,9 @@ function xml(s: string): string {
 export function install(): void {
   // Pre-flight: refuse to install a service that can't resolve an endpoint+token,
   // otherwise the baked `watch` process throws on every launch and the service
-  // manager crash-loops it invisibly (only /tmp logs show it). Use the same
+  // manager crash-loops it invisibly (only the log file shows it). Use the same
   // env-OR-file precedence loadConfig() uses so a prior `init` is honored.
-  const file = readFileConfig();
+  const file = readStore();
   const endpoint = process.env.USAGEFLEET_ENDPOINT || file.endpoint || "";
   const token = process.env.USAGEFLEET_TOKEN || file.token || "";
   if (!endpoint || !token) {
@@ -286,14 +288,18 @@ ${envXml}
     <key>SuccessfulExit</key><false/>
   </dict>
   <key>ThrottleInterval</key><integer>30</integer>
-  <key>StandardErrorPath</key><string>/tmp/usagefleet.err.log</string>
-  <key>StandardOutPath</key><string>/tmp/usagefleet.out.log</string>
+  <key>StandardErrorPath</key><string>${xml(join(macLogDir(), "usagefleet.err.log"))}</string>
+  <key>StandardOutPath</key><string>${xml(join(macLogDir(), "usagefleet.out.log"))}</string>
 </dict>
 </plist>
 `;
     const path = macPlistPath();
     mkdirSync(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
-    writeFileSync(path, plist, "utf8");
+    mkdirSync(macLogDir(), { recursive: true });
+    // 0600: this file carries USAGEFLEET_TOKEN and ANTHROPIC_API_KEY, the same
+    // secrets `init` deliberately writes at 0600.
+    writeFileSync(path, plist, { encoding: "utf8", mode: 0o600 });
+    chmodSync(path, 0o600); // writeFileSync's mode does not apply to an existing file
     const domain = `gui/${process.getuid?.()}`;
     // execFile (no shell) so `path` is never subject to shell interpolation.
     // Reload-safe: boot out any previous instance first so re-running install
@@ -350,7 +356,9 @@ WantedBy=default.target
 `;
     const path = systemdUnitPath();
     mkdirSync(join(homedir(), ".config", "systemd", "user"), { recursive: true });
-    writeFileSync(path, unit, "utf8");
+    // 0600: the unit bakes USAGEFLEET_TOKEN and ANTHROPIC_API_KEY into Environment=.
+    writeFileSync(path, unit, { encoding: "utf8", mode: 0o600 });
+    chmodSync(path, 0o600); // writeFileSync's mode does not apply to an existing file
     console.log(`Installed systemd unit at ${path}`);
     // Enable + start automatically so autostart "just works". `restart` after
     // enable picks up a new binary when re-running install to apply an update
@@ -393,7 +401,11 @@ WantedBy=default.target
   if (process.platform === "win32") {
     const vbsPath = windowsVbsPath();
     mkdirSync(stableBinDir(), { recursive: true });
-    writeFileSync(vbsPath, windowsLauncherVbs(prog, env, windowsLogPath()), "utf8");
+    // 0600: the launcher script embeds the same secrets as the plist/unit.
+    writeFileSync(vbsPath, windowsLauncherVbs(prog, env, windowsLogPath()), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
 
     // schtasks reads task XML as UTF-16 (a UTF-8 file is rejected as malformed).
     const xmlPath = join(tmpdir(), `usagefleet-task-${process.pid}.xml`);

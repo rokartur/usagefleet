@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { writeFileAtomic } from "./atomic-write.js";
 import { claudeSettingsPath } from "./paths.js";
 
 /** Outer bound on the hook, in seconds. runGuard's own fetch gives up after 5s
@@ -94,7 +95,9 @@ function editSettings(
   const next = transform(settings);
   if (JSON.stringify(next) === JSON.stringify(settings)) return;
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(next, null, 2) + "\n", "utf8");
+  // Atomic: this file is the user's, not ours, and an interrupted write would
+  // truncate their whole Claude Code configuration for the sake of our hook.
+  writeFileAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
   onWrite(path);
 }
 

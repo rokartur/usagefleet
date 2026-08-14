@@ -1,48 +1,35 @@
-import { readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
-import {
-  defaultConfigPath,
-  defaultDesktopSessionsDir,
-  defaultPiSessionsDirs,
-  defaultProjectsDir,
-  defaultStatePath,
-} from "./paths.js";
+import { defaultDesktopSessionsDir, defaultPiSessionsDirs, defaultProjectsDir } from "./paths.js";
+import { readStore, storePath } from "./store.js";
 import type { Config } from "./types.js";
 
-interface FileConfig {
-  endpoint?: string;
-  token?: string;
-  deviceId?: string;
-  projectsDir?: string;
-  desktopDir?: string;
-  /** One path, or several (pi's session root moves with PI_CODING_AGENT_DIR). */
-  piDir?: string | string[];
-}
+/** Matches the server's BatchSchema `.max(1000)`. */
+const MAX_BATCH = 1000;
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
-export function readFileConfig(): FileConfig {
-  try {
-    return JSON.parse(readFileSync(defaultConfigPath(), "utf8")) as FileConfig;
-  } catch {
-    return {};
-  }
-}
-
-/** Resolve config from env first, then ~/.usagefleet.json. */
+/** Resolve config from env first, then the stored settings (see store.ts). */
 export function loadConfig(): Config {
-  const file = readFileConfig();
+  const file = readStore();
   // Use `||` (not `??`) so an empty-string env var falls back to the config
   // file — launchd/systemd units may inject empty USAGEFLEET_* values.
   const endpoint = (process.env.USAGEFLEET_ENDPOINT || file.endpoint || "").replace(/\/+$/, "");
   const token = process.env.USAGEFLEET_TOKEN || file.token || "";
   if (!endpoint) throw new Error("USAGEFLEET_ENDPOINT is not set");
   if (!token) throw new Error("USAGEFLEET_TOKEN is not set");
+  if (!isSecureEndpoint(endpoint)) {
+    throw new Error(
+      `USAGEFLEET_ENDPOINT must be https (got ${endpoint}). It carries the device token on every request and self-update executes a binary fetched from it.`,
+    );
+  }
   // Guard batch size: "0" (infinite loop), NaN (silent drop), fractional → 100.
+  // Clamped to the server's own 1000-record cap, since a larger batch is
+  // rejected as malformed and would cost the whole chunk a bisect to discover.
   const parsedBatch = Math.floor(Number(process.env.USAGEFLEET_BATCH));
-  const batchSize = Number.isFinite(parsedBatch) && parsedBatch > 0 ? parsedBatch : 100;
+  const batchSize =
+    Number.isFinite(parsedBatch) && parsedBatch > 0 ? Math.min(parsedBatch, MAX_BATCH) : 100;
   return {
     endpoint,
     token,
-    statePath: defaultStatePath(),
+    storePath: storePath(),
     projectsDir: process.env.USAGEFLEET_PROJECTS || file.projectsDir || defaultProjectsDir(),
     desktopDir: resolveOptionalDir(
       process.env.USAGEFLEET_DESKTOP,
@@ -83,7 +70,19 @@ function resolveOptionalDir(
   return env || fromFile || fallback;
 }
 
-/** Stable per-install device id, persisted in the state file's deviceId. */
-export function ensureDeviceId(existing?: string): string {
-  return existing && existing.length > 0 ? existing : randomUUID();
+/**
+ * The endpoint must be https: it carries the device token on every request, and
+ * `checkForUpdate` downloads an executable from it, chmods it 0755 and swaps it
+ * into the service's launch path. Plaintext there is remote code execution.
+ * Loopback is exempt so local development keeps working.
+ */
+export function isSecureEndpoint(endpoint: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  if (url.protocol === "https:") return true;
+  return url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname);
 }

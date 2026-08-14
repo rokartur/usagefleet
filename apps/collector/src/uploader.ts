@@ -11,10 +11,16 @@ function sleep(ms: number): Promise<void> {
 /** Why an upload failed, so the caller can decide whether to advance the offset.
  *  - "auth":      401/403 — token revoked/expired. Keep offset; data is valid and
  *                 must upload once a fresh token is configured. Surface loudly.
- *  - "invalid":   other non-429 4xx (400/422) — server rejected the records as
- *                 malformed. Advance past them so they can't wedge the pipeline.
- *  - "transient": 5xx / network / timeout, retries exhausted. Keep offset and
- *                 retry next cycle; do not starve later files. */
+ *  - "invalid":   400/422 only — the server parsed the request and rejected the
+ *                 records themselves as malformed. The ONLY case where advancing
+ *                 past data is correct, because a re-POST would fail identically.
+ *  - "transient": everything else (402 outside plan, 404 wrong endpoint, 413 too
+ *                 large, 429, 5xx, network, timeout). Keep offset and retry next
+ *                 cycle; do not starve later files.
+ *
+ *  Classification is a whitelist on purpose: a status we did not anticipate must
+ *  never destroy data. Getting this backwards silently shredded the usage history
+ *  of every device parked outside its plan (the server answers those with 402). */
 export type UploadFailure = "auth" | "invalid" | "transient";
 
 export type UploadResult =
@@ -50,11 +56,10 @@ export async function uploadBatch(payload: BatchPayload, cfg: Config): Promise<U
       };
       return { ok: true, ...body };
     }
-    // Non-retryable 4xx (except 429): classify so the caller handles it without
-    // re-POSTing the same chunk forever.
+    // Non-retryable 4xx (except 429): no amount of retrying inside this cycle
+    // changes the answer, so classify and hand it back to the caller now.
     if (res && res.status >= 400 && res.status < 500 && res.status !== 429) {
-      const fatal: UploadFailure = res.status === 401 || res.status === 403 ? "auth" : "invalid";
-      return { ok: false, fatal };
+      return { ok: false, fatal: classifyClientError(res.status) };
     }
 
     const fallback = Math.min(delay, 60000) + Math.floor(Math.random() * 500);
@@ -64,6 +69,13 @@ export async function uploadBatch(payload: BatchPayload, cfg: Config): Promise<U
     delay *= 2;
   }
   return { ok: false, fatal: "transient" };
+}
+
+/** Map a 4xx (never 429, the caller filters it) to a failure kind. */
+function classifyClientError(status: number): UploadFailure {
+  if (status === 401 || status === 403) return "auth";
+  if (status === 400 || status === 422) return "invalid";
+  return "transient"; // 402 outside plan, 404, 408, 413, … — the data is fine
 }
 
 /** Parse a Retry-After header (delta-seconds OR HTTP-date), clamped to [0, 60s]. */

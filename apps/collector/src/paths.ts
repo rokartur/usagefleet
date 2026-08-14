@@ -47,15 +47,3 @@ export function defaultPiSessionsDirs(): string[] {
 export function claudeSettingsPath(): string {
   return join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude"), "settings.json");
 }
-
-export function defaultStatePath(): string {
-  return process.env.USAGEFLEET_STATE ?? join(homedir(), ".usagefleet-state.json");
-}
-
-export function defaultConfigPath(): string {
-  return process.env.USAGEFLEET_CONFIG ?? join(homedir(), ".usagefleet.json");
-}
-
-export function defaultNotifyStatePath(): string {
-  return process.env.USAGEFLEET_NOTIFY_STATE ?? join(homedir(), ".usagefleet-notify.json");
-}

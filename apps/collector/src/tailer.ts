@@ -33,13 +33,7 @@ export function tailFile(
   const rotated = prev !== undefined && (st.ino !== prev.inode || st.size < prev.offset);
   const start = rotated || prev === undefined ? 0 : prev.offset;
 
-  const base: FileState = {
-    inode: Number(st.ino),
-    dev: Number(st.dev),
-    size: st.size,
-    offset: start,
-    mtimeMs: st.mtimeMs,
-  };
+  const base: FileState = { inode: Number(st.ino), offset: start };
 
   if (st.size <= start) {
     return { records: [], nextState: base, consumedBytes: 0 };
