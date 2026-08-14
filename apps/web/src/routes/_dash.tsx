@@ -1,9 +1,6 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { getCookie } from "@tanstack/react-start/server";
 import { AppSidebar, PageTitle } from "@/components/app-sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { requireUser } from "@/lib/session";
 
@@ -11,9 +8,7 @@ import { requireUser } from "@/lib/session";
  *  redirect from here (via requireUser) stops the child loaders from running. */
 const dashShell = createServerFn().handler(async () => {
   const user = await requireUser();
-  // Restore the collapsed/expanded sidebar across reloads (cookie set
-  // client-side by SidebarProvider) so the first paint doesn't flip.
-  return { email: user.email, sidebarOpen: getCookie("sidebar_state") !== "false" };
+  return { email: user.email };
 });
 
 export const Route = createFileRoute("/_dash")({
@@ -21,21 +16,28 @@ export const Route = createFileRoute("/_dash")({
   component: DashLayout,
 });
 
+/** Sidebar (16rem) plus the content column (56rem): the shell is centred at this
+ *  width so the sidebar sits next to the content, not at the viewport edge. */
+const SHELL = { "--shell": "72rem" } as React.CSSProperties;
+
+const COLUMN = "flex w-full max-w-4xl";
+
 function DashLayout() {
-  const { email, sidebarOpen } = Route.useLoaderData();
+  const { email } = Route.useLoaderData();
   return (
-    <SidebarProvider defaultOpen={sidebarOpen}>
+    <SidebarProvider className="mx-auto max-w-(--shell)" style={SHELL}>
       <AppSidebar email={email} />
       <SidebarInset>
-        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-1 h-4" />
-          <PageTitle />
-          <div className="ml-auto flex items-center gap-1">
-            <ThemeToggle />
+        {/* Header and content share one centred column so the page title lines
+            up with the cards below it. */}
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center border-b bg-background/80 px-4 backdrop-blur md:px-6">
+          <div className={`${COLUMN} items-center gap-2`}>
+            {/* The sidebar is permanent on desktop; only the mobile sheet needs a trigger. */}
+            <SidebarTrigger className="-ml-1 md:hidden" />
+            <PageTitle />
           </div>
         </header>
-        <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+        <div className={`${COLUMN} flex-1 flex-col gap-6 p-4 md:p-6`}>
           <Outlet />
         </div>
       </SidebarInset>

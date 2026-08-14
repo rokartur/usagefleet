@@ -10,6 +10,7 @@ import {
   Settings2Icon,
   SlashIcon,
 } from "lucide-react";
+import { UsageFleetMark } from "@/components/usage-fleet-mark";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +28,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
 import { signOut } from "@/lib/auth-client";
@@ -46,7 +48,10 @@ export function PageTitle() {
   const current = NAV.find((n) => pathname.startsWith(n.href));
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm">
-      <span className="hidden text-muted-foreground sm:inline">UsageFleet</span>
+      <span className="hidden items-center gap-1.5 text-muted-foreground sm:inline-flex">
+        <UsageFleetMark className="size-3.5" />
+        UsageFleet
+      </span>
       <SlashIcon className="hidden size-3 text-muted-foreground/50 sm:inline" aria-hidden />
       <h1 className="truncate font-heading font-medium">{current?.label ?? "Dashboard"}</h1>
     </div>
@@ -110,8 +115,12 @@ function NavUser({ email }: { email: string }) {
 
 export function AppSidebar({ email }: { email: string }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const { isMobile } = useSidebar();
   return (
-    <Sidebar collapsible="icon">
+    // Permanent column on desktop, in normal flow so the centred shell keeps it
+    // beside the content. Mobile keeps the off-canvas sheet: 16rem of a phone
+    // screen is not a nav, it's the whole screen.
+    <Sidebar collapsible={isMobile ? "offcanvas" : "none"} className="sticky top-0 h-svh border-r">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -120,7 +129,7 @@ export function AppSidebar({ email }: { email: string }) {
                 className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"
                 aria-hidden
               >
-                <GaugeIcon className="size-4" />
+                <UsageFleetMark className="size-5" />
               </span>
               <span className="grid flex-1 text-left leading-tight">
                 <span className="truncate font-heading font-medium">UsageFleet</span>
