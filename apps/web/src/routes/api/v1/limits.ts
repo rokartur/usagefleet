@@ -71,7 +71,7 @@ async function GET(req: Request) {
   const weeklyPct = usage?.weeklyBudgetPct ?? 0;
 
   // Per-group enforcement switches. Both windows are measured against the
-  // group's 1/maxGroups budget slice, so 100% means "ate my share", not "the
+  // group's equal budget slice, so 100% means "ate my share", not "the
   // account is out" — a group only blocks itself, never its siblings.
   const blockedWindow =
     group?.blockOnSessionLimit && sessionPct >= 100

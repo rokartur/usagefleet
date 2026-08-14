@@ -85,6 +85,27 @@
       "when": 1786637119416,
       "tag": "0011_stripe_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1786686426361,
+      "tag": "0012_drop_max_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786701321667,
+      "tag": "0013_link_legacy_logins",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786710917476,
+      "tag": "0014_default_cache_ttl_5m",
+      "breakpoints": true
     }
   ]
 }

@@ -5,10 +5,9 @@ import type { TokenTotals, UsageRecord } from "./types";
  *  https://platform.claude.com/docs/en/about-claude/pricing — used only for the
  *  optional $ column, not for limit math.
  *
- *  `cacheWrite` is the 1-hour write rate (2× base input) — Claude Code writes
- *  1h caches exclusively (verified 100% ephemeral_1h across real JSONL history).
- *  The 5m rate is derived as 1.25× base input when the user picks "5m" in
- *  Settings. `cacheRead` is the cache-hit rate (0.1× base input). */
+ *  `cacheWrite` is the 1-hour write rate (2× base input), used only when a user
+ *  opts into 1h caching. The default 5m rate is derived as 1.25× base input.
+ *  `cacheRead` is the cache-hit rate (0.1× base input). */
 interface Price {
   input: number;
   output: number;
@@ -98,11 +97,12 @@ type TokenCounts = Pick<
 >;
 
 /** Cache-write TTL the user's tool writes: prices differ (5m = 1.25× input,
- *  1h = 2× input). Claude Code writes 1h caches, so that's the default. */
+ *  1h = 2× input). Claude Code writes 5m caches unless ENABLE_PROMPT_CACHING_1H
+ *  is set, so 5m is the default. */
 export type CacheTtl = "5m" | "1h";
 
 /** USD cost of a set of token counts under one model's list price. */
-export function costForTokens(t: TokenCounts, model: string | null, ttl: CacheTtl = "1h"): number {
+export function costForTokens(t: TokenCounts, model: string | null, ttl: CacheTtl = "5m"): number {
   const p = priceFor(model);
   const cacheWrite = ttl === "5m" ? p.input * 1.25 : p.cacheWrite;
   return (
@@ -115,7 +115,7 @@ export function costForTokens(t: TokenCounts, model: string | null, ttl: CacheTt
 }
 
 /** Cost of one record in USD. */
-export function costUsd(e: UsageRecord, ttl: CacheTtl = "1h"): number {
+export function costUsd(e: UsageRecord, ttl: CacheTtl = "5m"): number {
   return costForTokens(e, e.model, ttl);
 }
 
@@ -123,7 +123,7 @@ export function costUsd(e: UsageRecord, ttl: CacheTtl = "1h"): number {
 export function costForTotals(
   totals: TokenTotals,
   model: string | null,
-  ttl: CacheTtl = "1h",
+  ttl: CacheTtl = "5m",
 ): number {
   return costForTokens(totals, model, ttl);
 }

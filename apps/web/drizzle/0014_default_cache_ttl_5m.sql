@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ALTER COLUMN "cache_write_ttl" SET DEFAULT '5m';

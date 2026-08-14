@@ -209,10 +209,15 @@ describe("pricing", () => {
     // Haiku 4.5 ($1/$5) vs Haiku 3.5 legacy ($0.80/$4).
     expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-haiku-4-5")).toBeCloseTo(1);
     expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-3-5-haiku")).toBeCloseTo(0.8);
-    // Sonnet flat $3 in / $15 out; cache write 2x (1h TTL), cache read 0.1x.
+    // Sonnet flat $3 in / $15 out; cache read 0.1x. Cache writes default to the
+    // 5m rate (1.25x) because that is what Claude Code writes unless
+    // ENABLE_PROMPT_CACHING_1H is set; 1h is 2x.
     expect(costForTotals(mtok({ inputTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(3);
     expect(
       costForTotals(mtok({ cacheCreationTokens: 1_000_000 }), "claude-sonnet-4-6"),
+    ).toBeCloseTo(3.75);
+    expect(
+      costForTotals(mtok({ cacheCreationTokens: 1_000_000 }), "claude-sonnet-4-6", "1h"),
     ).toBeCloseTo(6);
     expect(costForTotals(mtok({ cacheReadTokens: 1_000_000 }), "claude-sonnet-4-6")).toBeCloseTo(
       0.3,

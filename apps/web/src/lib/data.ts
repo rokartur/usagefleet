@@ -175,7 +175,7 @@ export interface LiveGroupUsage {
   groupId: string | null;
   name: string;
   color: string;
-  /** Usage measured against the group's budget slice (1/maxGroups of the
+  /** Usage measured against the group's budget slice (an equal share of the
    *  account limit) — the "am I eating the other group's half?" view. */
   sessionBudgetPct: number;
   weeklyBudgetPct: number;
@@ -215,7 +215,7 @@ export interface LiveModelLimitGroup {
   groupId: string | null;
   name: string;
   color: string;
-  /** Against the group's budget slice (1/maxGroups), like sessionBudgetPct. */
+  /** Against the group's equal budget slice, like sessionBudgetPct. */
   budgetPct: number;
   /** Billable tokens of this model family in the limit's window. */
   tokens: number;
@@ -273,14 +273,14 @@ function windowDurationMs(window: string): number | null {
   return n * unit;
 }
 
-/** Scale an account-share pct to a per-group budget pct (1/maxGroups slice of
- *  the account limit) — e.g. with 2 groups, a group at its half-budget reads
- *  100% while the account is only at 50%. Uncapped: past 100% the group has
- *  overrun its slice and is eating another group's, which is worth seeing.
- *  Takes the *unrounded* share so the ×maxGroups multiply doesn't amplify a
- *  rounding error (at maxGroups=10 a 0.5pt rounding would become 5pt). */
-const groupBudgetPct = (share: ShareEntry | undefined, maxGroups: number) =>
-  Math.round((share?.exactPct ?? 0) * maxGroups);
+/** Scale an account-share pct to a per-group budget pct — every group that
+ *  exists is budgeted an equal slice (1/groupCount) of the account limit, so
+ *  with 2 groups one at its half reads 100% while the account is at 50%.
+ *  Uncapped: past 100% the group has overrun its slice and is eating another
+ *  group's, which is worth seeing. Takes the *unrounded* share so the multiply
+ *  doesn't amplify a rounding error (at 10 groups 0.5pt would become 5pt). */
+const groupBudgetPct = (share: ShareEntry | undefined, groupCount: number) =>
+  Math.round((share?.exactPct ?? 0) * groupCount);
 
 /** Split an official account-wide percentage across an arbitrary key (group or
  *  device) by each key's share of estimated cost (API list prices) within the
@@ -302,7 +302,7 @@ function splitByShare(
   windowStart: Date,
   now: Date,
   officialPct: number,
-  ttl: CacheTtl = "1h",
+  ttl: CacheTtl = "5m",
   keyOf: (e: UsageRecord) => string | null = (e) => e.groupId ?? null,
 ): Map<string | null, ShareEntry> {
   const inWin = events.filter((e) => {
@@ -421,7 +421,12 @@ export async function getLiveDashboard(userId: string, now: Date): Promise<LiveD
     loadDailyAggregates(userId),
   ]);
 
-  const ttl: CacheTtl = settings.cacheWriteTtl === "5m" ? "5m" : "1h";
+  // Every group that exists claims an equal slice of the account limit. The
+  // "Ungrouped" row is divided by that same count without being counted in it,
+  // so when loose devices exist the displayed slices deliberately over-allocate
+  // rather than shrink every real group to make room for them.
+  const budgetShares = Math.max(1, groupRows.length);
+  const ttl: CacheTtl = settings.cacheWriteTtl === "1h" ? "1h" : "5m";
   const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, ttl);
   const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct, ttl);
 
@@ -435,10 +440,10 @@ export async function getLiveDashboard(userId: string, now: Date): Promise<LiveD
     groupId: id,
     name: nameFor(id),
     color: colorFor(id),
-    // Usage against the group's budget slice (1/maxGroups): a group filling
-    // its share reads 100% while the account is at 50%.
-    sessionBudgetPct: groupBudgetPct(sessionSplit.get(id), settings.maxGroups),
-    weeklyBudgetPct: groupBudgetPct(weeklySplit.get(id), settings.maxGroups),
+    // Usage against the group's equal slice of the account limit: a group
+    // filling its share reads 100% while the account is at 50%.
+    sessionBudgetPct: groupBudgetPct(sessionSplit.get(id), budgetShares),
+    weeklyBudgetPct: groupBudgetPct(weeklySplit.get(id), budgetShares),
     sessionTokens: sessionSplit.get(id)?.tokens ?? 0,
     weeklyTokens: weeklySplit.get(id)?.tokens ?? 0,
     sessionTotalTokens: sessionSplit.get(id)?.totalTokens ?? 0,
@@ -459,7 +464,7 @@ export async function getLiveDashboard(userId: string, now: Date): Promise<LiveD
       groupId: id,
       name: nameFor(id),
       color: colorFor(id),
-      budgetPct: groupBudgetPct(s, settings.maxGroups),
+      budgetPct: groupBudgetPct(s, budgetShares),
       tokens: s.tokens,
     }));
     groupRowsFor.sort((a, b) => b.tokens - a.tokens);
@@ -760,7 +765,7 @@ export async function getWindowHistory(userId: string, now: Date): Promise<Windo
     };
   };
 
-  const ttl: CacheTtl = settings.cacheWriteTtl === "5m" ? "5m" : "1h";
+  const ttl: CacheTtl = settings.cacheWriteTtl === "1h" ? "1h" : "5m";
   return {
     sessions: buildPastWindows(sessionRows, sessionStarts, FIVE_H_MS, sessionPeaks, ttl, label),
     weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, weekPeaks, ttl, label),
@@ -791,7 +796,7 @@ export async function getHistory(userId: string): Promise<HistoryDTO> {
       .from(devices)
       .where(eq(devices.userId, userId)),
   ]);
-  const ttl: CacheTtl = settings.cacheWriteTtl === "5m" ? "5m" : "1h";
+  const ttl: CacheTtl = settings.cacheWriteTtl === "1h" ? "1h" : "5m";
   return {
     rows: rows.map((r) => ({ ...r, costUsd: costForTokens(r, r.model, ttl) })),
     groups: groupRows.map((g) => ({ id: g.id, name: g.name, color: g.color })),

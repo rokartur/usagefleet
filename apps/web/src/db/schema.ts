@@ -31,7 +31,7 @@ export const groups = pgTable(
     name: text("name").notNull(),
     color: text("color").notNull().default("#6366f1"),
     // When on, this group's devices refuse new prompts once the group has eaten
-    // its budget slice (1/maxGroups of the account limit) for that window.
+    // its budget slice (an equal share of the account limit) for that window.
     // Enforced by `usagefleet guard` via GET /api/v1/limits; DB-only switches,
     // there is no UI for them.
     blockOnSessionLimit: boolean("block_on_session_limit").notNull().default(false),
@@ -128,13 +128,12 @@ export const userSettings = pgTable("user_settings", {
   weeklyLimitTokens: bigint("weekly_limit_tokens", { mode: "number" }).notNull().default(2_200_000),
   weekResetWeekday: integer("week_reset_weekday").notNull().default(1), // 0=Sun
   weekResetHourUtc: integer("week_reset_hour_utc").notNull().default(0),
-  // How many groups this account may hold; each is budgeted 1/maxGroups of the
-  // account limit.
-  maxGroups: integer("max_groups").notNull().default(2),
-  // The active-device cap is NOT stored here — it comes from the account's
-  // Stripe plan (see lib/billing.ts) so it can't be self-granted.
-  // Cache-write TTL used for pricing ('5m' | '1h'). Claude Code writes 1h caches.
-  cacheWriteTtl: text("cache_write_ttl").notNull().default("1h"),
+  // Neither the group cap nor the device cap is stored here — both come from
+  // the account's Stripe plan (see lib/billing.ts) so they can't be
+  // self-granted. A group may exist per device slot.
+  // Cache-write TTL used for pricing ('5m' | '1h'). Claude Code writes 5m caches
+  // unless the user sets ENABLE_PROMPT_CACHING_1H=1.
+  cacheWriteTtl: text("cache_write_ttl").notNull().default("5m"),
   // Deprecated (manual sessionKey flow, replaced by collector-reported limits).
   // Kept as nullable no-op columns to avoid a destructive migration.
   claudeSessionKey: text("claude_session_key"),

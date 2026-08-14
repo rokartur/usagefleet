@@ -28,26 +28,11 @@ export const updateCacheTtl = createServerFn({ method: "POST" })
   .inputValidator((formData: FormData) => formData)
   .handler(async ({ data: formData }) => {
     const user = await requireUser();
-    const ttl = formData.get("cacheWriteTtl") === "5m" ? "5m" : "1h";
+    const ttl = formData.get("cacheWriteTtl") === "1h" ? "1h" : "5m";
     await ensureSettings(user.id);
     await db
       .update(userSettings)
       .set({ cacheWriteTtl: ttl })
-      .where(eq(userSettings.userId, user.id));
-  });
-
-/** Set how many groups this account may hold (1–10). Lowering it below the
- *  current count only blocks new groups — existing ones are kept. */
-export const updateMaxGroups = createServerFn({ method: "POST" })
-  .inputValidator((formData: FormData) => formData)
-  .handler(async ({ data: formData }) => {
-    const user = await requireUser();
-    const n = Number(formData.get("maxGroups"));
-    if (!Number.isFinite(n)) return;
-    await ensureSettings(user.id);
-    await db
-      .update(userSettings)
-      .set({ maxGroups: Math.min(10, Math.max(1, Math.round(n))) })
       .where(eq(userSettings.userId, user.id));
   });
 
@@ -58,10 +43,10 @@ export const createGroup = createServerFn({ method: "POST" })
     const name = String(formData.get("name") ?? "").trim();
     const color = safeColor(String(formData.get("color") ?? "#6366f1"));
     if (!name) return;
-    // Each group is budgeted an equal slice of the account limit. Silently ignore
-    // over-cap creates; the UI also disables the form.
-    const { maxGroups } = await ensureSettings(user.id);
-    if ((await groupCount(user.id)) >= maxGroups) return;
+    // One group per device slot the plan pays for. Silently ignore over-cap
+    // creates; the UI also disables the form.
+    const { deviceLimit } = await accountPlan(user.id);
+    if ((await groupCount(user.id)) >= deviceLimit) return;
     await db.insert(groups).values({ id: randomUUID(), ownerId: user.id, name, color });
   });
 
