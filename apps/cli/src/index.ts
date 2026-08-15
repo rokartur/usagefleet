@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { detectClaudeCreds } from './claude-creds.js'
 import { reportLimitsOnce, runOnce } from './collector.js'
-import { commands, completionScript, shells } from './completion.js'
+import {
+	commands,
+	completionScript,
+	installCompletions,
+	removeCompletions,
+	shells,
+} from './completion.js'
 import type { Shell } from './completion.js'
 import { loadConfig } from './config.js'
 import { runGuard } from './guard.js'
@@ -272,6 +278,20 @@ async function cmdInstall(): Promise<void> {
 	}
 	const { install } = await import('./service.js')
 	install()
+
+	// After the service, so a completion problem can never fail the part that
+	// matters. Self-update re-runs `install`, which keeps completions in step with
+	// new commands without the user doing anything.
+	try {
+		for (const { shell, path, rc } of installCompletions()) {
+			console.log(step(`${shell} completions`, tilde(path)))
+			if (rc) {
+				console.log(row('shell', `${tilde(rc)} updated · restart the shell to pick it up`))
+			}
+		}
+	} catch (error) {
+		console.log(warn('completions', (error as Error).message))
+	}
 }
 
 /** Padded two-column list — name in white, meaning in gray, like the result
@@ -393,7 +413,9 @@ async function main(): Promise<void> {
 		}
 		case 'uninstall': {
 			const { uninstall } = await import('./service.js')
-			return uninstall()
+			uninstall()
+			removeCompletions()
+			return
 		}
 		default: {
 			return help()

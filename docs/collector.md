@@ -18,6 +18,12 @@ advertised: `watch`, which is what the installed service runs rather than
 something to type, and `--version`/`-v`, since bare `usagefleet` already prints
 the release in its header.
 
+`install` also writes the completion scripts to where each shell loads them
+(`installCompletions`), appending an `fpath` block to `.zshrc` when zsh needs
+one. It runs after the service so a completion failure can never fail the
+install, and self-update re-runs `install`, which keeps completions in step with
+new commands.
+
 ## The watch loop
 
 Every `USAGEFLEET_INTERVAL` seconds (default 15) `runOnce()`:

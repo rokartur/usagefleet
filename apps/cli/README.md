@@ -43,12 +43,12 @@ usagefleet uninstall      # remove it
 usagefleet completion zsh # print a shell completion script (zsh, fish)
 ```
 
-Completions are printed, not installed — send them where your shell looks:
+`install` sets up completions for you, for each shell you actually use — zsh
+gets `~/.zsh/completions/_usagefleet` plus an `fpath` block appended to
+`.zshrc`, fish gets `~/.config/fish/completions/usagefleet.fish`. Restart the
+shell once. `uninstall` removes both again, and self-update keeps them current.
 
-```bash
-usagefleet completion zsh  > ~/.zsh/completions/_usagefleet   # a dir on your fpath
-usagefleet completion fish > ~/.config/fish/completions/usagefleet.fish
-```
+`completion` stays for piping a script somewhere else yourself.
 
 ## What it collects
 
