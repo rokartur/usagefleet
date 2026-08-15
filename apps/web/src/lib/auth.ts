@@ -8,7 +8,7 @@ import Stripe from 'stripe'
 import { db } from '../db'
 import * as schema from '../db/schema'
 import { accountPlan } from './billing'
-import { signupEnabled } from './flags'
+import { isAdminEmail, signupEnabled } from './flags'
 import { PAID_PLANS, PLANS } from './plans'
 
 // better-auth only WARNS on a short secret; enforce it. The secret signs/encrypts
@@ -141,6 +141,16 @@ export const auth = betterAuth({
 			// This lives in the hook rather than the settings UI because /delete-user
 			// is reachable directly with any valid session.
 			beforeDelete: async user => {
+				// An admin is defined by ADMIN_EMAILS, so deleting the account leaves the
+				// panel pointing at a user that no longer exists. Signing up again would
+				// restore it, except on a deployment with ALLOW_SIGNUP=false — there the
+				// admin locks themselves out for good. Remove the address from
+				// ADMIN_EMAILS first, which is a deliberate act rather than one click.
+				if (isAdminEmail(user.email)) {
+					throw new APIError('BAD_REQUEST', {
+						message: 'Remove this address from ADMIN_EMAILS before deleting the account.',
+					})
+				}
 				const { plan } = await accountPlan(user.id)
 				if (plan !== 'free') {
 					throw new APIError('BAD_REQUEST', {
