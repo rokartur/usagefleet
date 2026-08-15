@@ -58,7 +58,7 @@ async function sendMail(to: string, subject: string, text: string) {
 		const reason = await response
 			.json()
 			.then(body => (body as { message?: string }).message)
-			.catch(() => undefined)
+			.catch(() => '')
 		throw new Error(`Resend rejected "${subject}": ${response.status}${reason ? ` ${reason}` : ''}`)
 	}
 }
