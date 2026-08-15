@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { eq } from 'drizzle-orm'
+import { KeyRound } from 'lucide-react'
 import { ActionForm } from '@/components/ActionForm'
 import { PROVIDERS, ProviderMark } from '@/components/OAuthSignIn'
 import type { ProviderId } from '@/components/OAuthSignIn'
@@ -156,7 +157,8 @@ function linkErrorMessage(code: string, accountEmail: string): string {
 	}
 }
 
-/** Connect/disconnect the providers that can sign into this account.
+/** Connect/disconnect the ways this account can sign in: the OAuth providers
+ *  plus the password.
  *
  *  Linking is deliberately not given a "which email?" choice: better-auth only
  *  attaches a provider whose verified address matches this account's, so the
@@ -171,7 +173,7 @@ function SignInMethodsCard({
 	linkError?: string
 }) {
 	const router = useRouter()
-	const [busy, setBusy] = useState<ProviderId | null>(null)
+	const [busy, setBusy] = useState<ProviderId | 'password' | null>(null)
 	const linkedCount = PROVIDER_IDS.filter(id => connected.includes(id)).length
 	// better-auth stores a password under the 'credential' provider, so its
 	// presence means unlinking the last provider still leaves a way in.
@@ -194,13 +196,34 @@ function SignInMethodsCard({
 		router.invalidate()
 	}
 
+	/** Setting a first password and changing an existing one are the same flow:
+	 *  a mailed link, so the address still has to be reachable. reset-password
+	 *  creates the credential account when there is none yet. */
+	async function mailPasswordLink() {
+		setBusy('password')
+		const { error } = await authClient.requestPasswordReset({ email, redirectTo: '/reset-password' })
+		setBusy(null)
+		toast.add(
+			error
+				? {
+						title: 'Could not send the link',
+						description: error.message ?? 'Please try again.',
+						priority: 'high',
+					}
+				: {
+						title: 'Check your email',
+						description: `A link to set your password is on its way to ${email}. It expires in an hour.`,
+					},
+		)
+	}
+
 	return (
 		<Card className='gap-0'>
 			<CardHeader className='border-b'>
 				<CardTitle>Sign-in methods</CardTitle>
 				<CardDescription>
-					Providers that can sign in to <span className='text-foreground'>{email}</span>. A provider can only
-					be connected while its verified address matches this one.
+					Ways to sign in to <span className='text-foreground'>{email}</span>. A provider can only be
+					connected while its verified address matches this one.
 				</CardDescription>
 			</CardHeader>
 			{linkError && (
@@ -252,6 +275,20 @@ function SignInMethodsCard({
 						</div>
 					)
 				})}
+				<div className='flex items-center justify-between gap-4 px-(--card-spacing) py-3.5'>
+					<div className='flex items-center gap-2'>
+						<KeyRound aria-hidden='true' className='size-4' />
+						<span>Password</span>
+					</div>
+					<div className='flex items-center gap-3'>
+						<span className='text-sm text-muted-foreground'>{hasPassword ? 'Set' : 'Not set'}</span>
+						{/* No "remove password": it is the fallback that keeps unlinking
+						    the last provider from locking the account out. */}
+						<Button variant='outline' size='sm' disabled={busy !== null} onClick={mailPasswordLink}>
+							{busy === 'password' ? 'Working…' : hasPassword ? 'Change' : 'Set password'}
+						</Button>
+					</div>
+				</div>
 			</CardContent>
 		</Card>
 	)
