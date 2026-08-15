@@ -93,8 +93,9 @@ function AdminPage() {
 	return (
 		<>
 			<p className='text-sm text-muted-foreground'>
-				{accounts.length} newest account{accounts.length === 1 ? '' : 's'}. The free allowance applies only while
-				an account has no subscription; paid caps come from Stripe. Blank means the default of {FREE_DEVICES}.
+				{accounts.length} newest account{accounts.length === 1 ? '' : 's'}. The free allowance applies only
+				while an account has no subscription; paid caps come from Stripe. Blank means the default of{' '}
+				{FREE_DEVICES}.
 			</p>
 			<Table>
 				<TableHeader>

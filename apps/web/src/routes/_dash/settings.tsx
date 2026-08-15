@@ -316,9 +316,8 @@ function DeleteAccountCard({ plan, isAdmin }: { plan: string; isAdmin: boolean }
 			<CardContent>
 				{isAdmin ? (
 					<p className='text-sm text-muted-foreground'>
-						This address is listed in <span className='text-foreground'>ADMIN_EMAILS</span>. Remove
-						it from that list first, deleting the account here would leave the admin panel without
-						a way back in.
+						This address is listed in <span className='text-foreground'>ADMIN_EMAILS</span>. Remove it from
+						that list first, deleting the account here would leave the admin panel without a way back in.
 					</p>
 				) : subscribed ? (
 					<p className='text-sm text-muted-foreground'>
