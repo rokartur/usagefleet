@@ -1,8 +1,16 @@
 {
-	"name": "collector",
+	"name": "@usagefleet/cli",
 	"version": "1.2.1",
-	"private": true,
 	"description": "Tails Claude Code, Claude Desktop, and pi agent JSONL logs and reports token usage to a UsageFleet server.",
+	"keywords": [
+		"claude",
+		"claude-code",
+		"telemetry",
+		"tokens",
+		"usage"
+	],
+	"homepage": "https://usagefleet.com",
+	"license": "MIT",
 	"bin": {
 		"usagefleet": "dist/index.js"
 	},
@@ -10,18 +18,22 @@
 		"dist"
 	],
 	"type": "module",
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"build": "tsc",
 		"dev": "bun run src/index.ts",
 		"start": "node dist/index.js",
-		"test": "vitest run"
+		"test": "vitest run",
+		"prepublishOnly": "npm run build"
 	},
 	"devDependencies": {
-		"@types/node": "^20",
-		"typescript": "^5",
+		"@types/node": "^24",
+		"typescript": "^7",
 		"vitest": "^4"
 	},
 	"engines": {
-		"node": ">=18"
+		"node": ">=20"
 	}
 }

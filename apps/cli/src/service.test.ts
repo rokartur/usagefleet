@@ -1,5 +1,41 @@
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { delimiter, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { looksLikeCompiledBinary, windowsLauncherVbs, windowsTaskXml } from './service.js'
+import { looksLikeCompiledBinary, shadowingBinary, windowsLauncherVbs, windowsTaskXml } from './service.js'
+
+describe(shadowingBinary, () => {
+	// npm's global bin is a symlink into the package, so the install being checked
+	// and the file on PATH are one executable under two names.
+	it('accepts the npm bin symlink pointing at this install', () => {
+		const root = mkdtempSync(join(tmpdir(), 'uf-path-'))
+		const bin = join(root, 'bin')
+		const pkg = join(root, 'lib', 'dist')
+		mkdirSync(bin, { recursive: true })
+		mkdirSync(pkg, { recursive: true })
+		const self = join(pkg, 'index.js')
+		writeFileSync(self, '#!/usr/bin/env node')
+		symlinkSync(self, join(bin, 'usagefleet'))
+
+		expect(shadowingBinary(bin, self)).toBeNull()
+	})
+
+	// The pre-npm installer dropped a standalone binary in /usr/local/bin, which
+	// most PATHs put ahead of the npm prefix.
+	it('reports an older binary that PATH reaches first', () => {
+		const root = mkdtempSync(join(tmpdir(), 'uf-path-'))
+		const old = join(root, 'usr-local-bin')
+		const npm = join(root, 'npm-bin')
+		mkdirSync(old)
+		mkdirSync(npm)
+		const self = join(npm, 'usagefleet')
+		writeFileSync(self, 'new')
+		writeFileSync(join(old, 'usagefleet'), 'old binary')
+
+		expect(shadowingBinary([old, npm].join(delimiter), self)).toBe(join(old, 'usagefleet'))
+		expect(shadowingBinary([npm, old].join(delimiter), self)).toBeNull()
+	})
+})
 
 describe(looksLikeCompiledBinary, () => {
 	it('treats `node dist/index.js` as NOT a compiled binary', () => {

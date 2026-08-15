@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { installPromptHook, uninstallPromptHook } from './hook.js'
 import { readStore } from './store.js'
 import { row, step } from './ui.js'
@@ -13,8 +13,8 @@ const TASK = 'usagefleet'
 /** Extra env var the service needs that does not carry the USAGEFLEET_ prefix. */
 const EXTRA_PASSTHROUGH_ENV = 'ANTHROPIC_API_KEY'
 
-/** Stable per-user dir where a compiled binary is copied so the service doesn't
- *  break if the user moves/deletes the originally-downloaded file. */
+/** Per-user dir for the collector's own runtime files: the Windows launcher and
+ *  its log, plus the binary copy that pre-npm releases left there. */
 function stableBinDir(): string {
 	if (process.platform === 'darwin') {
 		return join(homedir(), 'Library', 'Application Support', 'usagefleet')
@@ -42,6 +42,8 @@ function windowsVbsPath(): string {
 	return join(stableBinDir(), 'usagefleet-watch.vbs')
 }
 
+/** Where releases before the npm switch parked their copy of the binary. Only
+ *  cleanup touches it now. */
 function stableBinPath(): string {
 	return join(stableBinDir(), process.platform === 'win32' ? 'usagefleet.exe' : 'usagefleet')
 }
@@ -66,45 +68,39 @@ export function looksLikeCompiledBinary(scriptPath: string | undefined, execPath
 	return false
 }
 
-/** Program + leading args to launch `watch`. Handles both `node dist/index.js`
- *  and a compiled single-file binary. For the compiled binary, copy it to a
- *  stable location and point the service there — the downloaded file is often a
- *  transient ~/Downloads path. */
+/** The `usagefleet` a shell would run, when that is NOT this install — e.g. the
+ *  standalone binary a pre-npm release left in /usr/local/bin, which sits ahead
+ *  of the npm prefix on most PATHs and would keep answering after an upgrade.
+ *  Only the first hit matters: that is the one the shell picks. */
+export function shadowingBinary(pathEnv: string | undefined, self: string): string | null {
+	const name = process.platform === 'win32' ? 'usagefleet.exe' : 'usagefleet'
+	const real = (p: string): string => {
+		try {
+			return realpathSync(p)
+		} catch {
+			return p
+		}
+	}
+	for (const dir of (pathEnv || '').split(delimiter).filter(Boolean)) {
+		const candidate = join(dir, name)
+		if (existsSync(candidate)) {
+			return real(candidate) === real(self) ? null : candidate
+		}
+	}
+	return null
+}
+
+/** Program + leading args to launch `watch`. npm installs a script, so this is
+ *  normally an absolute node plus the global package path — both survive PATH
+ *  being nearly empty, which is what launchd and systemd hand the service. */
 function programArgs(): string[] {
 	const script = process.argv[1]
-	if (!looksLikeCompiledBinary(script, process.execPath)) {
-		// `node dist/index.js` (e.g. npm link) — the script path is already stable.
-		return [process.execPath, script as string, 'watch']
-	}
-	try {
-		const dest = stableBinPath()
-		if (dest !== process.execPath) {
-			mkdirSync(stableBinDir(), { recursive: true })
-			try {
-				copyFileSync(process.execPath, dest)
-			} catch {
-				// Windows locks a running .exe against overwrite, but renaming it aside
-				// is allowed — that's how an update swaps the binary under a live task.
-				const old = `${dest}.old`
-				rmSync(old, { force: true })
-				renameSync(dest, old)
-				copyFileSync(process.execPath, dest)
-			}
-			try {
-				chmodSync(dest, 0o755)
-			} catch {
-				/* non-POSIX fs */
-			}
-		}
-		return [dest, 'watch']
-	} catch (error) {
-		console.warn(
-			`Could not copy the binary to a stable path (${(error as Error).message}). ` +
-				`The service will be pinned to ${process.execPath} — do not move or delete it, ` +
-				`or re-run \`usagefleet install\` from its new location.`,
-		)
+	if (looksLikeCompiledBinary(script, process.execPath)) {
+		// Only a locally built `bun --compile` binary reaches this now: it has no
+		// re-invokable script, so the service launches the executable itself.
 		return [process.execPath, 'watch']
 	}
+	return [process.execPath, script as string, 'watch']
 }
 
 function macPlistPath(): string {
@@ -255,14 +251,23 @@ export function install(): void {
 		process.exit(1)
 	}
 
-	// Windows: stop a running task first, otherwise the live .exe blocks the
-	// stable-copy overwrite and `schtasks /run` below would be ignored (the task
-	// is IgnoreNew) — leaving the OLD binary resident after an "update".
+	// Windows: stop a running task first, or `schtasks /run` below is ignored (the
+	// task is IgnoreNew) — leaving the OLD version resident after an "update".
 	if (process.platform === 'win32') {
 		schtasks('/end', '/tn', TASK)
 	}
 
+	// Upgrading from a pre-npm release leaves its binary copy behind, and nothing
+	// points at it once the definition below is rewritten.
+	removeStableBin()
 	const prog = programArgs()
+	const shadow = shadowingBinary(process.env.PATH, process.argv[1] ?? process.execPath)
+	if (shadow) {
+		console.warn(
+			`Another usagefleet is earlier on your PATH (${shadow}). The service below runs this one, ` +
+				`but your shell keeps running that one — delete it: rm ${shadow}`,
+		)
+	}
 	const env = presentEnv()
 
 	// Same binary, different entry point: the service watches, the hook enforces.
@@ -495,8 +500,9 @@ export function serviceStatus(): ServiceStatus {
 	return { state: 'not installed' }
 }
 
-/** Best-effort removal of the stable binary copy made at install time (plus the
- *  `.old` file a Windows in-place update may have left behind). */
+/** Best-effort removal of the ~60 MB binary copy that pre-npm releases parked in
+ *  the app-support dir (plus the `.old` file a Windows in-place update left).
+ *  Runs on install too, so upgrading off the old channel reclaims the space. */
 function removeStableBin(): void {
 	for (const p of [stableBinPath(), `${stableBinPath()}.old`]) {
 		try {

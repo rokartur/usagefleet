@@ -98,15 +98,15 @@ const SPECS = [
 	{
 		key: 'privacy',
 		title: 'Counters, not conversations',
-		// Keep this in step with the collector payload (apps/collector/src/types.ts):
+		// Keep this in step with the collector payload (apps/cli/src/types.ts):
 		// it also uploads cwd, git branch, hostname, model and session id.
 		body: 'Prompts, responses and file contents never leave your machine. What does: token counts, model, session id, hostname, working directory and git branch.',
 	},
 ]
 
-/** Served straight out of apps/web/public, so it is always this deployment's
- *  installer and points its downloads back at this same host. */
-const INSTALL_URL = 'https://usagefleet.com/install.sh'
+/** The published package: same command on every OS, and npm does the fetching,
+ *  the integrity check and the upgrades. */
+const INSTALL_COMMAND = 'npm i -g @usagefleet/cli'
 
 /** Max groups always equals the plan's device cap, so one number drives both
  *  rows. `highlight` marks the tier the columns lean on. */
@@ -428,7 +428,7 @@ function Landing() {
 						<div className='min-w-0'>
 							<h2 className='text-3xl font-semibold tracking-[-0.03em]'>Install it in about a minute.</h2>
 							<code className='mt-3 block overflow-x-auto font-mono text-xs whitespace-nowrap text-neutral-500'>
-								curl -sSL {INSTALL_URL} | sh
+								{INSTALL_COMMAND}
 							</code>
 						</div>
 						<Link to={signedIn ? '/dashboard' : '/login'} className={buttonVariants({ size: 'lg' })}>

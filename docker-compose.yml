@@ -51,10 +51,6 @@ services:
       # "true" for one) so rate limiting reads a real client IP from
       # X-Forwarded-For. Leave "false" for direct exposure — see .env.example.
       TRUST_PROXY: ${TRUST_PROXY:-false}
-      # Lets collectors self-update: the server proxies release assets from the
-      # private repo so devices need no GitHub credential. Unset = no updates.
-      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      GITHUB_REPO: ${GITHUB_REPO:-rokartur/usagefleet}
       # Stripe billing — the device cap comes from the subscription, so all five
       # are required. Point the Stripe webhook at <app>/api/auth/stripe/webhook.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?set STRIPE_SECRET_KEY in .env}

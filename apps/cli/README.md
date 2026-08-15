@@ -1,52 +1,42 @@
-# usagefleet collector
+# @usagefleet/cli
 
 Tails the local JSONL logs of Claude Code, Claude Desktop's agent-mode
 (Cowork) sessions, **and** the [pi](https://github.com/badlogic/pi-mono) coding
 agent (`~/.pi/agent/sessions`; only its Anthropic-provider records — usage via
 other providers doesn't touch Claude limits), reporting token usage to a
-UsageFleet server. Read-only on the log files. Zero runtime dependencies (Node ≥ 18).
+UsageFleet server. Read-only on the log files. Zero runtime dependencies
+(Node ≥ 20).
 
-## Install (recommended)
+## Install
 
-One line — downloads the prebuilt binary for your OS, verifies its checksum,
-configures it, and enables autostart. You only need a device **token** from the
-server's Devices page (endpoint defaults to `https://usagefleet.com`):
-
-**macOS / Linux:**
-
-```bash
-curl -sSL https://usagefleet.com/install.sh | sh -s -- --token uf_xxx
-```
-
-**Windows (PowerShell):**
-
-```powershell
-$s = irm https://usagefleet.com/install.ps1
-& ([scriptblock]::Create($s)) -Token uf_xxx
-```
-
-(Running `install.sh` from Git Bash/MSYS works too — it forwards your flags to
-`install.ps1`.)
-
-Step-by-step per OS — service paths, logs, update/uninstall, troubleshooting:
-**[../INSTALL.md](../INSTALL.md)**.
-
-The source repo is **private**, but you need no GitHub account: the server holds
-the one credential and serves the binary itself. Autostart uses launchd (macOS),
-systemd `--user` (Linux) and Task Scheduler (Windows).
-
-**Update** any time by re-running the same command — it fetches the latest
-binary and restarts the service. Flags: `--no-service` (binary only),
-`--endpoint <url>` (self-hosted deployments), `--bin-dir <dir>`; `--help` for
-all (PowerShell: `-NoService`, `-Endpoint`, `-BinDir`).
-
-### Install from source
+Three commands, identical on macOS, Linux and Windows. You only need a device
+**token** from the server's Devices page (endpoint defaults to
+`https://usagefleet.com`):
 
 ```bash
-cd collector
-npm install
-npm run build          # → dist/
-npm link               # optional: exposes the `usagefleet` command globally
+npm i -g @usagefleet/cli
+usagefleet init --token uf_xxx      # add --endpoint <url> when self-hosting
+usagefleet install                  # autostart at login
+```
+
+In PowerShell chain them with `;` instead of `&&` — Windows PowerShell 5.1 has
+no `&&`.
+
+Autostart uses launchd (macOS), systemd `--user` (Linux) and Task Scheduler
+(Windows). If `npm i -g` fails with EACCES your global prefix is root-owned:
+either use a Node version manager (nvm, fnm, volta) or
+`npm config set prefix ~/.local` and put `~/.local/bin` on your PATH. Installing
+the collector under `sudo` would run it as the wrong user.
+
+**Update** happens on its own (see below) or on demand with
+`usagefleet update`. `npm i -g @usagefleet/cli` does the same thing.
+
+### Run from source
+
+```bash
+cd apps/cli
+bun install
+bun run src/index.ts status   # or: npm run build && node dist/index.js status
 ```
 
 ## Configure
@@ -70,7 +60,7 @@ Or set env vars (they override the config file):
 
 | Variable | Meaning |
 |----------|---------|
-| `USAGEFLEET_ENDPOINT` | server base URL. Must be `https://` (loopback may be `http://`): it carries the device token on every request, and self-update executes a binary fetched from it |
+| `USAGEFLEET_ENDPOINT` | server base URL. Must be `https://` (loopback may be `http://`): it carries the device token on every request |
 | `USAGEFLEET_TOKEN` | device token |
 | `USAGEFLEET_PROJECTS` | override `~/.claude/projects` (Claude Code logs) |
 | `USAGEFLEET_DESKTOP` | override the Claude Desktop agent-mode sessions dir (auto-detected per-OS); set `off`/`0` to skip desktop collection |
@@ -145,36 +135,28 @@ usagefleet run            # one scan: upload usage + report limits
 usagefleet watch          # poll continuously
 usagefleet limits         # report ONLY your real 5h/weekly limit usage
 usagefleet guard          # exit 2 if this device's group is over a blocking limit
-usagefleet update         # pull the latest release now
+usagefleet update         # upgrade to the latest published version now
 usagefleet status         # service health, last limits reading, resolved config
 usagefleet version        # bare release version
 ```
 
 ### Updates
 
-`watch` checks for a new release at startup and then every 6 hours
-(`USAGEFLEET_UPDATE_INTERVAL`, in seconds); when the tag
-differs from the one baked into the binary it downloads the asset for this
-OS/arch, **verifies its SHA-256**, swaps the binary and re-runs `install` to
-restart the service. `usagefleet update` does the same on demand.
+`watch` asks the npm registry for the published version at startup and then
+every 6 hours (`USAGEFLEET_UPDATE_INTERVAL`, in seconds); when it differs from
+the one baked into this build it runs `npm install -g @usagefleet/cli@<version>`
+and re-runs `install` to restart the service on it. `usagefleet update` does the
+same on demand.
 
-The binaries live in a private repo, so the download goes through your server
-(`/api/v1/collector/latest` + `/api/v1/collector/download`, authenticated with
-the device token) — the collector never needs `gh` or a GitHub token. The
-server needs `GITHUB_TOKEN` set; without it the endpoints answer 503 and
-collectors simply stay on their current version.
+npm is called through the absolute path next to the `node` running the
+collector, because a launchd/systemd service gets a minimal PATH that rarely has
+your version manager on it.
 
-Every failure is a no-op: bad checksum, offline server, unknown platform,
-locally-built (`dev`) binaries, a non-`https` endpoint, and script builds
-(`node usagefleet.js`, where the running executable is your `node` rather than
-the collector) all leave the install untouched. A swap that fails partway rolls
-the previous binary back. Set `USAGEFLEET_UPDATE=0` to turn the check off.
-
-Re-running `install.sh` is the manual upgrade path. It finds the copy already
-installed, upgrades it **in its own directory** (so no second binary appears
-somewhere else on PATH), keeps the config, and restarts the service. When the
-installed binary already matches the published checksum it says `up to date`
-and skips the 60 MB download; `--force` reinstalls anyway.
+Every failure is a no-op: registry unreachable, a version string that isn't
+plain semver, npm missing, npm exiting non-zero (a root-owned global prefix is
+the usual cause) and locally-built (`dev`) builds all leave the install as it
+was — the service is only restarted after npm reports success. Set
+`USAGEFLEET_UPDATE=0` to turn the check off.
 
 The collector tracks a per-file byte offset in the config file's `state`
 section, so each line is sent once; it handles rotation/truncation and never
@@ -270,8 +252,11 @@ usagefleet install        # launchd (macOS) / systemd --user (Linux) / Task Sche
 usagefleet uninstall
 ```
 
-`install` is idempotent and reload-safe: re-running it swaps in a new binary and
-restarts the service, so it doubles as the update step.
+`install` is idempotent and reload-safe: re-running it rewrites the service
+definition and restarts it, so it doubles as the update step. The service is
+launched as an absolute `node` plus the installed package path, so an empty
+service PATH is fine — but removing that Node version (`nvm uninstall`) stops
+the collector until you re-run `usagefleet install` under the new one.
 
 - **macOS** — installs a LaunchAgent (`~/Library/LaunchAgents`, RunAtLoad +
   KeepAlive) and boots it (bootout → bootstrap → kickstart). Logs at
@@ -296,5 +281,4 @@ The OS is reported automatically (`process.platform` → `mac`/`linux`/`windows`
 > clear hint when this happens. If it does, either approve `/usr/bin/security`
 > access to the `Claude Code-credentials` item once, or set `ANTHROPIC_API_KEY`
 > before `usagefleet install` (it's baked into the service) so limits use the
-> API key instead. A compiled binary is copied to a stable per-user location at
-> install time, so you can move or delete the downloaded file afterward.
+> API key instead.

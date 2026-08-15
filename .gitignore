@@ -26,8 +26,8 @@ yarn-error.log*
 .env*
 !.env.example
 
-# collector build artifacts + local state
-apps/collector/dist
+# cli build artifacts + local state
+apps/cli/dist
 .usagefleet-state.json
 
 # bundled migrator (built inside the Docker image)

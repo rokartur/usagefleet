@@ -11,7 +11,7 @@ WORKDIR /repo
 # Manifests only, so a source-only change reuses this layer.
 COPY package.json bun.lock ./
 COPY apps/web/package.json apps/web/
-COPY apps/collector/package.json apps/collector/
+COPY apps/cli/package.json apps/cli/
 RUN bun install --frozen-lockfile
 
 # ---- dev: bind-mounted source with Vite HMR ----

@@ -13,7 +13,9 @@ share of your **5-hour session** and **weekly** limits.
 
 > Phones are out of scope: the Claude mobile app keeps no local usage logs.
 
-Per-OS setup walkthrough (macOS / Linux / Windows): **[INSTALL.md](INSTALL.md)**.
+Setup is the same on macOS, Linux and Windows — `npm i -g @usagefleet/cli`, then
+`usagefleet init --token uf_xxx && usagefleet install`. Details, env vars and
+troubleshooting: **[apps/cli/README.md](apps/cli/README.md)**.
 
 ## How usage is measured
 
@@ -125,7 +127,7 @@ to change ports.
 1. Sign in at `/login` with GitHub or Google.
 2. **Groups** → create groups (e.g. "Laptops", "Work desktops").
 3. **Devices** → add a device, assign a group, **copy the token** (shown once).
-4. Install the collector on that machine (see `apps/collector/README.md`) with the
+4. Install the collector on that machine (see `apps/cli/README.md`) with the
    token, on a machine where you're signed into Claude Code. It auto-detects your
    subscription and reports real usage — the **Dashboard** fills in within a
    minute. No keys to configure in the web app.
@@ -143,7 +145,7 @@ bun run test           # usage-math + collector unit tests, both workspaces
 ```
 
 The root scripts fan out with `bun run --filter`; run one workspace directly
-with `bun run --filter collector test` (or `cd apps/collector && bun test`).
+with `bun run --filter '@usagefleet/cli' test` (or `cd apps/cli && bun run test`).
 Root scripts pass the root `.env` down, so `cd apps/web && bun run dev` needs
 its own env.
 
@@ -165,5 +167,5 @@ Bun workspaces — one lockfile, one `node_modules`, two apps.
 | `apps/web/src/lib/plans.ts` | plan catalog; `billing.ts` turns a subscription into a device cap |
 | `apps/web/src/routes/api/v1/usage.ts` | ingestion endpoint (`x-api-key`, dedup on `uuid`) |
 | `apps/web/src/routes/_dash/` | dashboard, groups, devices, billing, settings |
-| `apps/collector/` | standalone CLI (`usagefleet`), zero runtime deps |
+| `apps/cli/` | the `usagefleet` CLI, published as `@usagefleet/cli`, zero runtime deps |
 | `apps/web/Dockerfile`, `docker-compose.yml` | two-container deployment (build context = repo root) |

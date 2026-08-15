@@ -64,9 +64,8 @@ function resolveOptionalDir(env: string | undefined, fromFile: string | undefine
 
 /**
  * The endpoint must be https: it carries the device token on every request, and
- * `checkForUpdate` downloads an executable from it, chmods it 0755 and swaps it
- * into the service's launch path. Plaintext there is remote code execution.
- * Loopback is exempt so local development keeps working.
+ * the payload is a log of what this machine is working on. Loopback is exempt so
+ * local development keeps working.
  */
 export function isSecureEndpoint(endpoint: string): boolean {
 	let url: URL

@@ -111,7 +111,7 @@ async function cmdWatch(): Promise<void> {
 			const nowMs = Date.now()
 			if (nowMs - lastUpdateAt >= updateInterval) {
 				lastUpdateAt = nowMs
-				await checkForUpdate(cfg, m => console.log(`[${ts()}] ${m}`))
+				await checkForUpdate(m => console.log(`[${ts()}] ${m}`))
 			}
 			if (nowMs - lastLimitsAt >= limitsInterval) {
 				lastLimitsAt = nowMs
@@ -304,7 +304,7 @@ async function main(): Promise<void> {
 			return
 		}
 		case 'update': {
-			await checkForUpdate(loadConfig(), m => console.log(`[${ts()}] ${m}`), true)
+			await checkForUpdate(m => console.log(`[${ts()}] ${m}`), true)
 			return
 		}
 		case 'notify-test': {
