@@ -29,6 +29,7 @@ import { updateCacheTtl } from '@/lib/actions'
 import { authClient } from '@/lib/auth-client'
 import { accountPlan } from '@/lib/billing'
 import { ensureSettings } from '@/lib/data'
+import { isAdminEmail } from '@/lib/flags'
 import { requireUser } from '@/lib/session'
 
 const settingsData = createServerFn().handler(async () => {
@@ -43,6 +44,7 @@ const settingsData = createServerFn().handler(async () => {
 		email: user.email,
 		connected: linked.map(row => row.providerId),
 		entitlement,
+		isAdmin: isAdminEmail(user.email),
 	}
 })
 
@@ -67,7 +69,7 @@ const TTLS = [
 ]
 
 function SettingsPage() {
-	const { settings, email, connected, entitlement } = Route.useLoaderData()
+	const { settings, email, connected, entitlement, isAdmin } = Route.useLoaderData()
 	const { error } = Route.useSearch()
 
 	return (
@@ -134,7 +136,7 @@ function SettingsPage() {
 			</Card>
 
 			<SignInMethodsCard email={email} connected={connected} linkError={error} />
-			<DeleteAccountCard plan={entitlement.plan} />
+			<DeleteAccountCard plan={entitlement.plan} isAdmin={isAdmin} />
 		</div>
 	)
 }
@@ -294,11 +296,12 @@ function SignInMethodsCard({
 	)
 }
 
-/** Irreversible account deletion, refused while a subscription is live.
+/** Irreversible account deletion, refused while a subscription is live or the
+ *  address is an admin one.
  *
- *  The same rule is enforced in auth.ts's beforeDelete hook — this card only
+ *  Both rules are enforced in auth.ts's beforeDelete hook — this card only
  *  saves the user a round-trip. */
-function DeleteAccountCard({ plan }: { plan: string }) {
+function DeleteAccountCard({ plan, isAdmin }: { plan: string; isAdmin: boolean }) {
 	const [pending, setPending] = useState(false)
 	const subscribed = plan !== 'free'
 
@@ -311,7 +314,13 @@ function DeleteAccountCard({ plan }: { plan: string }) {
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
-				{subscribed ? (
+				{isAdmin ? (
+					<p className='text-sm text-muted-foreground'>
+						This address is listed in <span className='text-foreground'>ADMIN_EMAILS</span>. Remove
+						it from that list first, deleting the account here would leave the admin panel without
+						a way back in.
+					</p>
+				) : subscribed ? (
 					<p className='text-sm text-muted-foreground'>
 						Your <span className='text-foreground'>{plan}</span> subscription is still active.{' '}
 						<Link to='/billing' className='text-foreground underline underline-offset-4'>
