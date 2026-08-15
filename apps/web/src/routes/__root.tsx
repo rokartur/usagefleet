@@ -9,7 +9,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 // Self-hosted replacement for next/font/google; sets the --font-inter var that
 // styles/globals.css feeds into --font-sans.
 import '@fontsource-variable/inter'
-import { SITE_DESCRIPTION, SITE_NAME } from '@/lib/site'
+import { SITE_DESCRIPTION, SITE_NAME, siteUrl } from '@/lib/site'
 import '@/styles/globals.css'
 
 /** Applies the stored theme before the first paint. next-themes injects the
@@ -42,7 +42,14 @@ export const Route = createRootRoute({
 			{ property: 'og:type', content: 'website' },
 			{ property: 'og:title', content: SITE_NAME },
 			{ property: 'og:description', content: SITE_DESCRIPTION },
-			{ name: 'twitter:card', content: 'summary' },
+			// The README banner at link-preview size. Absolute, because every
+			// scraper resolves og:image against nothing.
+			{ property: 'og:image', content: `${siteUrl()}/og.png` },
+			{ property: 'og:image:width', content: '1200' },
+			{ property: 'og:image:height', content: '630' },
+			{ property: 'og:image:alt', content: SITE_NAME },
+			{ name: 'twitter:card', content: 'summary_large_image' },
+			{ name: 'twitter:image', content: `${siteUrl()}/og.png` },
 		],
 		links: [
 			{ rel: 'icon', href: '/favicon.ico', sizes: '48x48' },
