@@ -30,12 +30,13 @@ jobs:
         with:
           bun-version: latest
 
-      # Node for the publish itself (registry auth + provenance), and the
-      # oldest one the package claims to support.
+      # Node for the publish itself (registry auth + provenance). Not the
+      # version users get: oxlint strips types off oxlint.config.ts natively,
+      # which needs >=22.18, while the package itself still supports Node 20.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
@@ -54,7 +55,7 @@ jobs:
       - name: Compute version
         id: meta
         run: |
-          BASE=$(jq -r '.version | split(".")[:2] | join(".")' apps/cli/package.json)
+          BASE=$(jq -r .version apps/cli/package.json | cut -d. -f1,2)
           echo "version=${BASE}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
           echo "tag=v${BASE}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
