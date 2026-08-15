@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { detectClaudeCreds } from './claude-creds.js'
 import { reportLimitsOnce, runOnce } from './collector.js'
+import { commands, completionScript, shells } from './completion.js'
+import type { Shell } from './completion.js'
 import { loadConfig } from './config.js'
 import { runGuard } from './guard.js'
 import { loadNotifyConfig } from './notifier.js'
@@ -311,25 +313,22 @@ function cmdConfig(): void {
 	console.log(hint('`usagefleet status` shows the resolved values'))
 }
 
+/** Print a completion script, or the shells we know how to write one for. */
+function cmdCompletion(): void {
+	const shell = process.argv[3]
+	if (!shells.includes(shell as Shell)) {
+		console.error(fail('completion', `expected one of ${shells.join(', ')}`))
+		process.exitCode = 1
+		return
+	}
+	console.log(completionScript(shell as Shell))
+}
+
 /** Command list, in the same padded-column style as the result lines. */
 function help(): void {
-	const commands: [string, string][] = [
-		['run', 'scan once, upload usage + report limits'],
-		['watch [--interval s]', 'poll continuously (default 15s)'],
-		['limits', 'report only your real 5h/weekly usage'],
-		['guard', 'exit 2 when the group is over a blocking limit'],
-		['update', 'update to the latest release now'],
-		['notify-test', 'fire a test desktop notification'],
-		['status', 'service health, limits, resolved config'],
-		['config', 'config file location and env overrides'],
-		['version', 'print the release version'],
-		['install --token <t>', 'configure + install the service and prompt guard'],
-		['uninstall', 'remove the service and the guard'],
-	]
-
 	console.log(header())
 	console.log('')
-	print(commands)
+	print(commands.map(c => [c.args ? `${c.name} ${c.args}` : c.name, c.meaning]))
 	console.log('')
 	console.log(hint('`usagefleet config` lists the config file and its env overrides'))
 }
@@ -377,6 +376,9 @@ async function main(): Promise<void> {
 		}
 		case 'config': {
 			return cmdConfig()
+		}
+		case 'completion': {
+			return cmdCompletion()
 		}
 		// Bare version, so the installer can compare builds without parsing help.
 		case 'version':

@@ -9,7 +9,10 @@ process per machine. User-facing usage lives in
 `index.ts` dispatches: `init`/`install` (interactive setup + autostart),
 `run` (one cycle), `watch` (the daemon loop), `limits` (one limits report),
 `guard` (the prompt hook), `status`, `config` (file path + env reference),
-`update`, `notify-test`, `uninstall`, `version`.
+`update`, `notify-test`, `uninstall`, `version`, `completion` (zsh/fish scripts).
+
+The command list itself lives in `completion.ts` and drives both `help` and the
+generated completion scripts — add a command there, not in two places.
 
 ## The watch loop
 

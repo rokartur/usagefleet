@@ -40,6 +40,14 @@ usagefleet update         # upgrade now (it also self-updates every 6h)
 usagefleet config         # config file location + every env override
 usagefleet install        # (re)install the background service, idempotent
 usagefleet uninstall      # remove it
+usagefleet completion zsh # print a shell completion script (zsh, fish)
+```
+
+Completions are printed, not installed — send them where your shell looks:
+
+```bash
+usagefleet completion zsh  > ~/.zsh/completions/_usagefleet   # a dir on your fpath
+usagefleet completion fish > ~/.config/fish/completions/usagefleet.fish
 ```
 
 ## What it collects
