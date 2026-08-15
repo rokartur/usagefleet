@@ -18,16 +18,20 @@
 # On Windows (Git Bash/MSYS/Cygwin) this hands over to install.ps1 automatically,
 # keeping your flags — autostart there is a Scheduled Task, not launchd/systemd.
 #
-# To update later: just re-run the same command — it pulls the latest binary
-# and restarts the service.
+# Upgrading: re-run the exact same command. The installer finds the copy you
+# already have, upgrades it in place (keeping your config and its directory),
+# and restarts the service. If that copy is already the latest release it says
+# so and skips the download.
 #
 # Flags:
 #   --token <uf_..>   device token; configures + enables the service automatically
 #   --endpoint <url>   server URL, for self-hosted deployments
 #                      (default: https://usagefleet.com)
+#   --force            reinstall even when the latest release is already installed
 #   --no-service       install the binary only; don't enable autostart
 #   --service          force-enable the service even without a token (must be configured already)
-#   --bin-dir <dir>    install location (default: ~/.local/bin, or /usr/local/bin if writable)
+#   --bin-dir <dir>    install location (default: the existing install, else
+#                      ~/.local/bin, or /usr/local/bin if writable)
 #   --skip-checksum    install without verifying the SHA-256 (last resort; the
 #                      install is unverified and a tampered binary would run)
 #   -h, --help         show this help
@@ -44,10 +48,24 @@ TOKEN="${USAGEFLEET_TOKEN:-}"
 SERVICE_MODE="auto"   # auto | force | skip
 BIN_DIR="${USAGEFLEET_BIN_DIR:-}"
 SKIP_CHECKSUM="${USAGEFLEET_SKIP_CHECKSUM:-0}"
+FORCE=0
 
-info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
-fail() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+# ---- output -----------------------------------------------------------------
+# Same "quiet" style the collector itself prints: one mark, a padded label, the
+# detail in gray. Colour only when stdout is a terminal — under `curl | sh` only
+# stdin is the pipe, so this stays coloured for a human and plain in a log.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  C_DIM=$(printf '\033[90m'); C_GRN=$(printf '\033[32m')
+  C_YLW=$(printf '\033[33m'); C_RED=$(printf '\033[31m')
+  C_BLD=$(printf '\033[1m');  C_OFF=$(printf '\033[0m')
+else
+  C_DIM=''; C_GRN=''; C_YLW=''; C_RED=''; C_BLD=''; C_OFF=''
+fi
+
+ok()   { printf '%s✓%s %-10s %s%s%s\n' "$C_GRN" "$C_OFF" "$1" "$C_DIM" "${2:-}" "$C_OFF"; }
+note() { printf '%s%s%s\n' "$C_DIM" "$*" "$C_OFF"; }
+warn() { printf '%s!%s %s\n' "$C_YLW" "$C_OFF" "$*" >&2; }
+fail() { printf '%s✗%s %s\n' "$C_RED" "$C_OFF" "$*" >&2; exit 1; }
 
 usage() {
   # Piped in via `curl | sh`, $0 is the shell itself and there is no file to
@@ -57,7 +75,7 @@ usage() {
     awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
   else
     echo "usagefleet installer. Flags: --token <uf_..> --endpoint <url>"
-    echo "  --bin-dir <dir> --no-service --service"
+    echo "  --bin-dir <dir> --force --no-service --service"
     echo "Full help: ${DEFAULT_ENDPOINT}/install.sh"
   fi
   exit 0
@@ -68,6 +86,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --token)      TOKEN="${2:-}"; shift 2 ;;
     --endpoint)   ENDPOINT="${2:-}"; shift 2 ;;
+    --force)      FORCE=1; shift ;;
     --no-service) SERVICE_MODE="skip"; shift ;;
     --service)    SERVICE_MODE="force"; shift ;;
     --bin-dir)    BIN_DIR="${2:-}"; shift 2 ;;
@@ -101,7 +120,7 @@ case "$os" in
     if [ "$SERVICE_MODE" = "skip" ]; then ps_args="$ps_args -NoService"; fi
     if [ "$SERVICE_MODE" = "force" ]; then ps_args="$ps_args -Service"; fi
     if [ "$SKIP_CHECKSUM" = "1" ]; then ps_args="$ps_args -SkipChecksum"; fi
-    info "Windows detected — running the PowerShell installer..."
+    note "Windows detected — running the PowerShell installer…"
     # Served by the same host as this script, so a self-hosted --endpoint keeps
     # the whole install on that deployment.
     exec powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
@@ -145,37 +164,32 @@ else
   sha256() { echo SKIP; }
 fi
 
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/usagefleet.XXXXXX")"
-trap 'rm -rf "$tmp"' EXIT INT TERM
+human_size() {
+  b="$(wc -c < "$1" 2>/dev/null || echo 0)"
+  awk -v b="$b" 'BEGIN{printf "%.1f MB", b/1048576}'
+}
 
-info "Downloading $ASSET from ${ENDPOINT}..."
-fetch_asset "$ASSET" "${tmp}/${ASSET}" \
-  || fail "could not download $ASSET from ${ENDPOINT} — check the server is reachable and has a published release for your platform (retry in a few minutes if you were rate limited)."
+# `version` prints the bare number; a pre-1.3 build falls through to help, whose
+# banner carries the version too — so take the first x.y.z from either.
+binary_version() {
+  "$1" version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true
+}
 
-# ---- verify checksum --------------------------------------------------------
-# Verification failure is fatal, never a warning: whatever can serve a tampered
-# binary can also make SHA256SUMS.txt unavailable, so degrading to a warning
-# hands the attacker the bypass for free. --skip-checksum is the explicit,
-# user-chosen way out.
-if [ "$SKIP_CHECKSUM" = "1" ]; then
-  warn "--skip-checksum given — installing $ASSET WITHOUT verifying it"
-else
-  fetch_asset "SHA256SUMS.txt" "${tmp}/SHA256SUMS.txt" \
-    || fail "could not fetch SHA256SUMS.txt from ${ENDPOINT} — refusing to install unverified (re-run with --skip-checksum to override)"
-  want="$(awk -v f="$ASSET" '$2==f || $2=="*"f {print $1}' "${tmp}/SHA256SUMS.txt" | head -n1)"
-  got="$(sha256 "${tmp}/${ASSET}")"
-  if [ -z "$want" ]; then
-    fail "no checksum entry for $ASSET — refusing to install unverified (re-run with --skip-checksum to override)"
-  elif [ "$got" = "SKIP" ]; then
-    fail "no sha256 tool found (install sha256sum or shasum) — refusing to install unverified (re-run with --skip-checksum to override)"
-  elif [ "$want" != "$got" ]; then
-    fail "checksum mismatch for $ASSET (want $want, got $got) — refusing to install"
-  else
-    info "Checksum OK."
-  fi
+# ---- where to install -------------------------------------------------------
+# Re-running this script is the documented upgrade path, so default to the
+# directory of the copy that is already here: dropping a second binary somewhere
+# else leaves PATH to decide which one the user actually runs. An explicit
+# --bin-dir (or USAGEFLEET_BIN_DIR) still wins.
+if [ -z "$BIN_DIR" ]; then
+  for candidate in \
+    "$(command -v usagefleet 2>/dev/null || true)" \
+    "${HOME}/.local/bin/usagefleet" \
+    "/usr/local/bin/usagefleet"
+  do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then BIN_DIR="$(dirname "$candidate")"; break; fi
+  done
 fi
 
-# ---- choose install dir -----------------------------------------------------
 if [ -z "$BIN_DIR" ]; then
   if [ -w /usr/local/bin ] 2>/dev/null; then
     BIN_DIR="/usr/local/bin"
@@ -186,19 +200,76 @@ fi
 mkdir -p "$BIN_DIR" || fail "cannot create install dir: $BIN_DIR"
 DEST="${BIN_DIR}/usagefleet"
 
-# ---- install ----------------------------------------------------------------
-mv "${tmp}/${ASSET}" "$DEST"
-chmod +x "$DEST"
+# The version we are about to replace — read from the target itself, so it is
+# never some other copy's number from elsewhere on PATH.
+CURRENT_VERSION=""
+[ -x "$DEST" ] && CURRENT_VERSION="$(binary_version "$DEST")"
 
-# macOS Gatekeeper: the binary is unsigned, so strip the download quarantine
-# flag, otherwise the first run is blocked with "developer cannot be verified".
-if [ "$os" = "Darwin" ] && command -v xattr >/dev/null 2>&1; then
-  xattr -d com.apple.quarantine "$DEST" 2>/dev/null || true
+printf '%susagefleet%s %s %s%s-%s%s\n\n' \
+  "$C_BLD" "$C_OFF" "${CURRENT_VERSION:-}" "$C_DIM" "$os_part" "$arch_part" "$C_OFF"
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/usagefleet.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+# ---- is the installed copy already the release? -----------------------------
+# The published checksum answers this without downloading 60 MB, and it is a
+# stronger check than comparing version strings: it also catches a truncated or
+# hand-edited binary and reinstalls it.
+WANT=""
+if [ "$SKIP_CHECKSUM" != "1" ]; then
+  fetch_asset "SHA256SUMS.txt" "${tmp}/SHA256SUMS.txt" \
+    || fail "could not fetch SHA256SUMS.txt from ${ENDPOINT} — refusing to install unverified (re-run with --skip-checksum to override)"
+  WANT="$(awk -v f="$ASSET" '$2==f || $2=="*"f {print $1}' "${tmp}/SHA256SUMS.txt" | head -n1)"
+  [ -n "$WANT" ] || fail "no checksum entry for $ASSET — refusing to install unverified (re-run with --skip-checksum to override)"
 fi
 
-info "Installed usagefleet -> $DEST"
-"$DEST" help >/dev/null 2>&1 && info "Binary runs OK." \
-  || warn "binary installed but did not run cleanly — check your OS/arch."
+UP_TO_DATE=0
+if [ "$FORCE" != "1" ] && [ -n "$WANT" ] && [ -x "$DEST" ] && [ "$(sha256 "$DEST")" = "$WANT" ]; then
+  UP_TO_DATE=1
+  ok "up to date" "${CURRENT_VERSION:-latest release} · --force to reinstall"
+fi
+
+# ---- download + verify + install --------------------------------------------
+NEW_VERSION=""
+if [ "$UP_TO_DATE" = "0" ]; then
+  fetch_asset "$ASSET" "${tmp}/${ASSET}" \
+    || fail "could not download $ASSET from ${ENDPOINT} — check the server is reachable and has a published release for your platform (retry in a few minutes if you were rate limited)."
+  ok "downloaded" "$(human_size "${tmp}/${ASSET}")"
+
+  # Verification failure is fatal, never a warning: whatever can serve a tampered
+  # binary can also make SHA256SUMS.txt unavailable, so degrading to a warning
+  # hands the attacker the bypass for free. --skip-checksum is the explicit,
+  # user-chosen way out.
+  if [ "$SKIP_CHECKSUM" = "1" ]; then
+    warn "--skip-checksum given — installing $ASSET WITHOUT verifying it"
+  else
+    got="$(sha256 "${tmp}/${ASSET}")"
+    if [ "$got" = "SKIP" ]; then
+      fail "no sha256 tool found (install sha256sum or shasum) — refusing to install unverified (re-run with --skip-checksum to override)"
+    elif [ "$WANT" != "$got" ]; then
+      fail "checksum mismatch for $ASSET (want $WANT, got $got) — nothing installed${CURRENT_VERSION:+, $CURRENT_VERSION still in place}"
+    fi
+    ok "verified" "sha256 $(printf '%s' "$WANT" | cut -c1-12)…"
+  fi
+
+  chmod +x "${tmp}/${ASSET}"
+  # macOS Gatekeeper: the binary is unsigned, so strip the download quarantine
+  # flag, otherwise the first run is blocked with "developer cannot be verified".
+  if [ "$os" = "Darwin" ] && command -v xattr >/dev/null 2>&1; then
+    xattr -d com.apple.quarantine "${tmp}/${ASSET}" 2>/dev/null || true
+  fi
+  NEW_VERSION="$(binary_version "${tmp}/${ASSET}")"
+  [ -n "$NEW_VERSION" ] || warn "the downloaded binary did not run cleanly — check your OS/arch."
+
+  # Replacing a running binary: mv unlinks the old inode, so a live collector
+  # keeps running off it until the service restart below picks up the new one.
+  mv "${tmp}/${ASSET}" "$DEST"
+  if [ -n "$CURRENT_VERSION" ] && [ -n "$NEW_VERSION" ] && [ "$CURRENT_VERSION" != "$NEW_VERSION" ]; then
+    ok "upgraded" "${CURRENT_VERSION} → ${NEW_VERSION} · ${DEST}"
+  else
+    ok "installed" "${NEW_VERSION:+${NEW_VERSION} · }${DEST}"
+  fi
+fi
 
 # ---- PATH hint --------------------------------------------------------------
 case ":${PATH}:" in
@@ -208,8 +279,8 @@ case ":${PATH}:" in
 esac
 
 # ---- configure (init) -------------------------------------------------------
+# `init` and `install` print their own step lines in this same style.
 if [ -n "$TOKEN" ]; then
-  info "Configuring for $ENDPOINT (writing ~/.config/usagefleet/config.json)..."
   "$DEST" init --endpoint "$ENDPOINT" --token "$TOKEN"
 fi
 
@@ -228,28 +299,29 @@ have_config() {
 case "$SERVICE_MODE" in
   skip)
     echo
-    info "Binary installed. Next steps:"
-    have_config || echo "  usagefleet init --endpoint $ENDPOINT --token uf_xxx"
-    echo "  usagefleet install        # enable autostart background service"
+    note "binary installed. next:"
+    have_config || note "  usagefleet init --endpoint $ENDPOINT --token uf_xxx"
+    note "  usagefleet install    enable the autostart service"
     ;;
   force)
-    info "Enabling autostart service..."
     "$DEST" install
     ;;
   auto)
     if have_config; then
-      info "Enabling autostart service..."
+      # Idempotent, and it restarts the service onto the binary installed above —
+      # so this also repairs a service that was removed or crashed out.
       "$DEST" install
       echo
-      info "Done. usagefleet is running and will start on login."
-      info "Update anytime by re-running this installer."
+      note "collecting now."
+      note "  usagefleet status     current state"
+      note "  usagefleet watch      run in the foreground"
     else
       echo
-      warn "No token/endpoint configured — skipping autostart."
-      info "Configure then enable it:"
-      echo "  usagefleet init --endpoint $ENDPOINT --token uf_xxx"
-      echo "  usagefleet install"
-      echo "Or re-run this installer with: --token uf_xxx"
+      warn "no token/endpoint configured — skipping autostart."
+      note "configure it, then enable the service:"
+      note "  usagefleet init --endpoint $ENDPOINT --token uf_xxx"
+      note "  usagefleet install"
+      note "or re-run this installer with: --token uf_xxx"
     fi
     ;;
 esac

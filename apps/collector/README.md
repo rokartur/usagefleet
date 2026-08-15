@@ -170,6 +170,12 @@ locally-built (`dev`) binaries, a non-`https` endpoint, and script builds
 the collector) all leave the install untouched. A swap that fails partway rolls
 the previous binary back. Set `USAGEFLEET_UPDATE=0` to turn the check off.
 
+Re-running `install.sh` is the manual upgrade path. It finds the copy already
+installed, upgrades it **in its own directory** (so no second binary appears
+somewhere else on PATH), keeps the config, and restarts the service. When the
+installed binary already matches the published checksum it says `up to date`
+and skips the 60 MB download; `--force` reinstalls anyway.
+
 The collector tracks a per-file byte offset in the config file's `state`
 section, so each line is sent once; it handles rotation/truncation and never
 sends a partial line. Delivery is at-least-once — the server dedups on `uuid`.

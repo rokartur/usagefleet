@@ -104,7 +104,7 @@ Service:
 | Logs | `~/Library/Logs/usagefleet/usagefleet.out.log`, `usagefleet.err.log` |
 | Config | `~/.config/usagefleet/config.json` (settings + tail state, mode `600`) |
 | Restart | `launchctl kickstart -k gui/$(id -u)/dev.usagefleet.collector` |
-| Update | re-run the installer (or `usagefleet install`) |
+| Update | automatic every 6h; re-run the installer to force it now (it upgrades in place and skips the download when already current) |
 | Remove | `usagefleet uninstall` |
 
 Troubleshooting:
@@ -146,7 +146,7 @@ Service:
 | Unit | `~/.config/systemd/user/usagefleet.service` |
 | Logs | `journalctl --user -u usagefleet -f` |
 | Restart | `systemctl --user restart usagefleet` |
-| Update | re-run the installer (or `usagefleet install`) |
+| Update | automatic every 6h; re-run the installer to force it now (it upgrades in place and skips the download when already current) |
 | Remove | `usagefleet uninstall` (then delete the unit file) |
 
 Troubleshooting:
