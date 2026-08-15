@@ -78,6 +78,11 @@ export async function deviceWithinPlan(device: { userId: string; createdAt: Date
 	return (older[0]?.n ?? 0) < plan.deviceLimit
 }
 
-/** The 402 the collector sees once its device falls outside the plan. */
-export const overPlanLimit = () =>
-	Response.json({ code: 'plan_limit', error: "device is outside your plan's device limit" }, { status: 402 })
+/** The 402 the collector sees once its device falls outside the plan. Touches
+ *  lastSeenAt on the way out: a parked device still calls in every cycle, and
+ *  without this the Devices page shows it as last seen the moment it was
+ *  parked — i.e. dead — while it is running right now. */
+export async function overPlanLimit(deviceId: string) {
+	await db.update(devices).set({ lastSeenAt: new Date() }).where(eq(devices.id, deviceId))
+	return Response.json({ code: 'plan_limit', error: "device is outside your plan's device limit" }, { status: 402 })
+}

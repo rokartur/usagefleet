@@ -54,7 +54,7 @@ async function POST(req: Request) {
 	}
 	const { device } = auth
 	if (!(await deviceWithinPlan(device))) {
-		return overPlanLimit()
+		return overPlanLimit(device.id)
 	}
 
 	const body = await readJsonCapped(req, MAX_BODY, BatchSchema)
