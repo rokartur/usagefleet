@@ -92,7 +92,7 @@ quarantine flag, writes `~/.config/usagefleet/config.json`, and starts a LaunchA
 Verify:
 
 ```bash
-usagefleet status      # config, tail state, detected Claude login
+usagefleet status      # service health, last limits reading, resolved config
 usagefleet run         # one scan — the dashboard fills in within a minute
 ```
 

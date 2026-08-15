@@ -62,6 +62,15 @@ export interface NotifyState {
 	sevenDay: WindowNotifyState
 }
 
+/** Last limits reading, so `status` can show current usage offline instead of
+ *  spending another billable API call. Written by `reportLimitsOnce`. */
+export interface LimitsMark {
+	at: string
+	source: string
+	fiveHourPct: number | null
+	sevenDayPct: number | null
+}
+
 /**
  * Everything the CLI persists, in one file (see store.ts). Settings the user
  * sets live at the top level; the two machine-managed sections are nested so a
@@ -75,6 +84,7 @@ export interface Store {
 	desktopDir?: string
 	/** One path, or several (pi's session root moves with PI_CODING_AGENT_DIR). */
 	piDir?: string | string[]
+	limits?: LimitsMark
 	state: StateFile
 	notify: NotifyState
 }

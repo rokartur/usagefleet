@@ -274,6 +274,16 @@ export async function reportLimitsOnce(
 	if (!ok) {
 		log('limits upload failed')
 	}
+	// Cache the reading so `status` can show current usage without spending
+	// another billable API call.
+	updateStore(cfg.storePath, store => {
+		store.limits = {
+			at: new Date().toISOString(),
+			fiveHourPct: report.fiveHourPct,
+			sevenDayPct: report.sevenDayPct,
+			source: report.source,
+		}
+	})
 	// Local desktop notification on freshly-crossed thresholds. Independent of the
 	// server upload (notify even if the POST failed) and never throws.
 	maybeNotify(report, undefined, log)

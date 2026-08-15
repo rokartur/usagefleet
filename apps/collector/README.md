@@ -146,7 +146,8 @@ usagefleet watch          # poll continuously
 usagefleet limits         # report ONLY your real 5h/weekly limit usage
 usagefleet guard          # exit 2 if this device's group is over a blocking limit
 usagefleet update         # pull the latest release now
-usagefleet status         # show config, tail state, and detected Claude login
+usagefleet status         # service health, last limits reading, resolved config
+usagefleet version        # bare release version
 ```
 
 ### Updates

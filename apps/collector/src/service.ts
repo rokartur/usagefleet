@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process'
-import { chmodSync, copyFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { installPromptHook, uninstallPromptHook } from './hook.js'
 import { readStore } from './store.js'
+import { row, step } from './ui.js'
 
 const LABEL = 'dev.usagefleet.collector'
 /** Scheduled Task name on Windows (mirrors the launchd label / systemd unit). */
@@ -331,7 +332,7 @@ ${envXml}
 		} catch {
 			/* best-effort */
 		}
-		console.log(`Installed launchd agent at ${path} (autostart enabled).`)
+		console.log(step('service', 'launchd · starts at login'))
 		return
 	}
 
@@ -365,7 +366,6 @@ WantedBy=default.target
 		// 0600: the unit bakes USAGEFLEET_TOKEN and ANTHROPIC_API_KEY into Environment=.
 		writeFileSync(path, unit, { encoding: 'utf-8', mode: 0o600 })
 		chmodSync(path, 0o600) // writeFileSync's mode does not apply to an existing file
-		console.log(`Installed systemd unit at ${path}`)
 		// Enable + start automatically so autostart "just works". `restart` after
 		// enable picks up a new binary when re-running install to apply an update
 		// (enable --now leaves an already-running unit untouched).
@@ -396,7 +396,7 @@ WantedBy=default.target
 					/* not critical; service still runs while logged in */
 				}
 			}
-			console.log('Enabled and started usagefleet (autostart on login).')
+			console.log(step('service', 'systemd · starts at login'))
 		} else {
 			console.log('Could not drive systemctl automatically. Enable it manually:')
 			console.log('  systemctl --user daemon-reload')
@@ -435,13 +435,64 @@ WantedBy=default.target
 		}
 		// Start now so install/update takes effect immediately, not at next logon.
 		schtasks('/run', '/tn', TASK)
-		console.log(`Installed scheduled task "${TASK}" (autostart at logon, runs hidden).`)
-		console.log(`Logs: ${windowsLogPath()}`)
+		console.log(step('service', 'scheduled task · starts at logon'))
+		console.log(row('logs', windowsLogPath()))
 		return
 	}
 
 	console.log(`Unsupported platform for service install: ${process.platform}.`)
 	console.log(`Run it yourself with: ${prog.join(' ')}`)
+}
+
+export interface ServiceStatus {
+	state: 'running' | 'stopped' | 'not installed'
+	pid?: number
+}
+
+/** Is the background service actually up? This is the one question `status`
+ *  has to answer, so every probe is best-effort: an unreadable or unparseable
+ *  service manager reads as stopped rather than throwing. */
+export function serviceStatus(): ServiceStatus {
+	// Capture stdout, silence stderr: a missing service is an expected answer here,
+	// not something to spill onto the user's terminal.
+	const query = (cmd: string, args: string[]): string | null => {
+		try {
+			return execFileSync(cmd, args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] })
+		} catch {
+			return null
+		}
+	}
+
+	if (process.platform === 'darwin') {
+		if (!existsSync(macPlistPath())) {
+			return { state: 'not installed' }
+		}
+		const out = query('launchctl', ['print', `gui/${process.getuid?.()}/${LABEL}`])
+		const pid = out?.match(/\bpid = (\d+)/)?.[1]
+		return pid ? { pid: Number(pid), state: 'running' } : { state: 'stopped' }
+	}
+
+	if (process.platform === 'linux') {
+		if (!existsSync(systemdUnitPath())) {
+			return { state: 'not installed' }
+		}
+		const out = query('systemctl', ['--user', 'show', 'usagefleet', '--property=ActiveState,MainPID'])
+		if (!out?.includes('ActiveState=active')) {
+			return { state: 'stopped' }
+		}
+		const pid = Number(out.match(/MainPID=(\d+)/)?.[1] ?? 0)
+		return pid > 0 ? { pid, state: 'running' } : { state: 'running' }
+	}
+
+	if (process.platform === 'win32') {
+		const out = query('schtasks', ['/query', '/tn', TASK, '/fo', 'list'])
+		if (!out) {
+			return { state: 'not installed' }
+		}
+		return { state: /Status:\s*Running/i.test(out) ? 'running' : 'stopped' }
+	}
+
+	return { state: 'not installed' }
 }
 
 /** Best-effort removal of the stable binary copy made at install time (plus the

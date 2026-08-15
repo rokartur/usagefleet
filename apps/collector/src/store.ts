@@ -51,6 +51,7 @@ function normalize(raw: Partial<Store>): Store {
 	return {
 		desktopDir: raw.desktopDir,
 		endpoint: raw.endpoint,
+		limits: raw.limits,
 		notify: {
 			fiveHour: { ...freshWindow(), ...raw.notify?.fiveHour },
 			sevenDay: { ...freshWindow(), ...raw.notify?.sevenDay },

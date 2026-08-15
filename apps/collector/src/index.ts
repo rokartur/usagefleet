@@ -7,7 +7,9 @@ import { loadNotifyConfig } from './notifier.js'
 import { sendNotification } from './notify.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
+import { serviceStatus } from './service.js'
 import { readStore, storePath, updateStore } from './store.js'
+import { ago, bar, bold, dim, green, pct, row, state as stateLine, step, yellow } from './ui.js'
 import { checkForUpdate } from './update.js'
 
 function flag(name: string): string | undefined {
@@ -31,14 +33,15 @@ function ts(): string {
 	return new Date().toISOString().replace('T', ' ').slice(0, 19)
 }
 
-/** "5h 2% · weekly 13% · fable(7d) 24%" — the shared limits log line. */
+/** "5h ██░░░░░░░░   2% · weekly ████░░░░░░  13%" — the shared limits line.
+ *  Bars are plain characters, so they survive a service log as well as a TTY. */
 function limitsSummary(limits: {
 	fiveHourPct: number | null
 	sevenDayPct: number | null
 	modelLimits: { model: string; window: string; pct: number | null }[]
 }): string {
-	const models = limits.modelLimits.map(m => ` · ${m.model}(${m.window}) ${m.pct ?? '?'}%`).join('')
-	return `5h ${limits.fiveHourPct ?? '?'}% · weekly ${limits.sevenDayPct ?? '?'}%${models}`
+	const models = limits.modelLimits.map(m => ` · ${m.model}(${m.window}) ${bar(m.pct, 6)} ${pct(m.pct)}`).join('')
+	return `5h ${bar(limits.fiveHourPct)} ${pct(limits.fiveHourPct)} · weekly ${bar(limits.sevenDayPct)} ${pct(limits.sevenDayPct)}${models}`
 }
 
 async function cmdRun(): Promise<void> {
@@ -83,9 +86,11 @@ async function cmdWatch(): Promise<void> {
 	const rawUpdate = Number(process.env.USAGEFLEET_UPDATE_INTERVAL ?? 6 * 60 * 60)
 	const updateInterval = Math.max(60, Number.isFinite(rawUpdate) && rawUpdate > 0 ? rawUpdate : 6 * 60 * 60) * 1000
 	let lastUpdateAt = 0
-	console.log(
-		`[${ts()}] usagefleet watching ${cfg.projectsDir}${cfg.desktopDir ? ` + ${cfg.desktopDir}` : ''}${cfg.piDirs.map(d => ` + ${d}`).join('')} every ${interval / 1000}s → ${cfg.endpoint}`,
-	)
+	console.log(header())
+	console.log(dim(`[${ts()}] watching every ${interval / 1000}s → ${cfg.endpoint}`))
+	for (const dir of [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs].filter((d): d is string => !!d)) {
+		console.log(dim(`           ${dir}`))
+	}
 	let stopping = false
 	let timer: ReturnType<typeof setTimeout> | null = null
 	let running = false
@@ -100,7 +105,7 @@ async function cmdWatch(): Promise<void> {
 			// cycle that uploaded nothing.
 			if (r.sent > 0 || r.dropped > 0) {
 				console.log(
-					`[${ts()}] sent ${r.sent} · accepted ${r.accepted} · dup ${r.duplicates}${r.dropped > 0 ? ` · DROPPED ${r.dropped}` : ''}`,
+					`[${ts()}] ${r.dropped > 0 ? yellow('!') : green('↑')} sent ${r.sent} · accepted ${r.accepted} · dup ${r.duplicates}${r.dropped > 0 ? ` · ${yellow(`DROPPED ${r.dropped}`)}` : ''}`,
 				)
 			}
 			const nowMs = Date.now()
@@ -160,26 +165,66 @@ function cmdNotifyTest(): void {
 
 async function cmdStatus(): Promise<void> {
 	const cfg = loadConfig()
-	const { state } = readStore(cfg.storePath)
+	const { limits, state } = readStore(cfg.storePath)
 	const tracked = Object.keys(state.files).length
-	const bytes = Object.values(state.files).reduce((a, f) => a + f.offset, 0)
-	console.log(`os:        ${detectOs()}`)
-	console.log(
-		`release:   ${RELEASE_VERSION}${RELEASE_VERSION === 'dev' ? ' (local build \u2014 self-update disabled)' : ''}`,
-	)
-	console.log(`config:    ${cfg.storePath}`)
-	console.log(`endpoint:  ${cfg.endpoint}`)
-	console.log(`token:     ${cfg.token.slice(0, 8)}…`)
-	console.log(`projects:  ${cfg.projectsDir}`)
-	console.log(`desktop:   ${cfg.desktopDir ?? '(disabled)'}`)
-	console.log(`pi:        ${cfg.piDirs.join(', ') || '(disabled)'}`)
-	console.log(`deviceId:  ${state.deviceId}`)
-	console.log(`tracked:   ${tracked} files, ${bytes} bytes consumed`)
-	console.log(`updated:   ${state.updatedAt}`)
+	const mb = (Object.values(state.files).reduce((a, f) => a + f.offset, 0) / 1_048_576).toFixed(1)
+	const svc = serviceStatus()
 	const creds = await detectClaudeCreds()
+
+	console.log(header())
+	console.log('')
+
 	console.log(
-		`claude:    ${creds ? `${creds.source}${creds.subscriptionType ? ` (${creds.subscriptionType})` : ''} detected` : 'no login detected'}`,
+		svc.state === 'running'
+			? stateLine('ok', 'service', `running${svc.pid ? dim(` · pid ${svc.pid}`) : ''}`)
+			: stateLine(
+					'bad',
+					'service',
+					`${svc.state} ${dim(svc.state === 'stopped' ? '· check the log' : '· run `usagefleet install`')}`,
+				),
 	)
+	console.log(
+		creds
+			? stateLine(
+					'ok',
+					'claude',
+					`${creds.source}${dim(creds.subscriptionType ? ` · ${creds.subscriptionType}` : '')}`,
+				)
+			: stateLine('warn', 'claude', `no login ${dim('· sign in with `claude` or set ANTHROPIC_API_KEY')}`),
+	)
+	console.log(
+		limits
+			? stateLine(
+					limitHealth(limits.fiveHourPct, limits.sevenDayPct),
+					'limits',
+					`5h ${bar(limits.fiveHourPct)} ${pct(limits.fiveHourPct)} · weekly ${bar(limits.sevenDayPct)} ${pct(limits.sevenDayPct)} ${dim(ago(limits.at))}`,
+				)
+			: stateLine('warn', 'limits', `no reading yet ${dim('· run `usagefleet limits`')}`),
+	)
+
+	console.log('')
+	console.log(row('endpoint', cfg.endpoint))
+	console.log(row('device', `${state.deviceId} · token ${cfg.token.slice(0, 8)}…`))
+	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs].filter((d): d is string => !!d)
+	for (const [i, dir] of watching.entries()) {
+		console.log(row(i === 0 ? 'watching' : '', dir))
+	}
+	console.log(
+		row('tracked', `${tracked} file${tracked === 1 ? '' : 's'} · ${mb} MB read · synced ${ago(state.updatedAt)}`),
+	)
+	console.log(row('config', cfg.storePath))
+}
+
+/** Worst of the two windows decides the dot colour. */
+function limitHealth(fiveHour: number | null, sevenDay: number | null): 'ok' | 'warn' | 'bad' {
+	const worst = Math.max(fiveHour ?? 0, sevenDay ?? 0)
+	return worst >= 95 ? 'bad' : worst >= 80 ? 'warn' : 'ok'
+}
+
+/** "usagefleet 1.2.55  mac" — the one-line banner every command opens with. */
+function header(): string {
+	const build = RELEASE_VERSION === 'dev' ? dim(' (local build · self-update off)') : ''
+	return `${bold('usagefleet')} ${RELEASE_VERSION}${build}  ${dim(detectOs())}`
 }
 
 function cmdInit(): void {
@@ -196,7 +241,7 @@ function cmdInit(): void {
 		store.endpoint = endpoint
 		store.token = token
 	})
-	console.log(`Wrote ${path}`)
+	console.log(step('configured', `${endpoint} · ${path}`))
 }
 
 function help(): void {
@@ -210,7 +255,8 @@ Usage:
                                    (use as a Claude Code UserPromptSubmit hook)
   usagefleet update              Update to the latest release now (watch does this every 6h)
   usagefleet notify-test         Fire a test desktop notification
-  usagefleet status              Show resolved config + state + Claude login
+  usagefleet status              Show service health, limits, resolved config
+  usagefleet version             Print the release version
   usagefleet init --endpoint <url> --token <t>   Write ~/.config/usagefleet/config.json
   usagefleet install             Install as a background service (launchd/systemd/Task Scheduler)
                                    and register the guard as a Claude Code hook
@@ -266,6 +312,13 @@ async function main(): Promise<void> {
 		}
 		case 'status': {
 			return cmdStatus()
+		}
+		// Bare version, so the installer can compare builds without parsing help.
+		case 'version':
+		case '--version':
+		case '-v': {
+			console.log(RELEASE_VERSION)
+			return
 		}
 		case 'init': {
 			return cmdInit()
