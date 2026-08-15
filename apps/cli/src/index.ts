@@ -29,6 +29,7 @@ import {
 	warn,
 	yellow,
 } from './ui.js'
+import type { Log } from './ui.js'
 import { checkForUpdate } from './update.js'
 
 function flag(name: string): string | undefined {
@@ -59,6 +60,12 @@ function limitsSummary(limits: {
 	return `5h ${bar(limits.fiveHourPct)} ${pct(limits.fiveHourPct)} · weekly ${bar(limits.sevenDayPct)} ${pct(limits.sevenDayPct)}${models}`
 }
 
+/** Every message the collector, notifier and self-update emit, as a stream
+ *  line. The level picks the glyph so a problem never reads like a result. */
+const stream: Log = (level, m) => {
+	line(level === 'warn' ? yellow('!') : note, m)
+}
+
 /** Upload result as one stream line — the shape `run` and `watch` share.
  *  Dropped records are the only part worth a colour: they are lost data. */
 function cycleLine(r: { sent: number; accepted: number; duplicates: number; dropped: number; files: number }): void {
@@ -71,9 +78,9 @@ function cycleLine(r: { sent: number; accepted: number; duplicates: number; drop
 
 async function cmdRun(): Promise<void> {
 	const cfg = loadConfig()
-	const r = await runOnce(cfg, m => line(note, m))
+	const r = await runOnce(cfg, stream)
 	cycleLine(r)
-	const limits = await reportLimitsOnce(cfg, m => line(note, m))
+	const limits = await reportLimitsOnce(cfg, stream)
 	if (limits) {
 		line(note, `${limitsSummary(limits)} ${dim(`· ${limits.source}`)}`)
 	}
@@ -84,7 +91,7 @@ async function cmdRun(): Promise<void> {
 
 async function cmdLimits(): Promise<void> {
 	const cfg = loadConfig()
-	const limits = await reportLimitsOnce(cfg, m => line(note, m))
+	const limits = await reportLimitsOnce(cfg, stream)
 	if (!limits) {
 		process.exitCode = 1
 		return
@@ -122,7 +129,7 @@ async function cmdWatch(): Promise<void> {
 		}
 		running = true
 		try {
-			const r = await runOnce(cfg, m => line(note, m))
+			const r = await runOnce(cfg, stream)
 			// Dropped records are real data loss, so they must show up even in a
 			// cycle that uploaded nothing.
 			if (r.sent > 0 || r.dropped > 0) {
@@ -135,7 +142,7 @@ async function cmdWatch(): Promise<void> {
 			}
 			if (nowMs - lastLimitsAt >= limitsInterval) {
 				lastLimitsAt = nowMs
-				const limits = await reportLimitsOnce(cfg, m => line(note, m))
+				const limits = await reportLimitsOnce(cfg, stream)
 				if (limits) {
 					line(note, limitsSummary(limits))
 				}

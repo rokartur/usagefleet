@@ -72,15 +72,34 @@ describe('runOnce offset commitment', () => {
 
 	// The blocker this suite exists for: a device parked outside its plan gets a
 	// 402, and advancing past it would delete that machine's usage permanently.
-	it.each(['transient', 'auth'] as const)('keeps the offset on a %s failure so nothing is lost', async fatal => {
-		const { cfg, logPath } = fixture(3)
-		uploadBatch.mockResolvedValue({ fatal, ok: false })
+	it.each(['transient', 'auth', 'plan'] as const)(
+		'keeps the offset on a %s failure so nothing is lost',
+		async fatal => {
+			const { cfg, logPath } = fixture(3)
+			uploadBatch.mockResolvedValue({ fatal, ok: false })
 
-		const r = await runOnce(cfg)
+			const r = await runOnce(cfg)
 
-		expect(r.failed).toBeTruthy()
-		expect(r.dropped).toBe(0)
-		expect(savedOffset(cfg, logPath)).toBeUndefined()
+			expect(r.failed).toBeTruthy()
+			expect(r.dropped).toBe(0)
+			expect(savedOffset(cfg, logPath)).toBeUndefined()
+		},
+	)
+
+	// The 402 flood this fixes: one line per cycle, not one per file, and no
+	// pointless attempt on the remaining files that answer identically.
+	it('reports a plan or transient wall once per cycle', async () => {
+		const { cfg } = fixture(3)
+		const lines: string[] = []
+		uploadBatch.mockResolvedValue({ fatal: 'plan', ok: false })
+		await runOnce(cfg, (_level, m) => lines.push(m))
+		expect(lines).toHaveLength(1)
+		expect(lines[0]).toContain("outside your plan's device limit")
+
+		lines.length = 0
+		uploadBatch.mockResolvedValue({ fatal: 'transient', ok: false })
+		await runOnce(cfg, (_level, m) => lines.push(m))
+		expect(lines).toStrictEqual(['upload failed for 1 file · retrying next cycle'])
 	})
 
 	// A malformed record must cost one record, not the whole chunk it rode in on.

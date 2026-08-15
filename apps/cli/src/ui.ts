@@ -105,6 +105,11 @@ export function line(glyph: string, text: string): void {
 /** Neutral stream glyph, for messages that are neither good nor bad news. */
 export const note = dim('·')
 
+/** Progress reporter handed to the long-running paths (collect, limits, notify,
+ *  self-update). The level picks the glyph, so a failure never renders like a
+ *  result — and a caller that only wants the text can ignore it. */
+export type Log = (level: 'ok' | 'warn', msg: string) => void
+
 /** Percentage as a fixed-width string, so successive log lines line up. */
 export function pct(value: number | null): string {
 	return `${value ?? '?'}%`.padStart(4)

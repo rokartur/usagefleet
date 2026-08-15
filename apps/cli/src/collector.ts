@@ -11,6 +11,7 @@ import { listJsonlFiles } from './scanner.js'
 import { readStore, updateStore } from './store.js'
 import { tailFile } from './tailer.js'
 import type { Config, UsageRecord, UsageSource } from './types.js'
+import type { Log } from './ui.js'
 import { tilde } from './ui.js'
 import { postLimits, uploadBatch } from './uploader.js'
 import type { UploadFailure } from './uploader.js'
@@ -39,7 +40,7 @@ export interface CycleResult {
  */
 export async function runOnce(
 	cfg: Config,
-	log: (msg: string) => void = () => {
+	log: Log = () => {
 		/* empty */
 	},
 ): Promise<CycleResult> {
@@ -79,6 +80,9 @@ export async function runOnce(
 	// Defensive: a bad batchSize must never stall the chunk loop.
 	const step = cfg.batchSize > 0 ? Math.floor(cfg.batchSize) : 100
 	let advanced = false
+	// A server that is down or unreachable fails every file for the same reason,
+	// so the cycle reports one count instead of a screenful of identical lines.
+	let transientFiles = 0
 
 	for (const { fp, source } of files) {
 		let tail
@@ -86,7 +90,7 @@ export async function runOnce(
 			tail = tailFile(fp, state.files[fp], source)
 		} catch (error) {
 			// One unreadable/oversized file must not abort the whole cycle.
-			log(`skipped ${tilde(fp)} · ${(error as Error).message}`)
+			log('warn', `skipped ${tilde(fp)} · ${(error as Error).message}`)
 			continue
 		}
 		if (!tail || tail.consumedBytes === 0) {
@@ -100,7 +104,7 @@ export async function runOnce(
 			continue
 		}
 
-		// sendChunk absorbs "invalid" by bisecting, so only auth/transient escape.
+		// sendChunk absorbs "invalid" by bisecting, so only auth/plan/transient escape.
 		let outcome: 'ok' | UploadFailure = 'ok'
 		for (let i = 0; i < tail.records.length; i += step) {
 			outcome = await sendChunk(tail.records.slice(i, i + step), cfg, result, log)
@@ -117,7 +121,17 @@ export async function runOnce(
 			// the offset so it uploads once a fresh token is configured. Retrying the
 			// remaining files would 401 identically, so stop this cycle and surface.
 			log(
+				'warn',
 				'auth rejected · device token invalid or revoked · re-run `usagefleet init` with a fresh token, then restart the service',
+			)
+			result.failed = true
+			break
+		} else if (outcome === 'plan') {
+			// The device sits outside the account's device limit (402). Every other
+			// file gets the same answer, so stop and say what unblocks it once.
+			log(
+				'warn',
+				`device outside your plan's device limit · free a slot or upgrade at ${cfg.endpoint}/devices · nothing is lost, uploads resume once it fits`,
 			)
 			result.failed = true
 			break
@@ -125,15 +139,20 @@ export async function runOnce(
 			// The whole batch was rejected, not individual records (see sendChunk).
 			// Keep the offset: this needs a collector or server fix, not a purge.
 			log(
+				'warn',
 				`batch rejected for ${tilde(fp)} · offset kept · check this collector version and OS are supported by the server`,
 			)
 			result.failed = true
 		} else {
-			// transient (402 outside plan, 5xx, network, timeout): keep the offset and
-			// retry next cycle, but DO NOT break — later files must still get a turn.
-			log(`upload failed for ${tilde(fp)} · transient · retrying next cycle`)
+			// transient (5xx, network, timeout): keep the offset and retry next cycle,
+			// but DO NOT break — later files must still get a turn.
+			transientFiles += 1
 			result.failed = true
 		}
+	}
+
+	if (transientFiles > 0) {
+		log('warn', `upload failed for ${transientFiles} file${transientFiles === 1 ? '' : 's'} · retrying next cycle`)
 	}
 
 	// One durable write per cycle rather than one per file: the store is fsynced
@@ -170,7 +189,7 @@ async function sendChunk(
 	records: UsageRecord[],
 	cfg: Config,
 	result: CycleResult,
-	log: (msg: string) => void,
+	log: Log,
 	dropCeiling = result.dropped + MAX_DROPPED_PER_CHUNK,
 ): Promise<'ok' | UploadFailure> {
 	const res = await uploadBatch(
@@ -199,11 +218,11 @@ async function sendChunk(
 			// Give up on the record theory. The caller keeps the offset, so the
 			// records counted on the way down are retried, not lost — untally them
 			// rather than report a loss that did not happen.
-			log('every split was rejected · the batch is bad, not its records · nothing skipped')
+			log('warn', 'every split was rejected · the batch is bad, not its records · nothing skipped')
 			result.dropped = dropCeiling - MAX_DROPPED_PER_CHUNK
 			return 'invalid'
 		}
-		log(`record ${single.uuid} rejected as malformed · skipped`)
+		log('warn', `record ${single.uuid} rejected as malformed · skipped`)
 		result.dropped += 1
 		result.failed = true
 		return 'ok'
@@ -242,7 +261,7 @@ function pruneMissingFiles(state: { files: Record<string, unknown> }, scanned: {
  */
 export async function reportLimitsOnce(
 	cfg: Config,
-	log: (msg: string) => void = () => {
+	log: Log = () => {
 		/* empty */
 	},
 ): Promise<LimitsReport | null> {
@@ -252,11 +271,13 @@ export async function reportLimitsOnce(
 			// "Works by hand, broken as a service" signature: a launchd agent can be
 			// denied the login-Keychain read. Make it diagnosable instead of silent.
 			log(
+				'warn',
 				"limits skipped · keychain read for 'Claude Code-credentials' denied, typical under a launchd agent · " +
 					'grant /usr/bin/security access to the item, or set ANTHROPIC_API_KEY for the service',
 			)
 		} else {
 			log(
+				'warn',
 				'no usable claude login · missing, or expired with a failed refresh · ' +
 					'sign in with `claude` or set ANTHROPIC_API_KEY',
 			)
@@ -267,12 +288,12 @@ export async function reportLimitsOnce(
 	try {
 		report = await fetchLimits(creds)
 	} catch (error) {
-		log(`limits fetch failed · ${(error as Error).message}`)
+		log('warn', `limits fetch failed · ${(error as Error).message}`)
 		return null
 	}
 	const ok = await postLimits(report, cfg)
 	if (!ok) {
-		log('limits upload failed')
+		log('warn', 'limits upload failed')
 	}
 	// Cache the reading so `status` can show current usage without spending
 	// another billable API call.

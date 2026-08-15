@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { RELEASE_VERSION } from './release.js'
+import type { Log } from './ui.js'
 
 /** The published package: one artifact for every OS, installed with
  *  `npm i -g @usagefleet/cli`. */
@@ -47,10 +48,7 @@ function run(cmd: string, args: string[]): Promise<number | null> {
  * `log` carries the level so the caller can pick the right glyph: the CLI
  * renders progress as a step and every dead end as a warning.
  */
-export async function checkForUpdate(
-	log: (level: 'ok' | 'warn', msg: string) => void,
-	force = false,
-): Promise<string | null> {
+export async function checkForUpdate(log: Log, force = false): Promise<string | null> {
 	if (RELEASE_VERSION === 'dev') {
 		if (force) {
 			log('warn', 'dev build · install the published package first')

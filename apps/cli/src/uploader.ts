@@ -16,14 +16,17 @@ function sleep(ms: number): Promise<void> {
  *  - "invalid":   400/422 only — the server parsed the request and rejected the
  *                 records themselves as malformed. The ONLY case where advancing
  *                 past data is correct, because a re-POST would fail identically.
- *  - "transient": everything else (402 outside plan, 404 wrong endpoint, 413 too
- *                 large, 429, 5xx, network, timeout). Keep offset and retry next
- *                 cycle; do not starve later files.
+ *  - "plan":      402 — the device sits outside the account's device limit. Keep
+ *                 offset; every other file answers the same, so the caller stops
+ *                 the cycle instead of asking once per file.
+ *  - "transient": everything else (404 wrong endpoint, 413 too large, 429, 5xx,
+ *                 network, timeout). Keep offset and retry next cycle; do not
+ *                 starve later files.
  *
  *  Classification is a whitelist on purpose: a status we did not anticipate must
  *  never destroy data. Getting this backwards silently shredded the usage history
  *  of every device parked outside its plan (the server answers those with 402). */
-export type UploadFailure = 'auth' | 'invalid' | 'transient'
+export type UploadFailure = 'auth' | 'invalid' | 'plan' | 'transient'
 
 export type UploadResult = { ok: true; accepted?: number; duplicates?: number } | { ok: false; fatal: UploadFailure }
 
@@ -79,7 +82,10 @@ function classifyClientError(status: number): UploadFailure {
 	if (status === 400 || status === 422) {
 		return 'invalid'
 	}
-	return 'transient' // 402 outside plan, 404, 408, 413, … — the data is fine
+	if (status === 402) {
+		return 'plan'
+	}
+	return 'transient' // 404, 408, 413, … — the data is fine
 }
 
 /** Parse a Retry-After header (delta-seconds OR HTTP-date), clamped to [0, 60s]. */

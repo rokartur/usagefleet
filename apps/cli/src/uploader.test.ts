@@ -70,11 +70,20 @@ describe('uploadBatch failure classification', () => {
 		})
 	})
 
+	// 402 is what the server answers for a device parked outside its plan: the
+	// records are fine, but retrying the next file is pointless — it answers the
+	// same, so the caller stops the cycle and reports it once.
+	it('402 → plan (device over the account limit; keep the offset)', async () => {
+		mockFetch(402)
+		await expect(uploadBatch(payload, cfg)).resolves.toStrictEqual({
+			fatal: 'plan',
+			ok: false,
+		})
+	})
+
 	// "invalid" is the one verdict that lets the caller advance past data and lose
 	// it forever, so it is a whitelist: anything not provably malformed retries.
-	// 402 is what the server answers for a device parked outside its plan —
-	// classifying that as invalid silently shredded the machine's whole history.
-	it.each([402, 404, 408, 409, 413, 451])('%i → transient (the records are fine; keep the offset)', async status => {
+	it.each([404, 408, 409, 413, 451])('%i → transient (the records are fine; keep the offset)', async status => {
 		mockFetch(status)
 		await expect(uploadBatch(payload, cfg)).resolves.toStrictEqual({
 			fatal: 'transient',
