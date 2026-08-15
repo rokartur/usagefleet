@@ -84,7 +84,7 @@ const cachedRelease = createPromiseCache(60_000, fetchLatestRelease)
 /**
  * The latest release, cached for a minute.
  *
- * Releases move rarely but every device polls daily and each lookup costs two
+ * Releases move rarely but every device polls every 6h and each lookup costs two
  * GitHub API calls, so uncached this makes the 5000/hr token quota the real
  * ceiling on fleet size — and once it is spent, every install and self-update
  * fails.

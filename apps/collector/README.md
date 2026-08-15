@@ -81,7 +81,8 @@ Or set env vars (they override the config file):
 | `USAGEFLEET_NOTIFY_THRESHOLDS` | comma list of utilization % that trigger an alert (default `80,95`) |
 | `USAGEFLEET_BATCH` | records per upload request (default 100, capped at the server's limit of 1000) |
 | `USAGEFLEET_CONFIG` | override the whole config file path (default `~/.config/usagefleet/config.json`) |
-| `USAGEFLEET_UPDATE` | set `0` to turn the daily self-update check off |
+| `USAGEFLEET_UPDATE` | set `0` to turn the self-update check off |
+| `USAGEFLEET_UPDATE_INTERVAL` | seconds between self-update checks (default `21600` = 6h, i.e. 4×/day) |
 | `USAGEFLEET_HOOK` | set `0` to keep the prompt-blocking hook out of `~/.claude/settings.json` |
 
 ### Setting the token per shell
@@ -150,7 +151,8 @@ usagefleet status         # show config, tail state, and detected Claude login
 
 ### Updates
 
-`watch` checks for a new release at startup and then once a day; when the tag
+`watch` checks for a new release at startup and then every 6 hours
+(`USAGEFLEET_UPDATE_INTERVAL`, in seconds); when the tag
 differs from the one baked into the binary it downloads the asset for this
 OS/arch, **verifies its SHA-256**, swaps the binary and re-runs `install` to
 restart the service. `usagefleet update` does the same on demand.
@@ -165,7 +167,7 @@ Every failure is a no-op: bad checksum, offline server, unknown platform,
 locally-built (`dev`) binaries, a non-`https` endpoint, and script builds
 (`node usagefleet.js`, where the running executable is your `node` rather than
 the collector) all leave the install untouched. A swap that fails partway rolls
-the previous binary back. Set `USAGEFLEET_UPDATE=0` to turn the daily check off.
+the previous binary back. Set `USAGEFLEET_UPDATE=0` to turn the check off.
 
 The collector tracks a per-file byte offset in the config file's `state`
 section, so each line is sent once; it handles rotation/truncation and never

@@ -107,17 +107,29 @@ export async function checkForUpdate(
 		return null
 	}
 
-	const res = await fetch(`${cfg.endpoint}/api/v1/collector/latest`, {
-		headers: { 'x-api-key': cfg.token },
-		signal: AbortSignal.timeout(15_000),
-	})
+	// A rejected fetch (server down, DNS, timeout) must stay inside this function:
+	// `watch` calls it mid-cycle, so a thrown error would abort the rest of that
+	// cycle — the limits report included — on every tick the server is unreachable.
+	let res: Response
+	try {
+		res = await fetch(`${cfg.endpoint}/api/v1/collector/latest`, {
+			headers: { 'x-api-key': cfg.token },
+			signal: AbortSignal.timeout(15_000),
+		})
+	} catch (error) {
+		if (force) {
+			log(`update: cannot reach ${cfg.endpoint} (${(error as Error).message}).`)
+		}
+		return null
+	}
 	if (!res.ok) {
 		if (force) {
 			log(`update: server has no release info (${res.status}).`)
 		}
 		return null
 	}
-	const latest = (await res.json()) as LatestResponse
+	// A proxy/captive-portal HTML body would otherwise reject out of the function.
+	const latest = (await res.json().catch(() => ({}))) as LatestResponse
 	// Releases are tagged "v1.2.3" but binaries carry the bare version.
 	const latestVersion = latest.tag?.replace(/^v/, '')
 	if (!latestVersion || latestVersion === RELEASE_VERSION) {

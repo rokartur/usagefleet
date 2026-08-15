@@ -77,8 +77,11 @@ async function cmdWatch(): Promise<void> {
 	const limitsInterval =
 		Math.max(interval / 1000, Number.isFinite(rawLimits) && rawLimits > 0 ? rawLimits : 300) * 1000
 	let lastLimitsAt = 0
-	// Self-update: once at startup, then daily. USAGEFLEET_UPDATE=0 opts out.
-	const updateInterval = 24 * 60 * 60 * 1000
+	// Self-update: once at startup, then every USAGEFLEET_UPDATE_INTERVAL seconds
+	// (default 6h — a release lands on a device the same day, not the next).
+	// USAGEFLEET_UPDATE=0 opts out.
+	const rawUpdate = Number(process.env.USAGEFLEET_UPDATE_INTERVAL ?? 6 * 60 * 60)
+	const updateInterval = Math.max(60, Number.isFinite(rawUpdate) && rawUpdate > 0 ? rawUpdate : 6 * 60 * 60) * 1000
 	let lastUpdateAt = 0
 	console.log(
 		`[${ts()}] usagefleet watching ${cfg.projectsDir}${cfg.desktopDir ? ` + ${cfg.desktopDir}` : ''}${cfg.piDirs.map(d => ` + ${d}`).join('')} every ${interval / 1000}s → ${cfg.endpoint}`,
@@ -205,7 +208,7 @@ Usage:
   usagefleet limits              Report only your real 5h/weekly limit usage
   usagefleet guard               Exit 2 if this device's group is over a blocking limit
                                    (use as a Claude Code UserPromptSubmit hook)
-  usagefleet update              Update to the latest release now (watch does this daily)
+  usagefleet update              Update to the latest release now (watch does this every 6h)
   usagefleet notify-test         Fire a test desktop notification
   usagefleet status              Show resolved config + state + Claude login
   usagefleet init --endpoint <url> --token <t>   Write ~/.config/usagefleet/config.json
@@ -223,7 +226,8 @@ tail offsets and notification marks; USAGEFLEET_CONFIG relocates it):
   USAGEFLEET_INTERVAL   watch interval seconds
   USAGEFLEET_NOTIFY     desktop notifications on/off (default on; 0 to disable)
   USAGEFLEET_HOOK       register the guard in ~/.claude/settings.json on install (0 to skip)
-  USAGEFLEET_UPDATE     daily self-update while watching (0 to disable)
+  USAGEFLEET_UPDATE     self-update while watching (0 to disable)
+  USAGEFLEET_UPDATE_INTERVAL  seconds between update checks (default 21600 = 6h)
   USAGEFLEET_NOTIFY_THRESHOLDS  comma list of % alerts (default 80,95)`)
 }
 

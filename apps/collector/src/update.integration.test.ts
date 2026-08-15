@@ -84,6 +84,17 @@ describe('checkForUpdate', () => {
 		expect(readFileSync(bin, 'utf-8')).toBe('old binary')
 	})
 
+	// `watch` runs this inside its cycle: a thrown error would skip the limits
+	// report on every tick while the server is unreachable.
+	it('resolves null instead of throwing when the server is unreachable', async () => {
+		fakeBinary('old binary')
+		vi.stubGlobal('fetch', async () => {
+			throw new TypeError('fetch failed')
+		})
+
+		await expect(checkForUpdate(cfg, () => {})).resolves.toBeNull()
+	})
+
 	// The swap replaces process.execPath. Under the published `usagefleet.js`
 	// bundle that is the user's own `node`, so updating would destroy their Node
 	// install rather than the collector.
