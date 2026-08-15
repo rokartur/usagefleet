@@ -31,11 +31,15 @@ describe('plan catalog', () => {
 		}
 	})
 
-	it('caps custom plans at the devices actually billed, not the advertised floor', () => {
+	it('entitles custom plans to exactly the quantity billed, never more', () => {
 		expect(planDevices('custom', 25)).toBe(25)
-		// Buying under the floor buys fewer devices, never cheaper ones, so the
-		// quantity Stripe charged for is allowed to stand on its own.
+		// Rounding a small quantity up to the advertised minimum would hand out
+		// nine devices nobody paid for, which is worse than the undercut the
+		// minimum exists to prevent. The floor belongs at checkout instead.
 		expect(planDevices('custom', 3)).toBe(3)
+		expect(planDevices('custom', 0)).toBe(0)
+		// Equally, a quantity above the advertised ceiling was still paid for.
+		expect(planDevices('custom', 999_999)).toBe(999_999)
 		// Only reachable before the subscription webhook lands.
 		expect(planDevices('custom', null)).toBe(PLANS.custom.minDevices)
 		// Fixed tiers have no quantity to read, whatever the column happens to say.

@@ -7,6 +7,7 @@ import { deviceWithinPlan, overPlanLimit } from '@/lib/billing'
 import { getLiveDashboard, recordLimitSample } from '@/lib/data'
 import { authenticateDevice } from '@/lib/device-auth'
 import { readJsonCapped } from '@/lib/rate-limit'
+import { LIMITS_STALE_MS } from '@/lib/usage/limits'
 
 const PCT = '0 <= number.integer <= 100 | null'
 
@@ -56,11 +57,14 @@ async function GET(req: Request) {
 		return auth.response
 	}
 	const { device } = auth
+	if (!(await deviceWithinPlan(device))) {
+		return overPlanLimit(device.id)
+	}
 
 	// Owner-scoped so a stray cross-tenant groupId can never read another
 	// account's switches.
 	const [dash, group] = await Promise.all([
-		getLiveDashboard(device.userId, new Date()),
+		getLiveDashboard(device.userId),
 		device.groupId
 			? db
 					.select({
@@ -77,15 +81,20 @@ async function GET(req: Request) {
 	const sessionPct = usage?.sessionBudgetPct ?? 0
 	const weeklyPct = usage?.weeklyBudgetPct ?? 0
 
+	// Never block on a reading older than LIMITS_STALE_MS — see the constant for
+	// why a frozen percentage would otherwise refuse prompts forever.
+	const fresh = dash.reportedAt !== null && Date.now() - dash.reportedAt.getTime() <= LIMITS_STALE_MS
+
 	// Per-group enforcement switches. Both windows are measured against the
 	// group's equal budget slice, so 100% means "ate my share", not "the
 	// account is out" — a group only blocks itself, never its siblings.
-	const blockedWindow =
-		group?.blockOnSessionLimit && sessionPct >= 100
+	const blockedWindow = fresh
+		? group?.blockOnSessionLimit && sessionPct >= 100
 			? 'session'
 			: group?.blockOnWeeklyLimit && weeklyPct >= 100
 				? 'weekly'
 				: null
+		: null
 	const resetsAt = blockedWindow === 'session' ? dash.fiveHourResetsAt : dash.sevenDayResetsAt
 
 	return Response.json(

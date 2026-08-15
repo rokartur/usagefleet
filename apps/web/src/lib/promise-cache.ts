@@ -3,8 +3,9 @@
  *
  * The *promise* is cached, not its value, so callers arriving during a flight
  * share it instead of stampeding the source — the case that matters here, since
- * both users (the GitHub release lookup and the all-time history scan) are
- * expensive things a burst of tabs or devices asks for at once.
+ * both users (the all-time history scan, and the live dashboard behind both the
+ * 5s poll and the collector's per-prompt guard) are expensive things a burst of
+ * tabs or devices asks for at once.
  *
  * A rejected entry is evicted as soon as it settles, so one blip cannot serve a
  * stuck error for the rest of the window. Expired entries are pruned on the way

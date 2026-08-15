@@ -66,6 +66,16 @@ export function rateLimit(key: string, limit: number, windowMs: number): RateRes
 	return { ok: true, retryAfter: 0 }
 }
 
+/** Whether TRUST_PROXY names a proxy whose forwarded headers we accept. Off (the
+ *  shipped default) means client-supplied headers are ignored entirely, so every
+ *  pre-auth throttle falls back to one shared bucket. Exported because auth.ts
+ *  gates its own proxy warning on the same answer — two readings of this env var
+ *  that disagreed would leave a half-configured deployment silent. */
+export function proxyTrusted(): boolean {
+	const trust = process.env.TRUST_PROXY
+	return !!trust && trust !== 'false' && trust !== '0'
+}
+
 /**
  * Rate-limit key derived from the client IP.
  *
@@ -93,11 +103,10 @@ export function rateLimit(key: string, limit: number, windowMs: number): RateRes
  * all client-supplied headers and use a single shared bucket. Strict but
  * unspoofable — device ingestion is keyed on the token hash, not the IP, so this
  * mostly throttles anonymous spam.
- *
  */
 export function clientIp(req: Request): string {
 	const trust = process.env.TRUST_PROXY
-	if (!trust || trust === 'false' || trust === '0') {
+	if (!proxyTrusted()) {
 		return 'anon'
 	}
 

@@ -69,16 +69,19 @@ export const isPaidPlan = (name: string): name is PaidPlan => Object.hasOwn(PLAN
 export const planLabel = (plan: PlanId): string => (plan === 'free' ? 'Free' : PLANS[plan].label)
 
 /** Devices a plan entitles, given the subscription's Stripe line-item quantity.
- *  Only `custom` varies with it, and there the quantity is exactly what the
- *  customer is billed for — so it, not our advertised minimum, is the cap. The
- *  minimum is a sales floor enforced where people pick a number; buying under it
- *  would only ever buy fewer devices, never cheaper ones. */
+ *  Only `custom` varies with it, and there the entitlement is exactly what was
+ *  billed — never rounded up to `minDevices`, which would hand out devices
+ *  nobody paid for, and never capped at `maxDevices`, which would withhold
+ *  devices someone did pay for. Both bounds are sales rules about what may be
+ *  purchased, so they belong at the checkout boundary, not at this read. */
 export const planDevices = (plan: PlanId, seats: number | null): number => {
 	if (plan === 'free') {
 		return FREE_DEVICES
 	}
 	if (plan === 'custom') {
-		return seats ?? PLANS.custom.minDevices
+		// Unknown quantity only happens between checkout and the subscription
+		// webhook; the advertised minimum is the short-lived benefit of the doubt.
+		return seats === null ? PLANS.custom.minDevices : Math.max(0, Math.trunc(seats))
 	}
 	return PLANS[plan].devices
 }

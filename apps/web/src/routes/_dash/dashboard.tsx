@@ -11,7 +11,7 @@ const dashboardData = createServerFn().handler(async () => {
 	const user = await requireUser()
 	const now = new Date()
 	const [initial, history, windows] = await Promise.all([
-		getLiveDashboard(user.id, now).then(toDashboardDTO),
+		getLiveDashboard(user.id).then(toDashboardDTO),
 		getHistory(user.id),
 		getWindowHistory(user.id, now),
 	])

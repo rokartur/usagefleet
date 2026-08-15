@@ -6,7 +6,6 @@ import type { LimitWindow, StoredModelLimit } from '@/db/schema'
 import { createPromiseCache } from '@/lib/promise-cache'
 import {
 	billableTokens,
-	computeDashboardUsage,
 	costForTokens,
 	costUsd,
 	EMPTY_TOTALS,
@@ -21,14 +20,17 @@ import {
 	sumRecords,
 	weekWindowStart,
 } from '@/lib/usage'
-import type { CacheTtl, DailyAggRow, DashboardUsage, ModelUsage, TokenTotals, UsageRecord } from '@/lib/usage'
+import type { CacheTtl, DailyAggRow, ModelUsage, TokenTotals, UsageRecord } from '@/lib/usage'
 
 // The logical-message fold key: (messageId, requestId) when present, else the
 // row's own uuid. Prefixed so a uuid can never collide with a messageId pair.
 const FOLD_KEY = sql`CASE WHEN ${usageEvents.messageId} IS NOT NULL THEN 'm:' || ${usageEvents.messageId} || '::' || coalesce(${usageEvents.requestId}, '') ELSE 'u:' || ${usageEvents.uuid} END`
 const ROW_TOTAL = sql`(${usageEvents.inputTokens} + ${usageEvents.outputTokens} + ${usageEvents.cacheCreationTokens} + ${usageEvents.cacheReadTokens})`
 
-/** Lazily create and return the user's settings row (defaults = max5 preset). */
+/** Lazily create and return the user's settings row. Only the week-reset and
+ *  cache-TTL columns are read; `plan` and the two token-limit columns predate
+ *  the collector reporting Anthropic's own percentages and are now written by
+ *  nothing — see db/schema.ts. */
 export async function ensureSettings(userId: string) {
 	const existing = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1)
 	if (existing[0]) {
@@ -69,7 +71,8 @@ export async function loadRecentEvents(userId: string, cutoff: Date): Promise<Us
  * fold.ts) is done IN SQL via DISTINCT ON so the whole table never has to be
  * pulled into Node: the result is one small row per active (day, group, model)
  * cell. Rows with no real tokens (e.g. "<synthetic>" placeholders) are dropped
- * by the HAVING clause. Days are bucketed in UTC to match the JS timelines.
+ * by the HAVING clause. Days are bucketed in UTC to match the JS day keys
+ * (`utcDay` in chart.ts), so a row and its chart bucket can never disagree.
  *
  * `since` bounds the scan (UTC, inclusive). Unbounded, this walks and sorts the
  * account's entire event history, so `cachedDailyRows` is the only caller that
@@ -134,27 +137,6 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
 		outputTokens: Number(r.output),
 		source: r.source,
 	}))
-}
-
-export async function getDashboard(userId: string, now: Date): Promise<DashboardUsage> {
-	await refreshPrices()
-	const cutoff = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000)
-	const [settings, groupRows, events] = await Promise.all([
-		ensureSettings(userId),
-		db.select().from(groups).where(eq(groups.ownerId, userId)),
-		loadRecentEvents(userId, cutoff),
-	])
-	return computeDashboardUsage(
-		events,
-		groupRows.map(g => ({ color: g.color, id: g.id, name: g.name })),
-		{
-			sessionLimitTokens: settings.sessionLimitTokens,
-			weekResetHourUtc: settings.weekResetHourUtc,
-			weekResetWeekday: settings.weekResetWeekday,
-			weeklyLimitTokens: settings.weeklyLimitTokens,
-		},
-		now,
-	)
 }
 
 export interface LiveGroupUsage {
@@ -261,7 +243,7 @@ function windowDurationMs(window: string): number | null {
  *  Uncapped: past 100% the group has overrun its slice and is eating another
  *  group's, which is worth seeing. Takes the *unrounded* share so the multiply
  *  doesn't amplify a rounding error (at 10 groups 0.5pt would become 5pt). */
-const groupBudgetPct = (share: ShareEntry | undefined, groupCount: number) =>
+export const groupBudgetPct = (share: { exactPct: number } | undefined, groupCount: number) =>
 	Math.round((share?.exactPct ?? 0) * groupCount)
 
 /** Split an official account-wide percentage across an arbitrary key (group or
@@ -284,8 +266,7 @@ function splitByShare(
 	windowStart: Date,
 	now: Date,
 	officialPct: number,
-	ttl: CacheTtl = '5m',
-	keyOf: (e: UsageRecord) => string | null = e => e.groupId ?? null,
+	ttl: CacheTtl,
 ): Map<string | null, ShareEntry> {
 	const inWin = events.filter(e => {
 		const t = e.ts.getTime()
@@ -293,7 +274,7 @@ function splitByShare(
 	})
 	const byKey = new Map<string | null, UsageRecord[]>()
 	for (const e of inWin) {
-		const k = keyOf(e)
+		const k = e.groupId ?? null
 		const arr = byKey.get(k)
 		if (arr) {
 			arr.push(e)
@@ -336,7 +317,7 @@ function splitByShare(
  * it from the local Claude Code login), with a local token-share split per
  * group. `connected: false` until the collector has reported once.
  */
-export async function getLiveDashboard(userId: string, now: Date): Promise<LiveDashboard> {
+async function loadLiveDashboard(userId: string, now: Date): Promise<LiveDashboard> {
 	const settings = await ensureSettings(userId)
 	const hasLimits = settings.fiveHourPct !== null || settings.sevenDayPct !== null
 
@@ -491,6 +472,19 @@ export async function getLiveDashboard(userId: string, now: Date): Promise<LiveD
 		...base,
 	}
 }
+
+/**
+ * Cached {@link loadLiveDashboard}. Every open tab polls this every 5s and every
+ * device asks for it before every prompt, while the load underneath reads each
+ * raw usage row in the window — Claude Code writes one per streamed segment, so
+ * that is the largest scan on any hot path. Caching the promise collapses a
+ * burst of tabs and devices onto a single flight per account.
+ *
+ * `now` is taken when the flight starts, so a hit can be up to the TTL stale.
+ * That is far inside the collector's own reporting interval, and the client
+ * re-renders elapsed time from a local ticker rather than from this timestamp.
+ */
+export const getLiveDashboard = createPromiseCache(5000, (userId: string) => loadLiveDashboard(userId, new Date()))
 
 /** How many completed windows back the past-windows card looks. */
 const PAST_WINDOWS = 8

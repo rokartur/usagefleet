@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { createServerFn } from '@tanstack/react-start'
+import { type } from 'arktype'
 import { and, asc, eq, ne, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { devices, groups, userSettings } from '@/db/schema'
@@ -13,6 +14,31 @@ import { requireUser } from '@/lib/session'
 function safeColor(v: string): string {
 	return /^#[0-9a-fA-F]{6}$/.test(v) ? v : '#6366f1'
 }
+
+/** Longest device or group name we store. Both columns are `text`, so nothing
+ *  underneath bounds them, and every name is echoed into each dashboard poll —
+ *  one oversized name would be re-sent to every tab every 5 seconds. */
+const MAX_NAME = 64
+
+/** A trimmed, length-capped name, or null when there is no usable one. Takes
+ *  `unknown` because all of these arrive from the client: `createDevice` is
+ *  handed parsed JSON, and `FormData.get` returns a `File` just as readily as a
+ *  string. */
+function safeName(value: unknown): string | null {
+	const trimmed = typeof value === 'string' ? value.trim() : ''
+	return trimmed ? trimmed.slice(0, MAX_NAME) : null
+}
+
+/** Payload for {@link createDevice} — the one server fn here taking JSON rather
+ *  than FormData. Without a real check its handler trusted the shape outright,
+ *  so a posted `name: 123` reached `.trim()` and answered 500.
+ *
+ *  Both ceilings are rejection limits, not storage limits, and they sit far above
+ *  any real name so only abuse meets them. They bound what reaches the database
+ *  and `ownedGroupId`, not what the server reads off the wire — this runs after
+ *  the body has been received and parsed. Capping the transport would take a
+ *  `readJsonCapped` equivalent, which `createServerFn` has no hook for. */
+const deviceInput = type({ groupId: 'string <= 64 | null', name: 'string <= 256' })
 
 /** Count the user's groups (for the per-account cap). */
 async function groupCount(userId: string): Promise<number> {
@@ -37,7 +63,7 @@ export const createGroup = createServerFn({ method: 'POST' })
 	.inputValidator((formData: FormData) => formData)
 	.handler(async ({ data: formData }) => {
 		const user = await requireUser()
-		const name = String(formData.get('name') ?? '').trim()
+		const name = safeName(formData.get('name'))
 		const color = safeColor(String(formData.get('color') ?? '#6366f1'))
 		if (!name) {
 			return
@@ -72,12 +98,11 @@ export const updateGroup = createServerFn({ method: 'POST' })
 			blockOnWeeklyLimit: formData.has('blockOnWeeklyLimit'),
 			color,
 		}
-		const rawName = formData.get('name')
-		if (rawName != null) {
-			const name = String(rawName).trim()
-			if (name) {
-				set.name = name
-			}
+		// An absent field and a blank one mean the same thing here: leave the stored
+		// name alone.
+		const name = safeName(formData.get('name'))
+		if (name) {
+			set.name = name
 		}
 		await db
 			.update(groups)
@@ -158,7 +183,13 @@ export const assignDeviceGroup = createServerFn({ method: 'POST' })
 
 /** Creates a device + its API token. Returns the plaintext token ONCE. */
 export const createDevice = createServerFn({ method: 'POST' })
-	.inputValidator((data: { name: string; groupId: string | null }) => data)
+	.inputValidator((data: unknown) => {
+		const parsed = deviceInput(data)
+		if (parsed instanceof type.errors) {
+			throw new TypeError(parsed.summary)
+		}
+		return parsed
+	})
 	.handler(async ({ data: { name, groupId } }): Promise<{ id: string; token: string }> => {
 		const user = await requireUser()
 		// Revoked devices don't hold a slot — otherwise you'd have to hard-delete
@@ -178,7 +209,7 @@ export const createDevice = createServerFn({ method: 'POST' })
 		await db.insert(devices).values({
 			groupId: safeGroupId,
 			id,
-			name: name.trim() || 'New device',
+			name: safeName(name) ?? 'New device',
 			tokenHash,
 			tokenPrefix,
 			userId: user.id,

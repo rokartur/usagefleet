@@ -1,3 +1,4 @@
+import { isIP } from 'node:net'
 import { stripe as stripePlugin } from '@better-auth/stripe'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
@@ -10,6 +11,7 @@ import * as schema from '../db/schema'
 import { accountPlan } from './billing'
 import { isAdminEmail, signupEnabled } from './flags'
 import { PAID_PLANS, PLANS } from './plans'
+import { proxyTrusted } from './rate-limit'
 
 // better-auth only WARNS on a short secret; enforce it. The secret signs/encrypts
 // session data, so a weak one silently weakens session integrity. Vite only
@@ -18,6 +20,47 @@ import { PAID_PLANS, PLANS } from './plans'
 const secret = process.env.BETTER_AUTH_SECRET
 if (process.env.NODE_ENV === 'production' && (!secret || secret.length < 32)) {
 	throw new Error('BETTER_AUTH_SECRET must be set to at least 32 characters in production')
+}
+
+// Reverse-proxy addresses (IPs or CIDR ranges) better-auth may strip off
+// X-Forwarded-For to reach the real client. It cannot read TRUST_PROXY, which is
+// a hop count rather than the address list better-auth matches on, so this is a
+// second knob for the same promise: the app port is reachable only through the
+// proxy named here.
+//
+// Entries are validated here because better-auth drops malformed ones with only
+// a log line. Counting the raw strings would let a typo read as "configured"
+// while the effective list is empty — exactly the state the warning below exists
+// to catch.
+const trustedProxies = (process.env.TRUSTED_PROXIES ?? '')
+	.split(',')
+	.map(entry => entry.trim())
+	.filter(entry => {
+		// Mirrors better-auth's own parseCIDR: split on the LAST slash, digits only
+		// in the prefix. A looser check here would accept "10.0.0.0/" or "/0x8",
+		// which it drops — and a list that parses here but not there is exactly the
+		// silent half-configuration this filter exists to prevent.
+		const slash = entry.lastIndexOf('/')
+		const version = isIP(slash === -1 ? entry : entry.slice(0, slash))
+		if (!version) {
+			return false
+		}
+		if (slash === -1) {
+			return true
+		}
+		const prefix = entry.slice(slash + 1)
+		return /^\d+$/.test(prefix) && Number(prefix) <= (version === 4 ? 32 : 128)
+	})
+
+// Both pre-auth throttles need to know which requests genuinely came through the
+// proxy before they can bucket by caller: TRUST_PROXY gates the collector
+// endpoints (rate-limit.ts), TRUSTED_PROXIES gates better-auth's. Unset is a
+// working deployment with no per-caller limit, not a broken one, so it warns
+// rather than throws.
+if (process.env.NODE_ENV === 'production' && !(proxyTrusted() && trustedProxies.length > 0)) {
+	console.warn(
+		'[usagefleet] TRUST_PROXY / TRUSTED_PROXIES are not both set: pre-auth rate limits fall back to a shared bucket and cannot throttle one abusive caller.',
+	)
 }
 
 // Mandatory on any deployment, hosted or self-hosted: OAuth because both
@@ -69,6 +112,15 @@ export const auth = betterAuth({
 		provider: 'pg',
 		schema,
 	}),
+	// Without this better-auth cannot name the caller behind a multi-hop
+	// X-Forwarded-For: it buckets every request under one "no-trusted-ip" key, and
+	// its own pre-auth defaults (3 sign-ins per 10s) then throttle the whole
+	// deployment instead of one attacker. A single-hop header resolves per-caller
+	// without this list, which is why the tight defaults are left alone — widening
+	// them from config would weaken brute-force protection on the common
+	// single-proxy deployment to paper over a misconfiguration the warning above
+	// already reports.
+	advanced: { ipAddress: { trustedProxies } },
 	// Three ways in: GitHub, Google, and email + password.
 	// disableSignUp rejects unknown users server-side (real enforcement, not just
 	// UI), so ALLOW_SIGNUP=false has to be set on every method, not one.

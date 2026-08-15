@@ -9,7 +9,7 @@ import { Section, UsageBar } from '@/components/usage-ui'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO, SpendPeriod } from '@/lib/data'
 import { formatRelative, formatTokens, formatUsd } from '@/lib/format'
 import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
-import { billableTokens } from '@/lib/usage'
+import { billableTokens, LIMITS_STALE_MS } from '@/lib/usage'
 import { cn } from '@/lib/utils'
 
 /** Display label for a limit-window key: "5h" → "5-hour", "7d" → "weekly". */
@@ -24,9 +24,6 @@ function windowLabel(window: string): string {
 }
 
 const POLL_MS = 5000
-/** The collector reports limits every 5 min; past three missed reports the
- *  numbers below are history, not "live" — say so instead of pulsing green. */
-const DATA_STALE_MS = 15 * 60 * 1000
 
 /** Colored dot used for a group's identity across cards and tables. */
 function GroupDot({ color }: { color: string }) {
@@ -247,7 +244,11 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO; setup
 	const [now, setNow] = useState(() => Date.now())
 	// Which group rows are expanded (groupId or "ungrouped").
 	const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
-	const reqIdRef = useRef(0)
+	// Serialises polling: /api/dashboard scans the whole window, so a server
+	// slower than POLL_MS would otherwise stack a new request every tick and add
+	// load to something already struggling. One outstanding request at a time also
+	// means responses can never land out of order.
+	const inFlightRef = useRef(false)
 
 	const toggleRow = useCallback((key: string) => {
 		setExpanded(prev => {
@@ -261,36 +262,47 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO; setup
 		})
 	}, [])
 
-	const refresh = useCallback(async (signal?: AbortSignal) => {
-		const myId = ++reqIdRef.current
+	const refresh = useCallback(async () => {
+		if (inFlightRef.current) {
+			return
+		}
+		inFlightRef.current = true
 		try {
-			const res = await fetch('/api/dashboard', { cache: 'no-store', signal })
+			// The in-flight guard serialises polls, so a request that never settles
+			// would park every later tick for the life of the tab. The deadline is what
+			// ends one. Unmount does not abort in flight: clearing the interval already
+			// stops new polls, and one discarded response costs less than composing
+			// signals with AbortSignal.any, which needs a newer browser than anything
+			// else this app relies on.
+			const res = await fetch('/api/dashboard', {
+				cache: 'no-store',
+				signal: AbortSignal.timeout(POLL_MS * 3),
+			})
 			if (res.status === 401) {
 				window.location.href = '/login'
 				return
 			}
-			// Only the most-recently-started request may write state (no stale races).
-			if (res.ok && myId === reqIdRef.current) {
+			if (res.ok) {
 				setDash((await res.json()) as DashboardDTO)
 				setLastOk(Date.now())
 			}
 		} catch {
 			/* transient network/abort — keep last good data; staleness shows below */
+		} finally {
+			inFlightRef.current = false
 		}
 	}, [])
 
 	useEffect(() => {
-		const ac = new AbortController()
-		const id = setInterval(() => refresh(ac.signal), POLL_MS)
+		const id = setInterval(refresh, POLL_MS)
 		const ticker = setInterval(() => setNow(Date.now()), 1000)
 		const onVisible = () => {
 			if (document.visibilityState === 'visible') {
-				refresh(ac.signal)
+				refresh()
 			}
 		}
 		document.addEventListener('visibilitychange', onVisible)
 		return () => {
-			ac.abort()
 			clearInterval(id)
 			clearInterval(ticker)
 			document.removeEventListener('visibilitychange', onVisible)
@@ -299,7 +311,7 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO; setup
 
 	const pollDown = now - lastOk > 3 * POLL_MS
 	const reportAge = dash.reportedAt ? now - Date.parse(dash.reportedAt) : 0
-	const stale = pollDown || reportAge > DATA_STALE_MS
+	const stale = pollDown || reportAge > LIMITS_STALE_MS
 	const statusLabel = pollDown ? 'reconnecting…' : stale ? 'collector offline' : 'live'
 
 	if (!dash.connected) {

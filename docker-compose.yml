@@ -33,7 +33,10 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-app}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env (>=32 chars)}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      # No default: better-auth takes the session cookie's Secure flag
+      # from this scheme, so a silent http:// fallback would ship
+      # non-Secure cookies on an HTTPS deploy that still looks healthy.
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set to the public origin, e.g. https://usage.example.com}
       # Set to "false" to block new account creation.
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
       # Comma-separated emails allowed into the /admin panel.
@@ -53,6 +56,11 @@ services:
       # "true" for one) so rate limiting reads a real client IP from
       # X-Forwarded-For. Leave "false" for direct exposure — see .env.example.
       TRUST_PROXY: ${TRUST_PROXY:-false}
+      # Those same proxies as addresses/CIDRs, which is what better-auth matches
+      # on for its own sign-in limits. Set this on ANY proxied deployment: left
+      # empty, one forged X-Forwarded-For makes better-auth throttle every
+      # sign-in against a single shared bucket. See .env.example.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       # Stripe billing — the device cap comes from the subscription, so all five
       # are required. Point the Stripe webhook at <app>/api/auth/stripe/webhook.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?set STRIPE_SECRET_KEY in .env}

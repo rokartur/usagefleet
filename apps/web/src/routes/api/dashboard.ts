@@ -8,7 +8,7 @@ async function GET() {
 	if (!session) {
 		return Response.json({ error: 'unauthorized' }, { status: 401 })
 	}
-	const dash = await getLiveDashboard(session.user.id, new Date())
+	const dash = await getLiveDashboard(session.user.id)
 	return Response.json(toDashboardDTO(dash), {
 		headers: { 'cache-control': 'no-store' },
 	})
