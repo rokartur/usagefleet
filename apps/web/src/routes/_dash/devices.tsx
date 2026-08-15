@@ -3,7 +3,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { MonitorSmartphoneIcon } from 'lucide-react'
 import { AddDeviceForm } from '@/components/AddDeviceForm'
 import { AutoRefresh } from '@/components/AutoRefresh'
-import { DeleteDeviceButton, DeviceGroupSelect, RevokeDeviceButton } from '@/components/devices/DeviceActions'
+import { DeviceGroupSelect, RevokeDeviceButton } from '@/components/devices/DeviceActions'
 import { Badge } from '@/components/ui/badge'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { accountPlan } from '@/lib/billing'
@@ -155,10 +155,7 @@ function DevicesPage() {
 											groupId={d.groupId}
 											groups={groupOptions}
 										/>
-										<div className='flex gap-1'>
-											{!d.revoked && <RevokeDeviceButton id={d.id} name={d.name} />}
-											<DeleteDeviceButton id={d.id} name={d.name} />
-										</div>
+										{!d.revoked && <RevokeDeviceButton id={d.id} name={d.name} />}
 									</li>
 								))}
 							</ul>

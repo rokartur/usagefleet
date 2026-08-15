@@ -186,6 +186,11 @@ export const createDevice = createServerFn({ method: 'POST' })
 		return { id, token }
 	})
 
+/** One-way: a device is either active or revoked, never removed.
+ *
+ *  Deleting it would take the usage history it reported with it, and a token
+ *  that once existed should stay auditable. Revoked rows don't hold a plan
+ *  slot, so keeping them costs the user nothing. */
 export const revokeDevice = createServerFn({ method: 'POST' })
 	.inputValidator((formData: FormData) => formData)
 	.handler(async ({ data: formData }) => {
@@ -195,12 +200,4 @@ export const revokeDevice = createServerFn({ method: 'POST' })
 			.update(devices)
 			.set({ revoked: true })
 			.where(and(eq(devices.id, id), eq(devices.userId, user.id)))
-	})
-
-export const deleteDevice = createServerFn({ method: 'POST' })
-	.inputValidator((formData: FormData) => formData)
-	.handler(async ({ data: formData }) => {
-		const user = await requireUser()
-		const id = String(formData.get('id'))
-		await db.delete(devices).where(and(eq(devices.id, id), eq(devices.userId, user.id)))
 	})

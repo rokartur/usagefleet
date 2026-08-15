@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Ban, Trash2 } from 'lucide-react'
+import { Ban } from 'lucide-react'
 import { ActionForm } from '@/components/ActionForm'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { assignDeviceGroup, deleteDevice, revokeDevice } from '@/lib/actions'
+import { assignDeviceGroup, revokeDevice } from '@/lib/actions'
 
 /** Moves a device between groups on change — no separate Save button. */
 export function DeviceGroupSelect({
@@ -54,6 +54,7 @@ export function DeviceGroupSelect({
 	)
 }
 
+/** The only exit for a device: revoking is one-way and rows are never deleted. */
 export function RevokeDeviceButton({ id, name }: { id: string; name: string }) {
 	return (
 		<ConfirmAction
@@ -66,22 +67,6 @@ export function RevokeDeviceButton({ id, name }: { id: string; name: string }) {
 		>
 			<Ban />
 			Revoke
-		</ConfirmAction>
-	)
-}
-
-export function DeleteDeviceButton({ id, name }: { id: string; name: string }) {
-	return (
-		<ConfirmAction
-			action={deleteDevice}
-			id={id}
-			title={`Delete ${name}?`}
-			description='This removes the device and the usage history it reported. This cannot be undone.'
-			confirmLabel='Delete'
-			successMessage={`${name} deleted`}
-		>
-			<Trash2 />
-			Delete
 		</ConfirmAction>
 	)
 }
