@@ -227,15 +227,12 @@ function Landing() {
 						<span className='text-neutral-500'>One honest number.</span>
 					</h1>
 
-					<div className='relative z-10 mt-[25px]'>
+					<div className='relative z-10 mt-[25px] flex flex-wrap items-center gap-x-8 gap-y-5'>
 						<p className='max-w-[48ch] text-sm leading-relaxed text-neutral-400'>
 							UsageFleet reports Anthropic&apos;s own 5 hour and weekly utilization, then splits it across
 							the device groups you define. Sign in with GitHub or Google, add a machine, done.
 						</p>
-						<Link
-							to={signedIn ? '/dashboard' : '/login'}
-							className={buttonVariants({ size: 'lg', className: 'mt-[22px]' })}
-						>
+						<Link to={signedIn ? '/dashboard' : '/login'} className={buttonVariants({ size: 'lg' })}>
 							{signedIn ? 'Open dashboard' : 'Get started'}
 						</Link>
 					</div>
