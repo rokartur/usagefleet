@@ -7,7 +7,7 @@
 	<a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-000?style=flat-square&labelColor=000" alt="GPL-3.0-or-later"></a>
 </p>
 
-One Claude subscription, many machines. UsageFleet reports Anthropic's **own**
+One subscription, many machines. UsageFleet reports Anthropic's **own**
 5-hour and weekly utilization and splits it across the device groups you define,
 so you can see which laptop, desktop or server burned the window.
 
