@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { UsageBar } from "@/components/usage-ui";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Section, UsageBar } from "@/components/usage-ui";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Select,
@@ -81,16 +80,9 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
   const columns = columnsOf(windows);
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex flex-col gap-1">
-          <CardTitle>Past windows</CardTitle>
-          <CardDescription>
-            Completed {kind === "sessions" ? "5-hour" : "weekly"} windows, newest first. Billable
-            tokens (cache reads excluded) and each group&apos;s share of the account limit, split
-            from the utilization Claude reported for that window.
-          </CardDescription>
-        </div>
+    <Section
+      title="Past windows"
+      actions={
         <Select
           value={kind}
           onValueChange={(v) => {
@@ -109,11 +101,10 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
             ))}
           </SelectContent>
         </Select>
-      </CardHeader>
-
-      <CardContent>
-        {windows.length === 0 ? (
-          <Empty className="border">
+      }
+    >
+      {windows.length === 0 ? (
+        <Empty className="border">
             <EmptyHeader>
               <EmptyTitle>Nothing behind us yet</EmptyTitle>
               <EmptyDescription>
@@ -181,7 +172,6 @@ export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
             </TableBody>
           </Table>
         )}
-      </CardContent>
-    </Card>
+    </Section>
   );
 }

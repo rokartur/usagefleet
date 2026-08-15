@@ -5,25 +5,8 @@ import { InstallCommand } from "@/components/InstallCommand";
 import { ResetCountdown } from "@/components/ResetCountdown";
 import { Button } from "@/components/ui/button";
 import { GroupTable } from "@/components/dashboard/GroupTable";
-import { UsageBar } from "@/components/usage-ui";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import type { DashboardDTO, ModelLimitDTO, SpendPeriod } from "@/lib/data";
+import { Section, UsageBar } from "@/components/usage-ui";
+import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO, SpendPeriod } from "@/lib/data";
 import { formatRelative, formatTokens, formatUsd } from "@/lib/format";
 import { TOKEN_PLACEHOLDER } from "@/lib/install-command";
 import { cn } from "@/lib/utils";
@@ -48,96 +31,111 @@ function GroupDot({ color }: { color: string }) {
   );
 }
 
-/** One official limit card: Claude's own account utilization for a window. */
-function OfficialCard({
-  title,
-  pct,
-  resetsAt,
+/** "Artur 11% · Ciach 21%" — how one window's usage splits across groups. */
+function GroupSplit({
+  groups,
+  className,
 }: {
-  title: string;
-  pct: number;
-  resetsAt: string | null;
+  groups: { key: string; name: string; color: string; pct: number }[];
+  className?: string;
+}) {
+  if (groups.length === 0) return null;
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground",
+        className,
+      )}
+    >
+      {groups.map((g) => (
+        <span key={g.key} className="flex min-w-0 items-center gap-1.5">
+          <GroupDot color={g.color} />
+          <span className="truncate">{g.name}</span>
+          <span className="tabular-nums text-foreground">{g.pct}%</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const groupKey = (groupId: string | null) => groupId ?? "ungrouped";
+
+/** One column of the headline strip: label, one big number, detail underneath. */
+function StatCell({
+  label,
+  value,
+  children,
+}: {
+  label: string;
+  value: string;
+  children?: React.ReactNode;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardDescription>{title}</CardDescription>
-        <CardTitle className="text-3xl tabular-nums">{Math.min(100, pct)}%</CardTitle>
-        <CardAction>
-          <Badge variant="outline" className="font-normal">
-            <ResetCountdown resetsAt={resetsAt} />
-          </Badge>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        <UsageBar pct={pct} className="[&_[data-slot=progress-track]]:h-2" />
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-2 sm:border-l sm:pl-5 sm:first:border-l-0 sm:first:pl-0">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-2xl leading-none tabular-nums">{value}</div>
+      {children}
+    </div>
   );
 }
 
-/** One per-model official limit: Claude's account-wide figure for the model,
- *  then the per-group split — each row is that group's usage against its own
- *  slice (1/group count), the same budget-relative measure as the group table. */
-function ModelLimitCard({ limit }: { limit: ModelLimitDTO }) {
+/** Claude's own account utilization for one window, plus the per-group split —
+ *  each group's usage against its own slice (1/group count), the same
+ *  budget-relative measure as the group table. */
+function LimitCell({
+  label,
+  pct,
+  resetsAt,
+  groups,
+}: {
+  label: string;
+  pct: number;
+  resetsAt: string | null;
+  groups: { key: string; name: string; color: string; pct: number }[];
+}) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {limit.label}
-          <Badge variant="secondary" className="font-normal">
-            {windowLabel(limit.window)} limit
-          </Badge>
-        </CardTitle>
-        <CardDescription>
-          <ResetCountdown resetsAt={limit.resetsAt} />
-        </CardDescription>
-        <CardAction className="text-right">
-          <div className="text-2xl tabular-nums">{Math.min(100, limit.pct)}%</div>
-          <div className="text-xs text-muted-foreground">account</div>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        {limit.groups.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No group activity in this window.</p>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {limit.groups.map((g) => (
-              <li key={g.groupId ?? "ungrouped"} className="flex flex-col gap-1.5">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <GroupDot color={g.color} />
-                    <span className="truncate">{g.name}</span>
-                  </span>
-                  <span className="shrink-0 tabular-nums">
-                    <span className="font-medium">{g.budgetPct}%</span>
-                    <span className="text-muted-foreground"> · {formatTokens(g.tokens)}</span>
-                  </span>
-                </div>
-                <UsageBar pct={g.budgetPct} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+    <StatCell label={label} value={`${Math.min(100, pct)}%`}>
+      <UsageBar pct={pct} />
+      <div className="text-[11px] text-muted-foreground">
+        <ResetCountdown resetsAt={resetsAt} />
+      </div>
+      <GroupSplit groups={groups} />
+    </StatCell>
   );
 }
 
-function SpendRow({ label, period }: { label: string; period: SpendPeriod }) {
+function SpendCell({ label, period }: { label: string; period: SpendPeriod }) {
   return (
-    <TableRow>
-      <TableCell className="text-muted-foreground">{label}</TableCell>
-      <TableCell className="text-right tabular-nums">
-        {formatTokens(billableTokens(period.totals))}
-      </TableCell>
-      <TableCell className="text-right tabular-nums text-muted-foreground">
-        {formatTokens(period.totals.totalTokens)}
-      </TableCell>
-      <TableCell className="text-right font-medium tabular-nums">
-        {formatUsd(period.costUsd)}
-      </TableCell>
-    </TableRow>
+    <StatCell label={label} value={formatUsd(period.costUsd)}>
+      <div className="text-[11px] tabular-nums text-muted-foreground">
+        {formatTokens(billableTokens(period.totals))} billable ·{" "}
+        {formatTokens(period.totals.totalTokens)} total
+      </div>
+    </StatCell>
+  );
+}
+
+/** One per-model official limit on a single line. */
+function ModelLimitRow({ limit }: { limit: ModelLimitDTO }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b py-2 text-sm last:border-b-0">
+      <span className="font-medium">{limit.label}</span>
+      <span className="text-[11px] text-muted-foreground">{windowLabel(limit.window)}</span>
+      <span className="tabular-nums">{Math.min(100, limit.pct)}%</span>
+      <UsageBar pct={limit.pct} className="w-20 shrink-0" />
+      <span className="text-[11px] text-muted-foreground">
+        <ResetCountdown resetsAt={limit.resetsAt} />
+      </span>
+      <GroupSplit
+        className="ml-auto"
+        groups={limit.groups.map((g) => ({
+          key: groupKey(g.groupId),
+          name: g.name,
+          color: g.color,
+          pct: g.budgetPct,
+        }))}
+      />
+    </div>
   );
 }
 
@@ -323,86 +321,59 @@ export function LiveDashboard({
 
   const sourceLabel =
     dash.source === "sub" ? "subscription" : dash.source === "api" ? "API key" : "—";
+  const split = (pct: (g: LiveGroupUsage) => number) =>
+    dash.groups.map((g) => ({
+      key: groupKey(g.groupId),
+      name: g.name,
+      color: g.color,
+      pct: pct(g),
+    }));
 
   return (
-    <div className="flex flex-col gap-6">
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-        <Badge variant="secondary" className="font-normal">
-          <span
-            className={cn(
-              "size-1.5 rounded-full",
-              stale ? "bg-amber-500" : "animate-pulse bg-emerald-500",
-            )}
-            aria-hidden
-          />
-          {statusLabel}
-        </Badge>
-        Live from Claude · {sourceLabel}
+    <div className="flex flex-col gap-5">
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <span
+          className={cn("size-1.5 rounded-full", stale ? "bg-amber-500" : "bg-emerald-500")}
+          aria-hidden
+        />
+        <span className={stale ? "text-amber-500" : "text-foreground"}>{statusLabel}</span>·{" "}
+        {sourceLabel}
         {dash.reportedAt ? ` · updated ${formatRelative(new Date(dash.reportedAt))}` : ""}
       </p>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <OfficialCard
-          title="5-hour session"
-          resetsAt={dash.fiveHourResetsAt}
+      <div className="grid gap-x-5 gap-y-6 border-y py-4 sm:grid-cols-4">
+        <LimitCell
+          label="5-hour session"
           pct={dash.fiveHourPct}
+          resetsAt={dash.fiveHourResetsAt}
+          groups={split((g) => g.sessionBudgetPct)}
         />
-        <OfficialCard title="Weekly" resetsAt={dash.sevenDayResetsAt} pct={dash.sevenDayPct} />
+        <LimitCell
+          label="Weekly"
+          pct={dash.sevenDayPct}
+          resetsAt={dash.sevenDayResetsAt}
+          groups={split((g) => g.weeklyBudgetPct)}
+        />
+        <SpendCell label="Spend, this week" period={dash.spend.week} />
+        <SpendCell label="Spend, this month" period={dash.spend.month} />
       </div>
 
       {dash.modelLimits.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <Section title="Model limits">
           {dash.modelLimits.map((m) => (
-            <ModelLimitCard key={`${m.model}-${m.window}`} limit={m} />
+            <ModelLimitRow key={`${m.model}-${m.window}`} limit={m} />
           ))}
-        </div>
+        </Section>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Groups</CardTitle>
-          <CardDescription>
-            Each group&apos;s share of the current 5-hour and weekly windows.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <GroupTable groups={dash.groups} expanded={expanded} onToggle={toggleRow} />
-        </CardContent>
-      </Card>
+      <Section title="Groups">
+        <GroupTable groups={dash.groups} expanded={expanded} onToggle={toggleRow} />
+      </Section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Spend</CardTitle>
-          <CardDescription>
-            &quot;This week&quot; follows the weekly limit window; &quot;this month&quot; is the UTC
-            calendar month. Cost is estimated at public API list prices, priced per model.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Period</TableHead>
-                <TableHead className="text-right">Billable</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Cost</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <SpendRow label="This week" period={dash.spend.week} />
-              <SpendRow label="This month" period={dash.spend.month} />
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <p className="max-w-3xl text-xs text-muted-foreground">
-        The 5-hour and weekly percentages up top are Claude&apos;s own account utilization (reported
-        by the collector). Every per-group percentage — in the table and under each model limit — is
-        budget-relative: that group&apos;s usage (split by estimated cost at API list prices)
-        measured against its equal slice of the limit (1 / your groups-per-account setting). It hits
-        100% when the group has eaten its slice; above 100% it has overrun into the other
-        groups&apos; share.
+      <p className="max-w-2xl text-[11px] text-muted-foreground">
+        Headline percentages are Claude&apos;s own account utilization. Per-group percentages are
+        budget-relative: the group&apos;s usage against its equal slice of the limit, so 100% means
+        it has eaten its slice.
       </p>
     </div>
   );

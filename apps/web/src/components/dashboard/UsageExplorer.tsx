@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Section } from "@/components/usage-ui";
 import {
   type ChartConfig,
   ChartContainer,
@@ -252,21 +252,10 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
     return { series, data, sum, config, monthly };
   })();
 
-  const metricLabel = METRICS.find((m) => m.key === metric)?.label ?? "";
-
   return (
-    <Card>
-      {/* Flex instead of the default header grid so the controls drop below the
-          title on narrow viewports instead of squeezing it to one word a line. */}
-      <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex flex-col gap-1">
-          <CardTitle>Usage over time</CardTitle>
-          <CardDescription>
-            {metricLabel.toLowerCase()} per {view?.monthly ? "month" : "day"} (UTC), split by{" "}
-            {DIMENSIONS.find((d) => d.key === dim)?.label.toLowerCase()}. Cost is estimated at
-            public API list prices, priced per model.
-          </CardDescription>
-        </div>
+    <Section
+      title="Usage over time"
+      actions={
         <div className="flex flex-wrap items-center gap-2">
           <Select
             value={period}
@@ -326,9 +315,9 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
             </SelectContent>
           </Select>
         </div>
-      </CardHeader>
-
-      <CardContent className="flex flex-col gap-4">
+      }
+    >
+      <div className="flex flex-col gap-4">
         {period === "custom" && (
           <div className="flex flex-wrap items-center gap-2">
             <Input
@@ -506,7 +495,7 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
             </Table>
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Section>
   );
 }
