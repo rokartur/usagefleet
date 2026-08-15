@@ -7,9 +7,9 @@ import { signInRedirects } from '@/lib/oauth-redirects'
 import type { PaidPlan } from '@/lib/plans'
 import { cn } from '@/lib/utils'
 
-/** The two ways into the app — there is no password path. lucide-react dropped
- *  brand icons, so the marks are inlined. Shared with the settings page, which
- *  lists these same providers as linkable sign-in methods. */
+/** The two providers that can sign in, next to the email + password form.
+ *  lucide-react dropped brand icons, so the marks are inlined. Shared with the
+ *  settings page, which lists these same providers as linkable sign-in methods. */
 export const PROVIDERS = {
 	github: {
 		name: 'GitHub',

@@ -19,9 +19,9 @@ if (process.env.NODE_ENV === 'production' && (!secret || secret.length < 32)) {
 	throw new Error('BETTER_AUTH_SECRET must be set to at least 32 characters in production')
 }
 
-// Mandatory on any deployment, hosted or self-hosted: OAuth because there is no
-// password path left to fall back on, Stripe because the upgrade flow reaches it
-// from the free tier. A missing variable is a production error, not a warning.
+// Mandatory on any deployment, hosted or self-hosted: OAuth because both
+// provider buttons are always offered, Stripe because the upgrade flow reaches
+// it from the free tier. A missing variable is a production error, not a warning.
 export function requiredEnv(name: string): string {
 	const value = process.env[name]
 	if (value) {
@@ -43,10 +43,10 @@ export const auth = betterAuth({
 		provider: 'pg',
 		schema,
 	}),
-	// GitHub and Google are the only ways in — there is no password path.
+	// Three ways in: GitHub, Google, and email + password.
 	// disableSignUp rejects unknown users server-side (real enforcement, not just
-	// UI), so ALLOW_SIGNUP=false has to be set on every provider, not one.
-	// Signing in with the second provider links onto the existing account only if
+	// UI), so ALLOW_SIGNUP=false has to be set on every method, not one.
+	// Signing in with a second provider links onto the existing account only if
 	// BOTH emails are verified: the incoming provider must report the address
 	// verified (neither provider here is in trustedProviders), and the existing
 	// row must have emailVerified set, because requireLocalEmailVerified defaults
@@ -54,6 +54,13 @@ export const auth = betterAuth({
 	// That second condition is also why accounts from the password-only era need
 	// drizzle/0013_link_legacy_logins.sql: it never ran a verification step, so
 	// those rows would fail the check and could never link a provider.
+	//
+	// There is still no mailer here, so a password sign-up leaves emailVerified
+	// false and cannot be linked into later either. That stays as it is on
+	// purpose: flipping the flag without a verification step would let anyone
+	// register a password account on someone else's address and then absorb their
+	// provider login.
+	emailAndPassword: { enabled: true, disableSignUp: !signupEnabled() },
 
 	// Last resort for failures that arrive with no callback URL to return to (an
 	// expired OAuth state cookie, a hand-typed endpoint). Without it better-auth

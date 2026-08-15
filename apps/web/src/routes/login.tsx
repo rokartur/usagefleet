@@ -1,14 +1,17 @@
+import { useState } from 'react'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { AuthForm } from '@/components/AuthForm'
 import { OAuthSignIn } from '@/components/OAuthSignIn'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
 import { signupEnabled } from '@/lib/flags'
 import { isPaidPlan } from '@/lib/plans'
 import type { PaidPlan } from '@/lib/plans'
 import { getSession } from '@/lib/session'
 
-/** Signed-in visitors skip the button; ALLOW_SIGNUP is a server-side flag, so
- *  the "new accounts are off" notice has to be resolved on the server too. */
+/** Signed-in visitors skip the form; ALLOW_SIGNUP is a server-side flag, so the
+ *  "new accounts are off" notice has to be resolved on the server too. */
 const loginPage = createServerFn().handler(async () => {
 	if (await getSession()) {
 		throw redirect({ to: '/dashboard' })
@@ -44,11 +47,15 @@ export const Route = createFileRoute('/login')({
 function LoginPage() {
 	const { signupEnabled } = Route.useLoaderData()
 	const { error, plan } = Route.useSearch()
+	// Both modes share this page: the providers sign up and sign in with the same
+	// button, only the password form needs to know which one the visitor wants.
+	const [mode, setMode] = useState<'login' | 'signup'>('login')
+	const isSignup = mode === 'signup'
 	return (
 		<div className='flex flex-1 items-center justify-center p-6'>
 			<Card className='w-full max-w-sm [--card-spacing:--spacing(6)]'>
 				<CardHeader>
-					<CardTitle className='text-lg'>Sign in</CardTitle>
+					<CardTitle className='text-lg'>{isSignup ? 'Create account' : 'Sign in'}</CardTitle>
 					<CardDescription>Track usage across groups and devices.</CardDescription>
 				</CardHeader>
 				<CardContent className='flex flex-col gap-6'>
@@ -56,19 +63,38 @@ function LoginPage() {
 						<OAuthSignIn provider='github' size='lg' plan={plan} />
 						<OAuthSignIn provider='google' size='lg' variant='outline' plan={plan} />
 					</div>
+					<div className='flex items-center gap-3 text-xs text-muted-foreground'>
+						<Separator className='flex-1' />
+						or
+						<Separator className='flex-1' />
+					</div>
+					<AuthForm mode={mode} plan={plan} />
 					{error && (
 						<p role='alert' className='text-center text-sm text-destructive'>
 							{error === 'signup_disabled'
 								? 'That account does not exist here, and new accounts are turned off.'
 								: error === 'account_not_linked'
-									? 'That email already signed up with the other provider. Use that one.'
+									? 'That email already signed up a different way. Use the method you started with.'
 									: 'Sign-in failed. Try again.'}
 						</p>
 					)}
-					{!signupEnabled && !error && (
-						<p className='text-center text-sm text-muted-foreground'>
-							New accounts are turned off on this instance.
-						</p>
+					{signupEnabled ? (
+						<button
+							type='button'
+							onClick={() => setMode(isSignup ? 'login' : 'signup')}
+							className='text-center text-sm text-muted-foreground'
+						>
+							{isSignup ? 'Already have an account? ' : 'No account? '}
+							<span className='font-medium text-foreground underline underline-offset-4'>
+								{isSignup ? 'Sign in' : 'Create one'}
+							</span>
+						</button>
+					) : (
+						!error && (
+							<p className='text-center text-sm text-muted-foreground'>
+								New accounts are turned off on this instance.
+							</p>
+						)
 					)}
 				</CardContent>
 			</Card>

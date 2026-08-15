@@ -161,7 +161,9 @@ async function cmdStatus(): Promise<void> {
 	const tracked = Object.keys(state.files).length
 	const bytes = Object.values(state.files).reduce((a, f) => a + f.offset, 0)
 	console.log(`os:        ${detectOs()}`)
-	console.log(`release:   ${RELEASE_VERSION}${RELEASE_VERSION === 'dev' ? ' (local build \u2014 self-update disabled)' : ''}`)
+	console.log(
+		`release:   ${RELEASE_VERSION}${RELEASE_VERSION === 'dev' ? ' (local build \u2014 self-update disabled)' : ''}`,
+	)
 	console.log(`config:    ${cfg.storePath}`)
 	console.log(`endpoint:  ${cfg.endpoint}`)
 	console.log(`token:     ${cfg.token.slice(0, 8)}…`)

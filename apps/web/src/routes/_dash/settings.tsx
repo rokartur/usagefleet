@@ -173,6 +173,9 @@ function SignInMethodsCard({
 	const router = useRouter()
 	const [busy, setBusy] = useState<ProviderId | null>(null)
 	const linkedCount = PROVIDER_IDS.filter(id => connected.includes(id)).length
+	// better-auth stores a password under the 'credential' provider, so its
+	// presence means unlinking the last provider still leaves a way in.
+	const hasPassword = connected.includes('credential')
 
 	async function run(provider: ProviderId, op: () => Promise<{ error?: { message?: string } | null }>) {
 		setBusy(provider)
@@ -208,7 +211,7 @@ function SignInMethodsCard({
 			<CardContent className='flex flex-col divide-y px-0'>
 				{PROVIDER_IDS.map(id => {
 					const isConnected = connected.includes(id)
-					const isLast = isConnected && linkedCount === 1
+					const isLast = isConnected && linkedCount === 1 && !hasPassword
 					return (
 						<div key={id} className='flex items-center justify-between gap-4 px-(--card-spacing) py-3.5'>
 							<div className='flex items-center gap-2'>
@@ -223,10 +226,11 @@ function SignInMethodsCard({
 									variant='outline'
 									size='sm'
 									disabled={busy !== null || isLast}
-									// Removing the only way in would lock the account out for good;
-									// there is no password to fall back on.
+									// Removing the only way in would lock the account out for good.
 									title={
-										isLast ? 'Connect another provider before disconnecting this one' : undefined
+										isLast
+											? 'Connect another provider or set a password before disconnecting this one'
+											: undefined
 									}
 									onClick={() =>
 										run(id, () =>
