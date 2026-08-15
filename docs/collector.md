@@ -8,8 +8,8 @@ process per machine. User-facing usage lives in
 
 `index.ts` dispatches: `init`/`install` (interactive setup + autostart),
 `run` (one cycle), `watch` (the daemon loop), `limits` (one limits report),
-`guard` (the prompt hook), `status`, `update`, `notify-test`, `uninstall`,
-`version`.
+`guard` (the prompt hook), `status`, `config` (file path + env reference),
+`update`, `notify-test`, `uninstall`, `version`.
 
 ## The watch loop
 

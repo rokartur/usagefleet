@@ -8,7 +8,7 @@ import { sendNotification } from './notify.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
 import { serviceStatus } from './service.js'
-import { readStore } from './store.js'
+import { readStore, storePath } from './store.js'
 import {
 	ago,
 	bar,
@@ -248,10 +248,11 @@ function limitHealth(fiveHour: number | null, sevenDay: number | null): 'ok' | '
 	return worst >= 95 ? 'bad' : worst >= 80 ? 'warn' : 'ok'
 }
 
-/** Setup in one command: hand the flags to install(), which resolves and
- *  persists them, then installs the background service — it refuses without a
- *  resolvable token. Endpoint only matters when self-hosting; unset keeps
- *  whatever is configured. */
+/** Setup in one command: persist the flags (when given), then install the
+ *  background service, which refuses to install without a resolvable token.
+ *  The write merges over the existing store, so re-running install rotates the
+ *  token without resetting tail offsets. Endpoint only matters when
+ *  self-hosting; unset keeps whatever is configured. */
 async function cmdInstall(): Promise<void> {
 	// Apply the flags to the env loadConfig() reads rather than writing them to the
 	// store, so there is exactly one precedence chain and install() persists its
@@ -271,8 +272,46 @@ async function cmdInstall(): Promise<void> {
 	install()
 }
 
-/** Command list and env reference, in the same padded-column style as the
- *  result lines: name in white, meaning in gray. */
+/** Padded two-column list — name in white, meaning in gray, like the result
+ *  lines. Shared by `help` and `config`. */
+function print(rows: [string, string][]): void {
+	const width = Math.max(...rows.map(([name]) => name.length))
+	for (const [name, meaning] of rows) {
+		console.log(`  ${name.padEnd(width)}  ${dim(meaning)}`)
+	}
+}
+
+/** Where settings live and every env var that overrides them. Reads nothing:
+ *  it must work before a token exists, when the config is what you're fixing. */
+function cmdConfig(): void {
+	const env: [string, string][] = [
+		['USAGEFLEET_ENDPOINT', 'server base URL (self-hosting only)'],
+		['USAGEFLEET_TOKEN', 'device token from the Devices page'],
+		['USAGEFLEET_PROJECTS', 'override ~/.claude/projects'],
+		['USAGEFLEET_DESKTOP', 'override the Claude Desktop dir ("off" disables)'],
+		['USAGEFLEET_PI', 'override pi session dirs, comma-separated'],
+		['USAGEFLEET_INTERVAL', 'watch interval seconds (default 15)'],
+		['USAGEFLEET_LIMITS_INTERVAL', 'seconds between limits pings (default 300)'],
+		['USAGEFLEET_BATCH', 'records per upload (default 100, max 1000)'],
+		['USAGEFLEET_NOTIFY', 'desktop notifications (0 disables)'],
+		['USAGEFLEET_NOTIFY_THRESHOLDS', 'comma list of % alerts (default 80,95)'],
+		['USAGEFLEET_HOOK', 'register the guard on install (0 skips)'],
+		['USAGEFLEET_UPDATE', 'self-update while watching (0 disables)'],
+		['USAGEFLEET_UPDATE_INTERVAL', 'seconds between update checks (default 21600)'],
+		['USAGEFLEET_CONFIG', 'relocate the config file'],
+	]
+	console.log(header())
+	console.log(hint('settings, tail offsets and notification marks'))
+	console.log('')
+	console.log(row('file', tilde(storePath())))
+	console.log('')
+	console.log(hint('env — overrides the file'))
+	print(env)
+	console.log('')
+	console.log(hint('`usagefleet status` shows the resolved values'))
+}
+
+/** Command list, in the same padded-column style as the result lines. */
 function help(): void {
 	const commands: [string, string][] = [
 		['run', 'scan once, upload usage + report limits'],
@@ -282,40 +321,17 @@ function help(): void {
 		['update', 'update to the latest release now'],
 		['notify-test', 'fire a test desktop notification'],
 		['status', 'service health, limits, resolved config'],
+		['config', 'config file location and env overrides'],
 		['version', 'print the release version'],
 		['install --token <t>', 'configure + install the service and prompt guard'],
 		['uninstall', 'remove the service and the guard'],
 	]
-	const env: [string, string][] = [
-		['USAGEFLEET_ENDPOINT', 'server base URL (self-hosting only)'],
-		['USAGEFLEET_TOKEN', 'device token from the Devices page'],
-		['USAGEFLEET_PROJECTS', 'override ~/.claude/projects'],
-		['USAGEFLEET_DESKTOP', 'override the Claude Desktop dir ("off" disables)'],
-		['USAGEFLEET_PI', 'override pi session dirs, comma-separated'],
-		['USAGEFLEET_INTERVAL', 'watch interval seconds'],
-		['USAGEFLEET_NOTIFY', 'desktop notifications (0 disables)'],
-		['USAGEFLEET_HOOK', 'register the guard on install (0 skips)'],
-		['USAGEFLEET_UPDATE', 'self-update while watching (0 disables)'],
-		['USAGEFLEET_UPDATE_INTERVAL', 'seconds between update checks (default 21600)'],
-		['USAGEFLEET_NOTIFY_THRESHOLDS', 'comma list of % alerts (default 80,95)'],
-		['USAGEFLEET_CONFIG', 'relocate the config file'],
-	]
-	const pad = (rows: [string, string][]) => Math.max(...rows.map(([name]) => name.length))
-	const print = (rows: [string, string][]) => {
-		const width = pad(rows)
-		for (const [name, meaning] of rows) {
-			console.log(`  ${name.padEnd(width)}  ${dim(meaning)}`)
-		}
-	}
 
 	console.log(header())
-	console.log(hint('claude usage collector'))
 	console.log('')
 	print(commands)
 	console.log('')
-	console.log(hint('env — overrides ~/.config/usagefleet/config.json, which holds'))
-	console.log(hint('settings, tail offsets and notification marks'))
-	print(env)
+	console.log(hint('`usagefleet config` lists the config file and its env overrides'))
 }
 
 async function main(): Promise<void> {
@@ -358,6 +374,9 @@ async function main(): Promise<void> {
 		}
 		case 'status': {
 			return cmdStatus()
+		}
+		case 'config': {
+			return cmdConfig()
 		}
 		// Bare version, so the installer can compare builds without parsing help.
 		case 'version':

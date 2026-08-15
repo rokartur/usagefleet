@@ -136,6 +136,7 @@ usagefleet limits         # report ONLY your real 5h/weekly limit usage
 usagefleet guard          # exit 2 if this device's group is over a blocking limit
 usagefleet update         # upgrade to the latest published version now
 usagefleet status         # service health, last limits reading, resolved config
+usagefleet config         # config file location + every env override
 usagefleet version        # bare release version
 ```
 
