@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { serveLatestAsset } from "@/lib/github-release";
-import { clientIp, rateLimit, tooMany } from "@/lib/rate-limit";
+import { createFileRoute } from '@tanstack/react-router'
+import { serveLatestAsset } from '@/lib/github-release'
+import { clientIp, rateLimit, tooMany } from '@/lib/rate-limit'
 
 /**
  * Public, unauthenticated download of one asset from the latest release.
@@ -16,16 +16,18 @@ import { clientIp, rateLimit, tooMany } from "@/lib/rate-limit";
  * TRUST_PROXY or this limit applies to all callers at once.
  */
 async function GET(req: Request) {
-  const rl = rateLimit(`collector-asset:${clientIp(req)}`, 30, 10 * 60_000);
-  if (!rl.ok) return tooMany(rl.retryAfter);
+	const rl = rateLimit(`collector-asset:${clientIp(req)}`, 30, 10 * 60_000)
+	if (!rl.ok) {
+		return tooMany(rl.retryAfter)
+	}
 
-  return serveLatestAsset(new URL(req.url).searchParams.get("asset"));
+	return serveLatestAsset(new URL(req.url).searchParams.get('asset'))
 }
 
-export const Route = createFileRoute("/api/v1/collector/asset")({
-  server: {
-    handlers: {
-      GET: ({ request }) => GET(request),
-    },
-  },
-});
+export const Route = createFileRoute('/api/v1/collector/asset')({
+	server: {
+		handlers: {
+			GET: ({ request }) => GET(request),
+		},
+	},
+})

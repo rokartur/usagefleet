@@ -1,9 +1,9 @@
-import { mkdirSync, readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { writeFileAtomic } from "./atomic-write.js";
-import type { Store, WindowNotifyState } from "./types.js";
+import { randomUUID } from 'node:crypto'
+import { mkdirSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { writeFileAtomic } from './atomic-write.js'
+import type { Store, WindowNotifyState } from './types.js'
 
 /**
  * The collector's one file: settings, tail offsets and notification marks all
@@ -12,59 +12,59 @@ import type { Store, WindowNotifyState } from "./types.js";
  * back up, inspect, delete or bake into a service unit.
  */
 export function storePath(): string {
-  const override = process.env.USAGEFLEET_CONFIG;
-  if (override) return override;
-  const xdg = process.env.XDG_CONFIG_HOME;
-  return join(
-    xdg && xdg.length > 0 ? xdg : join(homedir(), ".config"),
-    "usagefleet",
-    "config.json",
-  );
+	const override = process.env.USAGEFLEET_CONFIG
+	if (override) {
+		return override
+	}
+	const xdg = process.env.XDG_CONFIG_HOME
+	return join(xdg && xdg.length > 0 ? xdg : join(homedir(), '.config'), 'usagefleet', 'config.json')
 }
 
 /** Where the three pre-consolidation files lived, honouring the env overrides
  *  that used to point at them so a customised install still migrates. */
 function legacyPaths(): { settings: string; state: string; notify: string } {
-  return {
-    settings: join(homedir(), ".usagefleet.json"),
-    state: process.env.USAGEFLEET_STATE ?? join(homedir(), ".usagefleet-state.json"),
-    notify: process.env.USAGEFLEET_NOTIFY_STATE ?? join(homedir(), ".usagefleet-notify.json"),
-  };
+	return {
+		notify: process.env.USAGEFLEET_NOTIFY_STATE ?? join(homedir(), '.usagefleet-notify.json'),
+		settings: join(homedir(), '.usagefleet.json'),
+		state: process.env.USAGEFLEET_STATE ?? join(homedir(), '.usagefleet-state.json'),
+	}
 }
 
 function readJson<T>(path: string): T | null {
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
-    return parsed as T;
-  } catch {
-    return null; // missing or corrupt → caller falls back to defaults
-  }
+	try {
+		const parsed: unknown = JSON.parse(readFileSync(path, 'utf-8'))
+		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+			return null
+		}
+		return parsed as T
+	} catch {
+		return null // missing or corrupt → caller falls back to defaults
+	}
 }
 
 export function freshWindow(): WindowNotifyState {
-  return { lastBucket: 0, resetsAt: null };
+	return { lastBucket: 0, resetsAt: null }
 }
 
 /** Fill in every field so callers get a total value, whatever the file held. */
 function normalize(raw: Partial<Store>): Store {
-  return {
-    version: 1,
-    endpoint: raw.endpoint,
-    token: raw.token,
-    projectsDir: raw.projectsDir,
-    desktopDir: raw.desktopDir,
-    piDir: raw.piDir,
-    state: {
-      deviceId: raw.state?.deviceId || randomUUID(),
-      files: raw.state?.files ?? {},
-      updatedAt: raw.state?.updatedAt ?? new Date().toISOString(),
-    },
-    notify: {
-      fiveHour: { ...freshWindow(), ...raw.notify?.fiveHour },
-      sevenDay: { ...freshWindow(), ...raw.notify?.sevenDay },
-    },
-  };
+	return {
+		desktopDir: raw.desktopDir,
+		endpoint: raw.endpoint,
+		notify: {
+			fiveHour: { ...freshWindow(), ...raw.notify?.fiveHour },
+			sevenDay: { ...freshWindow(), ...raw.notify?.sevenDay },
+		},
+		piDir: raw.piDir,
+		projectsDir: raw.projectsDir,
+		state: {
+			deviceId: raw.state?.deviceId || randomUUID(),
+			files: raw.state?.files ?? {},
+			updatedAt: raw.state?.updatedAt ?? new Date().toISOString(),
+		},
+		token: raw.token,
+		version: 1,
+	}
 }
 
 /**
@@ -75,14 +75,20 @@ function normalize(raw: Partial<Store>): Store {
  * them, and a rollback still finds them intact.
  */
 export function readStore(path: string = storePath()): Store {
-  const direct = readJson<Partial<Store>>(path);
-  if (direct) return normalize(direct);
+	const direct = readJson<Partial<Store>>(path)
+	if (direct) {
+		return normalize(direct)
+	}
 
-  const legacy = legacyPaths();
-  const settings = readJson<Partial<Store>>(legacy.settings) ?? {};
-  const state = readJson<Store["state"]>(legacy.state);
-  const notify = readJson<Store["notify"]>(legacy.notify);
-  return normalize({ ...settings, state: state ?? undefined, notify: notify ?? undefined });
+	const legacy = legacyPaths()
+	const settings = readJson<Partial<Store>>(legacy.settings) ?? {}
+	const state = readJson<Store['state']>(legacy.state)
+	const notify = readJson<Store['notify']>(legacy.notify)
+	return normalize({
+		...settings,
+		notify: notify ?? undefined,
+		state: state ?? undefined,
+	})
 }
 
 /**
@@ -97,9 +103,9 @@ export function readStore(path: string = storePath()): Store {
  * occasional human command.
  */
 export function updateStore(path: string, mutate: (store: Store) => void): void {
-  const store = readStore(path);
-  mutate(store);
-  mkdirSync(dirname(path), { recursive: true });
-  // 0600: the file holds the device token.
-  writeFileAtomic(path, `${JSON.stringify(store, null, 2)}\n`, 0o600);
+	const store = readStore(path)
+	mutate(store)
+	mkdirSync(dirname(path), { recursive: true })
+	// 0600: the file holds the device token.
+	writeFileAtomic(path, `${JSON.stringify(store, null, 2)}\n`, 0o600)
 }

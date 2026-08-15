@@ -16,29 +16,35 @@
  * replica simply means a second flight.
  */
 export function createPromiseCache<K, V>(ttlMs: number, load: (key: K) => Promise<V>) {
-  const entries = new Map<K, { at: number; value: Promise<V> }>();
+	const entries = new Map<K, { at: number; value: Promise<V> }>()
 
-  const get = (key: K): Promise<V> => {
-    const now = Date.now();
-    const hit = entries.get(key);
-    if (hit && now - hit.at < ttlMs) return hit.value;
+	const get = (key: K): Promise<V> => {
+		const now = Date.now()
+		const hit = entries.get(key)
+		if (hit && now - hit.at < ttlMs) {
+			return hit.value
+		}
 
-    for (const [k, entry] of entries) {
-      if (now - entry.at >= ttlMs) entries.delete(k);
-    }
+		for (const [k, entry] of entries) {
+			if (now - entry.at >= ttlMs) {
+				entries.delete(k)
+			}
+		}
 
-    const value = load(key);
-    entries.set(key, { at: now, value });
-    // Compare identity, not presence: a newer flight may already have replaced
-    // this entry by the time a slow rejection lands, and it must not be evicted.
-    value.catch(() => {
-      if (entries.get(key)?.value === value) entries.delete(key);
-    });
-    return value;
-  };
+		const value = load(key)
+		entries.set(key, { at: now, value })
+		// Compare identity, not presence: a newer flight may already have replaced
+		// this entry by the time a slow rejection lands, and it must not be evicted.
+		value.catch(() => {
+			if (entries.get(key)?.value === value) {
+				entries.delete(key)
+			}
+		})
+		return value
+	}
 
-  // `size` exists so the prune above is testable at all: every other effect of
-  // pruning is invisible from outside, because an expired entry is a miss with
-  // or without it. Without this, "the map stays bounded" is an untestable claim.
-  return Object.assign(get, { size: () => entries.size });
+	// `size` exists so the prune above is testable at all: every other effect of
+	// pruning is invisible from outside, because an expired entry is a miss with
+	// or without it. Without this, "the map stays bounded" is an untestable claim.
+	return Object.assign(get, { size: () => entries.size })
 }

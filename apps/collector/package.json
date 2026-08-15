@@ -1,27 +1,27 @@
 {
-  "name": "collector",
-  "version": "1.2.1",
-  "private": true,
-  "description": "Tails Claude Code, Claude Desktop, and pi agent JSONL logs and reports token usage to a UsageFleet server.",
-  "bin": {
-    "usagefleet": "dist/index.js"
-  },
-  "files": [
-    "dist"
-  ],
-  "type": "module",
-  "scripts": {
-    "build": "tsc",
-    "dev": "bun run src/index.ts",
-    "start": "node dist/index.js",
-    "test": "vitest run"
-  },
-  "devDependencies": {
-    "@types/node": "^20",
-    "typescript": "^5",
-    "vitest": "^4"
-  },
-  "engines": {
-    "node": ">=18"
-  }
+	"name": "collector",
+	"version": "1.2.1",
+	"private": true,
+	"description": "Tails Claude Code, Claude Desktop, and pi agent JSONL logs and reports token usage to a UsageFleet server.",
+	"bin": {
+		"usagefleet": "dist/index.js"
+	},
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"scripts": {
+		"build": "tsc",
+		"dev": "bun run src/index.ts",
+		"start": "node dist/index.js",
+		"test": "vitest run"
+	},
+	"devDependencies": {
+		"@types/node": "^20",
+		"typescript": "^5",
+		"vitest": "^4"
+	},
+	"engines": {
+		"node": ">=18"
+	}
 }

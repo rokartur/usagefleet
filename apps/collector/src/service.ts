@@ -1,48 +1,48 @@
-import { execFileSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
-import { installPromptHook, uninstallPromptHook } from "./hook.js";
-import { readStore } from "./store.js";
+import { execFileSync } from 'node:child_process'
+import { chmodSync, copyFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { installPromptHook, uninstallPromptHook } from './hook.js'
+import { readStore } from './store.js'
 
-const LABEL = "dev.usagefleet.collector";
+const LABEL = 'dev.usagefleet.collector'
 /** Scheduled Task name on Windows (mirrors the launchd label / systemd unit). */
-const TASK = "usagefleet";
+const TASK = 'usagefleet'
 
 /** Extra env var the service needs that does not carry the USAGEFLEET_ prefix. */
-const EXTRA_PASSTHROUGH_ENV = "ANTHROPIC_API_KEY";
+const EXTRA_PASSTHROUGH_ENV = 'ANTHROPIC_API_KEY'
 
 /** Stable per-user dir where a compiled binary is copied so the service doesn't
  *  break if the user moves/deletes the originally-downloaded file. */
 function stableBinDir(): string {
-  if (process.platform === "darwin") {
-    return join(homedir(), "Library", "Application Support", "usagefleet");
-  }
-  if (process.platform === "win32") {
-    return join(process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "usagefleet");
-  }
-  return join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "usagefleet");
+	if (process.platform === 'darwin') {
+		return join(homedir(), 'Library', 'Application Support', 'usagefleet')
+	}
+	if (process.platform === 'win32') {
+		return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'usagefleet')
+	}
+	return join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'usagefleet')
 }
 
 /** Where the Windows launcher sends the collector's stdout/stderr (systemd has
  *  the journal — a hidden task has nowhere else to go). */
 function windowsLogPath(): string {
-  return join(stableBinDir(), "usagefleet.log");
+	return join(stableBinDir(), 'usagefleet.log')
 }
 
 /** launchd log dir. Not /tmp: that is world-writable, so any other local account
  *  could pre-create the log path as a symlink and have the agent write through
  *  it as this user. ~/Library/Logs is the platform's answer and is user-owned. */
 function macLogDir(): string {
-  return join(homedir(), "Library", "Logs", "usagefleet");
+	return join(homedir(), 'Library', 'Logs', 'usagefleet')
 }
 
 function windowsVbsPath(): string {
-  return join(stableBinDir(), "usagefleet-watch.vbs");
+	return join(stableBinDir(), 'usagefleet-watch.vbs')
 }
 
 function stableBinPath(): string {
-  return join(stableBinDir(), process.platform === "win32" ? "usagefleet.exe" : "usagefleet");
+	return join(stableBinDir(), process.platform === 'win32' ? 'usagefleet.exe' : 'usagefleet')
 }
 
 /** True when running as a compiled single-file executable rather than
@@ -53,10 +53,16 @@ function stableBinPath(): string {
  *  argument into the service command, so the launched process saw an unknown
  *  command, printed help, and exited cleanly — leaving the service down. */
 export function looksLikeCompiledBinary(scriptPath: string | undefined, execPath: string): boolean {
-  if (!scriptPath || scriptPath === execPath) return true;
-  if (scriptPath.includes("/$bunfs/")) return true;
-  if (/[\\/]~BUN[\\/]/.test(scriptPath)) return true;
-  return false;
+	if (!scriptPath || scriptPath === execPath) {
+		return true
+	}
+	if (scriptPath.includes('/$bunfs/')) {
+		return true
+	}
+	if (/[\\/]~BUN[\\/]/.test(scriptPath)) {
+		return true
+	}
+	return false
 }
 
 /** Program + leading args to launch `watch`. Handles both `node dist/index.js`
@@ -64,48 +70,48 @@ export function looksLikeCompiledBinary(scriptPath: string | undefined, execPath
  *  stable location and point the service there — the downloaded file is often a
  *  transient ~/Downloads path. */
 function programArgs(): string[] {
-  const script = process.argv[1];
-  if (!looksLikeCompiledBinary(script, process.execPath)) {
-    // `node dist/index.js` (e.g. npm link) — the script path is already stable.
-    return [process.execPath, script as string, "watch"];
-  }
-  try {
-    const dest = stableBinPath();
-    if (dest !== process.execPath) {
-      mkdirSync(stableBinDir(), { recursive: true });
-      try {
-        copyFileSync(process.execPath, dest);
-      } catch {
-        // Windows locks a running .exe against overwrite, but renaming it aside
-        // is allowed — that's how an update swaps the binary under a live task.
-        const old = `${dest}.old`;
-        rmSync(old, { force: true });
-        renameSync(dest, old);
-        copyFileSync(process.execPath, dest);
-      }
-      try {
-        chmodSync(dest, 0o755);
-      } catch {
-        /* non-POSIX fs */
-      }
-    }
-    return [dest, "watch"];
-  } catch (err) {
-    console.warn(
-      `Could not copy the binary to a stable path (${(err as Error).message}). ` +
-        `The service will be pinned to ${process.execPath} — do not move or delete it, ` +
-        `or re-run \`usagefleet install\` from its new location.`,
-    );
-    return [process.execPath, "watch"];
-  }
+	const script = process.argv[1]
+	if (!looksLikeCompiledBinary(script, process.execPath)) {
+		// `node dist/index.js` (e.g. npm link) — the script path is already stable.
+		return [process.execPath, script as string, 'watch']
+	}
+	try {
+		const dest = stableBinPath()
+		if (dest !== process.execPath) {
+			mkdirSync(stableBinDir(), { recursive: true })
+			try {
+				copyFileSync(process.execPath, dest)
+			} catch {
+				// Windows locks a running .exe against overwrite, but renaming it aside
+				// is allowed — that's how an update swaps the binary under a live task.
+				const old = `${dest}.old`
+				rmSync(old, { force: true })
+				renameSync(dest, old)
+				copyFileSync(process.execPath, dest)
+			}
+			try {
+				chmodSync(dest, 0o755)
+			} catch {
+				/* non-POSIX fs */
+			}
+		}
+		return [dest, 'watch']
+	} catch (error) {
+		console.warn(
+			`Could not copy the binary to a stable path (${(error as Error).message}). ` +
+				`The service will be pinned to ${process.execPath} — do not move or delete it, ` +
+				`or re-run \`usagefleet install\` from its new location.`,
+		)
+		return [process.execPath, 'watch']
+	}
 }
 
 function macPlistPath(): string {
-  return join(homedir(), "Library", "LaunchAgents", `${LABEL}.plist`);
+	return join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`)
 }
 
 function systemdUnitPath(): string {
-  return join(homedir(), ".config", "systemd", "user", "usagefleet.service");
+	return join(homedir(), '.config', 'systemd', 'user', 'usagefleet.service')
 }
 
 /** Env vars that are actually set, for baking into the unit so the service
@@ -113,16 +119,16 @@ function systemdUnitPath(): string {
  *  than a hand-kept allowlist: that list had already drifted, silently dropping
  *  USAGEFLEET_PI, USAGEFLEET_DESKTOP and USAGEFLEET_LIMITS_INTERVAL, so a
  *  documented override did nothing once the collector ran as a service. */
-function presentEnv(): Array<[string, string]> {
-  return Object.entries(process.env).filter(
-    (entry): entry is [string, string] =>
-      !!entry[1] && (entry[0].startsWith("USAGEFLEET_") || entry[0] === EXTRA_PASSTHROUGH_ENV),
-  );
+function presentEnv(): [string, string][] {
+	return Object.entries(process.env).filter(
+		(entry): entry is [string, string] =>
+			!!entry[1] && (entry[0].startsWith('USAGEFLEET_') || entry[0] === EXTRA_PASSTHROUGH_ENV),
+	)
 }
 
 /** Escape a string for a VBScript double-quoted literal (only `"` is special). */
 function vbs(s: string): string {
-  return `"${s.replace(/"/g, '""')}"`;
+	return `"${s.replaceAll('"', '""')}"`
 }
 
 /** Hidden launcher for the Scheduled Task. A bun-compiled collector is a console
@@ -133,26 +139,22 @@ function vbs(s: string): string {
  *  log file, since a hidden process has no console to print to.
  *  Waits (`True`) so the task instance lives as long as the collector — that's
  *  what makes RestartOnFailure in the task XML meaningful. */
-export function windowsLauncherVbs(
-  prog: string[],
-  env: Array<[string, string]>,
-  logPath: string,
-): string {
-  const quoted = prog.map((p) => `"${p}"`).join(" ");
-  // `cmd /c ""prog" args > "log""` is cmd's canonical form for quoted paths.
-  const cmdLine = `cmd /c "${quoted} > "${logPath}" 2>&1"`;
-  const envLines = env
-    // A newline would end the VBS statement; such a value can't be represented.
-    .filter(([, v]) => !/[\r\n]/.test(v))
-    .map(([k, v]) => `env(${vbs(k)}) = ${vbs(v)}`);
-  return [
-    "' usagefleet background launcher — generated by `usagefleet install`.",
-    'Set sh = CreateObject("WScript.Shell")',
-    'Set env = sh.Environment("Process")',
-    ...envLines,
-    `sh.Run ${vbs(cmdLine)}, 0, True`,
-    "",
-  ].join("\r\n");
+export function windowsLauncherVbs(prog: string[], env: [string, string][], logPath: string): string {
+	const quoted = prog.map(p => `"${p}"`).join(' ')
+	// `cmd /c ""prog" args > "log""` is cmd's canonical form for quoted paths.
+	const cmdLine = `cmd /c "${quoted} > "${logPath}" 2>&1"`
+	const envLines = env
+		// A newline would end the VBS statement; such a value can't be represented.
+		.filter(([, v]) => !/[\r\n]/.test(v))
+		.map(([k, v]) => `env(${vbs(k)}) = ${vbs(v)}`)
+	return [
+		"' usagefleet background launcher — generated by `usagefleet install`.",
+		'Set sh = CreateObject("WScript.Shell")',
+		'Set env = sh.Environment("Process")',
+		...envLines,
+		`sh.Run ${vbs(cmdLine)}, 0, True`,
+		'',
+	].join('\r\n')
 }
 
 /** Scheduled Task definition: run at logon, restart on failure, no time limit —
@@ -160,7 +162,7 @@ export function windowsLauncherVbs(
  *  <Settings> children follow the order Windows itself exports; the schema is a
  *  strict sequence and rejects the whole file if they're shuffled. */
 export function windowsTaskXml(vbsPath: string, userId: string): string {
-  return `<?xml version="1.0" encoding="UTF-16"?>
+	return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Description>UsageFleet collector</Description>
@@ -208,68 +210,68 @@ export function windowsTaskXml(vbsPath: string, userId: string): string {
     </Exec>
   </Actions>
 </Task>
-`;
+`
 }
 
 /** Current user as DOMAIN\user (or just user), for the task's principal. */
 function windowsUserId(): string {
-  const user = process.env.USERNAME || process.env.USER || "";
-  const domain = process.env.USERDOMAIN;
-  return domain ? `${domain}\\${user}` : user;
+	const user = process.env.USERNAME || process.env.USER || ''
+	const domain = process.env.USERDOMAIN
+	return domain ? `${domain}\\${user}` : user
 }
 
 function schtasks(...args: string[]): boolean {
-  try {
-    execFileSync("schtasks", args, { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
+	try {
+		execFileSync('schtasks', args, { stdio: 'ignore' })
+		return true
+	} catch {
+		return false
+	}
 }
 
 function xml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+	return s
+		.replaceAll('&', '&amp;')
+		.replaceAll('<', '&lt;')
+		.replaceAll('>', '&gt;')
+		.replaceAll('"', '&quot;')
+		.replaceAll("'", '&apos;')
 }
 
 export function install(): void {
-  // Pre-flight: refuse to install a service that can't resolve an endpoint+token,
-  // otherwise the baked `watch` process throws on every launch and the service
-  // manager crash-loops it invisibly (only the log file shows it). Use the same
-  // env-OR-file precedence loadConfig() uses so a prior `init` is honored.
-  const file = readStore();
-  const endpoint = process.env.USAGEFLEET_ENDPOINT || file.endpoint || "";
-  const token = process.env.USAGEFLEET_TOKEN || file.token || "";
-  if (!endpoint || !token) {
-    console.error(
-      "No endpoint/token resolved. Run `usagefleet init --endpoint <url> --token <t>` " +
-        "(or set USAGEFLEET_ENDPOINT and USAGEFLEET_TOKEN) before installing.",
-    );
-    process.exit(1);
-  }
+	// Pre-flight: refuse to install a service that can't resolve an endpoint+token,
+	// otherwise the baked `watch` process throws on every launch and the service
+	// manager crash-loops it invisibly (only the log file shows it). Use the same
+	// env-OR-file precedence loadConfig() uses so a prior `init` is honored.
+	const file = readStore()
+	const endpoint = process.env.USAGEFLEET_ENDPOINT || file.endpoint || ''
+	const token = process.env.USAGEFLEET_TOKEN || file.token || ''
+	if (!endpoint || !token) {
+		console.error(
+			'No endpoint/token resolved. Run `usagefleet init --endpoint <url> --token <t>` ' +
+				'(or set USAGEFLEET_ENDPOINT and USAGEFLEET_TOKEN) before installing.',
+		)
+		process.exit(1)
+	}
 
-  // Windows: stop a running task first, otherwise the live .exe blocks the
-  // stable-copy overwrite and `schtasks /run` below would be ignored (the task
-  // is IgnoreNew) — leaving the OLD binary resident after an "update".
-  if (process.platform === "win32") schtasks("/end", "/tn", TASK);
+	// Windows: stop a running task first, otherwise the live .exe blocks the
+	// stable-copy overwrite and `schtasks /run` below would be ignored (the task
+	// is IgnoreNew) — leaving the OLD binary resident after an "update".
+	if (process.platform === 'win32') {
+		schtasks('/end', '/tn', TASK)
+	}
 
-  const prog = programArgs();
-  const env = presentEnv();
+	const prog = programArgs()
+	const env = presentEnv()
 
-  // Same binary, different entry point: the service watches, the hook enforces.
-  // `prog` ends in "watch"; everything before it is how to launch this build.
-  installPromptHook([...prog.slice(0, -1), "guard"]);
+	// Same binary, different entry point: the service watches, the hook enforces.
+	// `prog` ends in "watch"; everything before it is how to launch this build.
+	installPromptHook([...prog.slice(0, -1), 'guard'])
 
-  if (process.platform === "darwin") {
-    const envXml = env
-      .map(([k, v]) => `    <key>${xml(k)}</key><string>${xml(v)}</string>`)
-      .join("\n");
-    const progXml = prog.map((p) => `    <string>${xml(p)}</string>`).join("\n");
-    const plist = `<?xml version="1.0" encoding="UTF-8"?>
+	if (process.platform === 'darwin') {
+		const envXml = env.map(([k, v]) => `    <key>${xml(k)}</key><string>${xml(v)}</string>`).join('\n')
+		const progXml = prog.map(p => `    <string>${xml(p)}</string>`).join('\n')
+		const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -288,56 +290,58 @@ ${envXml}
     <key>SuccessfulExit</key><false/>
   </dict>
   <key>ThrottleInterval</key><integer>30</integer>
-  <key>StandardErrorPath</key><string>${xml(join(macLogDir(), "usagefleet.err.log"))}</string>
-  <key>StandardOutPath</key><string>${xml(join(macLogDir(), "usagefleet.out.log"))}</string>
+  <key>StandardErrorPath</key><string>${xml(join(macLogDir(), 'usagefleet.err.log'))}</string>
+  <key>StandardOutPath</key><string>${xml(join(macLogDir(), 'usagefleet.out.log'))}</string>
 </dict>
 </plist>
-`;
-    const path = macPlistPath();
-    mkdirSync(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
-    mkdirSync(macLogDir(), { recursive: true });
-    // 0600: this file carries USAGEFLEET_TOKEN and ANTHROPIC_API_KEY, the same
-    // secrets `init` deliberately writes at 0600.
-    writeFileSync(path, plist, { encoding: "utf8", mode: 0o600 });
-    chmodSync(path, 0o600); // writeFileSync's mode does not apply to an existing file
-    const domain = `gui/${process.getuid?.()}`;
-    // execFile (no shell) so `path` is never subject to shell interpolation.
-    // Reload-safe: boot out any previous instance first so re-running install
-    // (e.g. to apply an update) swaps in the new binary instead of leaving the
-    // old one resident.
-    try {
-      execFileSync("launchctl", ["bootout", domain, path], { stdio: "ignore" });
-    } catch {
-      /* not loaded yet — fine */
-    }
-    try {
-      execFileSync("launchctl", ["bootstrap", domain, path], { stdio: "inherit" });
-    } catch {
-      try {
-        execFileSync("launchctl", ["load", path], { stdio: "inherit" });
-      } catch {
-        /* report below; user can load manually */
-      }
-    }
-    // Force a (re)start so an update takes effect immediately, not on next respawn.
-    try {
-      execFileSync("launchctl", ["kickstart", "-k", `${domain}/${LABEL}`], {
-        stdio: "ignore",
-      });
-    } catch {
-      /* best-effort */
-    }
-    console.log(`Installed launchd agent at ${path} (autostart enabled).`);
-    return;
-  }
+`
+		const path = macPlistPath()
+		mkdirSync(join(homedir(), 'Library', 'LaunchAgents'), { recursive: true })
+		mkdirSync(macLogDir(), { recursive: true })
+		// 0600: this file carries USAGEFLEET_TOKEN and ANTHROPIC_API_KEY, the same
+		// secrets `init` deliberately writes at 0600.
+		writeFileSync(path, plist, { encoding: 'utf-8', mode: 0o600 })
+		chmodSync(path, 0o600) // writeFileSync's mode does not apply to an existing file
+		const domain = `gui/${process.getuid?.()}`
+		// execFile (no shell) so `path` is never subject to shell interpolation.
+		// Reload-safe: boot out any previous instance first so re-running install
+		// (e.g. to apply an update) swaps in the new binary instead of leaving the
+		// old one resident.
+		try {
+			execFileSync('launchctl', ['bootout', domain, path], { stdio: 'ignore' })
+		} catch {
+			/* not loaded yet — fine */
+		}
+		try {
+			execFileSync('launchctl', ['bootstrap', domain, path], {
+				stdio: 'inherit',
+			})
+		} catch {
+			try {
+				execFileSync('launchctl', ['load', path], { stdio: 'inherit' })
+			} catch {
+				/* report below; user can load manually */
+			}
+		}
+		// Force a (re)start so an update takes effect immediately, not on next respawn.
+		try {
+			execFileSync('launchctl', ['kickstart', '-k', `${domain}/${LABEL}`], {
+				stdio: 'ignore',
+			})
+		} catch {
+			/* best-effort */
+		}
+		console.log(`Installed launchd agent at ${path} (autostart enabled).`)
+		return
+	}
 
-  if (process.platform === "linux") {
-    // systemd: quote values, escape backslash/quote, reject newlines.
-    const envLines = env
-      .filter(([, v]) => !/[\r\n]/.test(v))
-      .map(([k, v]) => `Environment="${k}=${v.replace(/[\\"]/g, (m) => "\\" + m)}"`)
-      .join("\n");
-    const unit = `[Unit]
+	if (process.platform === 'linux') {
+		// systemd: quote values, escape backslash/quote, reject newlines.
+		const envLines = env
+			.filter(([, v]) => !/[\r\n]/.test(v))
+			.map(([k, v]) => `Environment="${k}=${v.replaceAll(/[\\"]/g, m => `\\${m}`)}"`)
+			.join('\n')
+		const unit = `[Unit]
 Description=UsageFleet collector
 Wants=network-online.target
 After=network-online.target
@@ -346,161 +350,154 @@ StartLimitIntervalSec=120
 StartLimitBurst=5
 
 [Service]
-ExecStart=${prog.join(" ")}
+ExecStart=${prog.join(' ')}
 Restart=always
 RestartSec=30
 ${envLines}
 
 [Install]
 WantedBy=default.target
-`;
-    const path = systemdUnitPath();
-    mkdirSync(join(homedir(), ".config", "systemd", "user"), { recursive: true });
-    // 0600: the unit bakes USAGEFLEET_TOKEN and ANTHROPIC_API_KEY into Environment=.
-    writeFileSync(path, unit, { encoding: "utf8", mode: 0o600 });
-    chmodSync(path, 0o600); // writeFileSync's mode does not apply to an existing file
-    console.log(`Installed systemd unit at ${path}`);
-    // Enable + start automatically so autostart "just works". `restart` after
-    // enable picks up a new binary when re-running install to apply an update
-    // (enable --now leaves an already-running unit untouched).
-    const sc = (...args: string[]): boolean => {
-      try {
-        execFileSync("systemctl", ["--user", ...args], { stdio: "inherit" });
-        return true;
-      } catch {
-        return false;
-      }
-    };
-    const reloaded = sc("daemon-reload");
-    // Clear any prior failure / start-limit lockout so a re-install (e.g. to
-    // recover a unit that crash-looped on an older buggy binary) isn't rejected
-    // with "start request repeated too quickly". No-op on a healthy unit.
-    sc("reset-failed", "usagefleet");
-    const enabled = sc("enable", "--now", "usagefleet");
-    if (reloaded && enabled) {
-      sc("restart", "usagefleet");
-      // Keep the user manager (and thus the service) alive after logout.
-      const user = process.env.USER || process.env.LOGNAME;
-      if (user) {
-        try {
-          execFileSync("loginctl", ["enable-linger", user], { stdio: "ignore" });
-        } catch {
-          /* not critical; service still runs while logged in */
-        }
-      }
-      console.log("Enabled and started usagefleet (autostart on login).");
-    } else {
-      console.log("Could not drive systemctl automatically. Enable it manually:");
-      console.log("  systemctl --user daemon-reload");
-      console.log("  systemctl --user enable --now usagefleet");
-      console.log("  loginctl enable-linger $USER   # keep running after logout");
-    }
-    return;
-  }
+`
+		const path = systemdUnitPath()
+		mkdirSync(join(homedir(), '.config', 'systemd', 'user'), {
+			recursive: true,
+		})
+		// 0600: the unit bakes USAGEFLEET_TOKEN and ANTHROPIC_API_KEY into Environment=.
+		writeFileSync(path, unit, { encoding: 'utf-8', mode: 0o600 })
+		chmodSync(path, 0o600) // writeFileSync's mode does not apply to an existing file
+		console.log(`Installed systemd unit at ${path}`)
+		// Enable + start automatically so autostart "just works". `restart` after
+		// enable picks up a new binary when re-running install to apply an update
+		// (enable --now leaves an already-running unit untouched).
+		const sc = (...args: string[]): boolean => {
+			try {
+				execFileSync('systemctl', ['--user', ...args], { stdio: 'inherit' })
+				return true
+			} catch {
+				return false
+			}
+		}
+		const reloaded = sc('daemon-reload')
+		// Clear any prior failure / start-limit lockout so a re-install (e.g. to
+		// recover a unit that crash-looped on an older buggy binary) isn't rejected
+		// with "start request repeated too quickly". No-op on a healthy unit.
+		sc('reset-failed', 'usagefleet')
+		const enabled = sc('enable', '--now', 'usagefleet')
+		if (reloaded && enabled) {
+			sc('restart', 'usagefleet')
+			// Keep the user manager (and thus the service) alive after logout.
+			const user = process.env.USER || process.env.LOGNAME
+			if (user) {
+				try {
+					execFileSync('loginctl', ['enable-linger', user], {
+						stdio: 'ignore',
+					})
+				} catch {
+					/* not critical; service still runs while logged in */
+				}
+			}
+			console.log('Enabled and started usagefleet (autostart on login).')
+		} else {
+			console.log('Could not drive systemctl automatically. Enable it manually:')
+			console.log('  systemctl --user daemon-reload')
+			console.log('  systemctl --user enable --now usagefleet')
+			console.log('  loginctl enable-linger $USER   # keep running after logout')
+		}
+		return
+	}
 
-  if (process.platform === "win32") {
-    const vbsPath = windowsVbsPath();
-    mkdirSync(stableBinDir(), { recursive: true });
-    // 0600: the launcher script embeds the same secrets as the plist/unit.
-    writeFileSync(vbsPath, windowsLauncherVbs(prog, env, windowsLogPath()), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
+	if (process.platform === 'win32') {
+		const vbsPath = windowsVbsPath()
+		mkdirSync(stableBinDir(), { recursive: true })
+		// 0600: the launcher script embeds the same secrets as the plist/unit.
+		writeFileSync(vbsPath, windowsLauncherVbs(prog, env, windowsLogPath()), {
+			encoding: 'utf-8',
+			mode: 0o600,
+		})
 
-    // schtasks reads task XML as UTF-16 (a UTF-8 file is rejected as malformed).
-    const xmlPath = join(tmpdir(), `usagefleet-task-${process.pid}.xml`);
-    writeFileSync(xmlPath, "\ufeff" + windowsTaskXml(vbsPath, windowsUserId()), "utf16le");
-    // /f replaces any previous definition, so install doubles as the updater.
-    const created =
-      schtasks("/create", "/tn", TASK, "/xml", xmlPath, "/f") ||
-      // Fallback for hosts that reject the XML (locale/schema quirks): a plain
-      // onlogon task. Same launcher, minus restart-on-failure.
-      schtasks(
-        "/create",
-        "/tn",
-        TASK,
-        "/sc",
-        "onlogon",
-        "/f",
-        "/tr",
-        `wscript.exe //B //Nologo "${vbsPath}"`,
-      );
-    rmSync(xmlPath, { force: true });
+		// schtasks reads task XML as UTF-16 (a UTF-8 file is rejected as malformed).
+		const xmlPath = join(tmpdir(), `usagefleet-task-${process.pid}.xml`)
+		writeFileSync(xmlPath, `\uFEFF${windowsTaskXml(vbsPath, windowsUserId())}`, 'utf16le')
+		// /f replaces any previous definition, so install doubles as the updater.
+		const created =
+			schtasks('/create', '/tn', TASK, '/xml', xmlPath, '/f') ||
+			// Fallback for hosts that reject the XML (locale/schema quirks): a plain
+			// onlogon task. Same launcher, minus restart-on-failure.
+			schtasks('/create', '/tn', TASK, '/sc', 'onlogon', '/f', '/tr', `wscript.exe //B //Nologo "${vbsPath}"`)
+		rmSync(xmlPath, { force: true })
 
-    if (!created) {
-      console.error(
-        "Could not register the scheduled task. Register it manually:\n" +
-          `  schtasks /create /tn ${TASK} /sc onlogon /tr "wscript.exe //B //Nologo \\"${vbsPath}\\""`,
-      );
-      process.exit(1);
-    }
-    // Start now so install/update takes effect immediately, not at next logon.
-    schtasks("/run", "/tn", TASK);
-    console.log(`Installed scheduled task "${TASK}" (autostart at logon, runs hidden).`);
-    console.log(`Logs: ${windowsLogPath()}`);
-    return;
-  }
+		if (!created) {
+			console.error(
+				'Could not register the scheduled task. Register it manually:\n' +
+					`  schtasks /create /tn ${TASK} /sc onlogon /tr "wscript.exe //B //Nologo \\"${vbsPath}\\""`,
+			)
+			process.exit(1)
+		}
+		// Start now so install/update takes effect immediately, not at next logon.
+		schtasks('/run', '/tn', TASK)
+		console.log(`Installed scheduled task "${TASK}" (autostart at logon, runs hidden).`)
+		console.log(`Logs: ${windowsLogPath()}`)
+		return
+	}
 
-  console.log(`Unsupported platform for service install: ${process.platform}.`);
-  console.log(`Run it yourself with: ${prog.join(" ")}`);
+	console.log(`Unsupported platform for service install: ${process.platform}.`)
+	console.log(`Run it yourself with: ${prog.join(' ')}`)
 }
 
 /** Best-effort removal of the stable binary copy made at install time (plus the
  *  `.old` file a Windows in-place update may have left behind). */
 function removeStableBin(): void {
-  for (const p of [stableBinPath(), `${stableBinPath()}.old`]) {
-    try {
-      rmSync(p, { force: true });
-    } catch {
-      /* ignore */
-    }
-  }
+	for (const p of [stableBinPath(), `${stableBinPath()}.old`]) {
+		try {
+			rmSync(p, { force: true })
+		} catch {
+			/* ignore */
+		}
+	}
 }
 
 export function uninstall(): void {
-  uninstallPromptHook();
-  if (process.platform === "darwin") {
-    const path = macPlistPath();
-    try {
-      execFileSync("launchctl", ["bootout", `gui/${process.getuid?.()}`, path], {
-        stdio: "inherit",
-      });
-    } catch {
-      try {
-        execFileSync("launchctl", ["unload", path], { stdio: "inherit" });
-      } catch {
-        /* ignore */
-      }
-    }
-    removeStableBin();
-    console.log(`Removed launchd agent (delete ${path} to fully clean up).`);
-    return;
-  }
-  if (process.platform === "linux") {
-    try {
-      execFileSync("systemctl", ["--user", "disable", "--now", "usagefleet"], {
-        stdio: "inherit",
-      });
-    } catch {
-      /* ignore */
-    }
-    removeStableBin();
-    console.log(`Disabled systemd unit (delete ${systemdUnitPath()} to fully clean up).`);
-    return;
-  }
-  if (process.platform === "win32") {
-    schtasks("/end", "/tn", TASK);
-    const deleted = schtasks("/delete", "/tn", TASK, "/f");
-    try {
-      rmSync(windowsVbsPath(), { force: true });
-    } catch {
-      /* ignore */
-    }
-    removeStableBin();
-    console.log(
-      deleted ? `Removed scheduled task "${TASK}".` : `No scheduled task "${TASK}" found.`,
-    );
-    return;
-  }
-  console.log(`Nothing to uninstall on ${process.platform}.`);
+	uninstallPromptHook()
+	if (process.platform === 'darwin') {
+		const path = macPlistPath()
+		try {
+			execFileSync('launchctl', ['bootout', `gui/${process.getuid?.()}`, path], {
+				stdio: 'inherit',
+			})
+		} catch {
+			try {
+				execFileSync('launchctl', ['unload', path], { stdio: 'inherit' })
+			} catch {
+				/* ignore */
+			}
+		}
+		removeStableBin()
+		console.log(`Removed launchd agent (delete ${path} to fully clean up).`)
+		return
+	}
+	if (process.platform === 'linux') {
+		try {
+			execFileSync('systemctl', ['--user', 'disable', '--now', 'usagefleet'], {
+				stdio: 'inherit',
+			})
+		} catch {
+			/* ignore */
+		}
+		removeStableBin()
+		console.log(`Disabled systemd unit (delete ${systemdUnitPath()} to fully clean up).`)
+		return
+	}
+	if (process.platform === 'win32') {
+		schtasks('/end', '/tn', TASK)
+		const deleted = schtasks('/delete', '/tn', TASK, '/f')
+		try {
+			rmSync(windowsVbsPath(), { force: true })
+		} catch {
+			/* ignore */
+		}
+		removeStableBin()
+		console.log(deleted ? `Removed scheduled task "${TASK}".` : `No scheduled task "${TASK}" found.`)
+		return
+	}
+	console.log(`Nothing to uninstall on ${process.platform}.`)
 }

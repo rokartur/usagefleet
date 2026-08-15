@@ -1,45 +1,44 @@
-import type { LimitsReport } from "./claude-limits.js";
-import { sendNotification, type Urgency } from "./notify.js";
-import { freshWindow, readStore, storePath, updateStore } from "./store.js";
-import type { NotifyState, WindowNotifyState } from "./types.js";
+import type { LimitsReport } from './claude-limits.js'
+import { sendNotification } from './notify.js'
+import type { Urgency } from './notify.js'
+import { freshWindow, readStore, storePath, updateStore } from './store.js'
+import type { NotifyState, WindowNotifyState } from './types.js'
 
 export interface NotifyConfig {
-  enabled: boolean;
-  /** Ascending utilization thresholds (%) that trigger a notification once each
-   *  per window, e.g. [80, 95]. */
-  thresholds: number[];
+	enabled: boolean
+	/** Ascending utilization thresholds (%) that trigger a notification once each
+	 *  per window, e.g. [80, 95]. */
+	thresholds: number[]
 }
 
-const DEFAULT_THRESHOLDS = [80, 95];
+const DEFAULT_THRESHOLDS = [80, 95]
 
 /** Resolve notify config from env. Enabled by default; disable with
  *  USAGEFLEET_NOTIFY=0 (also: false/off/no). Thresholds from
  *  USAGEFLEET_NOTIFY_THRESHOLDS as a comma list (e.g. "50,80,95"). */
-export function loadNotifyConfig(
-  env: Record<string, string | undefined> = process.env,
-): NotifyConfig {
-  const flag = env.USAGEFLEET_NOTIFY;
-  const enabled = flag == null || !/^(0|false|off|no)$/i.test(flag.trim());
+export function loadNotifyConfig(env: Record<string, string | undefined> = process.env): NotifyConfig {
+	const flag = env.USAGEFLEET_NOTIFY
+	const enabled = flag == null || !/^(0|false|off|no)$/i.test(flag.trim())
 
-  let thresholds = DEFAULT_THRESHOLDS;
-  const raw = env.USAGEFLEET_NOTIFY_THRESHOLDS;
-  if (raw && raw.trim()) {
-    const parsed = raw
-      .split(",")
-      .map((s) => Math.round(Number(s.trim())))
-      .filter((n) => Number.isFinite(n) && n > 0 && n <= 100);
-    if (parsed.length > 0) {
-      thresholds = [...new Set(parsed)].sort((a, b) => a - b);
-    }
-  }
-  return { enabled, thresholds };
+	let thresholds = DEFAULT_THRESHOLDS
+	const raw = env.USAGEFLEET_NOTIFY_THRESHOLDS
+	if (raw && raw.trim()) {
+		const parsed = raw
+			.split(',')
+			.map(s => Math.round(Number(s.trim())))
+			.filter(n => Number.isFinite(n) && n > 0 && n <= 100)
+		if (parsed.length > 0) {
+			thresholds = [...new Set(parsed)].toSorted((a, b) => a - b)
+		}
+	}
+	return { enabled, thresholds }
 }
 
 /** Per-window high-water mark so each threshold notifies at most once per
  *  window. `resetsAt` ties the mark to a specific window — when it changes the
  *  window has rolled over and the mark clears. */
 export function emptyNotifyState(): NotifyState {
-  return { fiveHour: freshWindow(), sevenDay: freshWindow() };
+	return { fiveHour: freshWindow(), sevenDay: freshWindow() }
 }
 
 /**
@@ -52,46 +51,58 @@ export function emptyNotifyState(): NotifyState {
  * lowered so a subsequent re-cross notifies again.
  */
 export function evaluateWindow(
-  prev: WindowNotifyState | undefined,
-  pct: number | null,
-  resetsAt: string | null,
-  thresholds: number[],
+	prev: WindowNotifyState | undefined,
+	pct: number | null,
+	resetsAt: string | null,
+	thresholds: number[],
 ): { fire: number | null; next: WindowNotifyState } {
-  const rolledOver = !prev || prev.resetsAt !== resetsAt;
-  const lastBucket = rolledOver ? 0 : prev.lastBucket;
+	const rolledOver = !prev || prev.resetsAt !== resetsAt
+	const lastBucket = rolledOver ? 0 : prev.lastBucket
 
-  if (pct == null) {
-    // No reading this cycle — keep the mark, just track the (possibly new) window.
-    return { fire: null, next: { lastBucket, resetsAt } };
-  }
+	if (pct == null) {
+		// No reading this cycle — keep the mark, just track the (possibly new) window.
+		return { fire: null, next: { lastBucket, resetsAt } }
+	}
 
-  // Highest threshold the current pct has reached (thresholds are ascending).
-  let top = 0;
-  for (const t of thresholds) if (pct >= t) top = t;
+	// Highest threshold the current pct has reached (thresholds are ascending).
+	let top = 0
+	for (const t of thresholds) {
+		if (pct >= t) {
+			top = t
+		}
+	}
 
-  if (top > lastBucket) {
-    return { fire: top, next: { lastBucket: top, resetsAt } };
-  }
-  if (top < lastBucket) {
-    return { fire: null, next: { lastBucket: top, resetsAt } };
-  }
-  return { fire: null, next: { lastBucket, resetsAt } };
+	if (top > lastBucket) {
+		return { fire: top, next: { lastBucket: top, resetsAt } }
+	}
+	if (top < lastBucket) {
+		return { fire: null, next: { lastBucket: top, resetsAt } }
+	}
+	return { fire: null, next: { lastBucket, resetsAt } }
 }
 
 /** Relative "resets in 12m" / "resets in 2h" suffix, or "" if unknown/past. */
 function resetSuffix(resetsAt: string | null): string {
-  if (!resetsAt) return "";
-  const ms = new Date(resetsAt).getTime() - Date.now();
-  if (!Number.isFinite(ms) || ms <= 0) return "";
-  const min = Math.round(ms / 60_000);
-  if (min < 60) return ` · resets in ${min}m`;
-  const h = Math.round(min / 60);
-  if (h < 48) return ` · resets in ${h}h`;
-  return ` · resets in ${Math.round(h / 24)}d`;
+	if (!resetsAt) {
+		return ''
+	}
+	const ms = new Date(resetsAt).getTime() - Date.now()
+	if (!Number.isFinite(ms) || ms <= 0) {
+		return ''
+	}
+	const min = Math.round(ms / 60_000)
+	if (min < 60) {
+		return ` · resets in ${min}m`
+	}
+	const h = Math.round(min / 60)
+	if (h < 48) {
+		return ` · resets in ${h}h`
+	}
+	return ` · resets in ${Math.round(h / 24)}d`
 }
 
 function urgencyFor(bucket: number): Urgency {
-  return bucket >= 95 ? "critical" : "normal";
+	return bucket >= 95 ? 'critical' : 'normal'
 }
 
 /**
@@ -100,48 +111,42 @@ function urgencyFor(bucket: number): Urgency {
  * IO and never throws out to the caller.
  */
 export function maybeNotify(
-  report: LimitsReport,
-  cfg: NotifyConfig = loadNotifyConfig(),
-  log: (msg: string) => void = () => {},
-  path: string = storePath(),
+	report: LimitsReport,
+	cfg: NotifyConfig = loadNotifyConfig(),
+	log: (msg: string) => void = () => {
+		/* empty */
+	},
+	path: string = storePath(),
 ): void {
-  if (!cfg.enabled || cfg.thresholds.length === 0) return;
-  try {
-    const state = readStore(path).notify;
-    const five = evaluateWindow(
-      state.fiveHour,
-      report.fiveHourPct,
-      report.fiveHourResetsAt,
-      cfg.thresholds,
-    );
-    const seven = evaluateWindow(
-      state.sevenDay,
-      report.sevenDayPct,
-      report.sevenDayResetsAt,
-      cfg.thresholds,
-    );
+	if (!cfg.enabled || cfg.thresholds.length === 0) {
+		return
+	}
+	try {
+		const state = readStore(path).notify
+		const five = evaluateWindow(state.fiveHour, report.fiveHourPct, report.fiveHourResetsAt, cfg.thresholds)
+		const seven = evaluateWindow(state.sevenDay, report.sevenDayPct, report.sevenDayResetsAt, cfg.thresholds)
 
-    if (five.fire != null) {
-      sendNotification(
-        "Claude usage · 5-hour limit",
-        `${report.fiveHourPct}% of your 5-hour limit used${resetSuffix(report.fiveHourResetsAt)}.`,
-        { urgency: urgencyFor(five.fire) },
-      );
-      log(`notified: 5h at ${report.fiveHourPct}% (crossed ${five.fire}%)`);
-    }
-    if (seven.fire != null) {
-      sendNotification(
-        "Claude usage · weekly limit",
-        `${report.sevenDayPct}% of your weekly limit used${resetSuffix(report.sevenDayResetsAt)}.`,
-        { urgency: urgencyFor(seven.fire) },
-      );
-      log(`notified: weekly at ${report.sevenDayPct}% (crossed ${seven.fire}%)`);
-    }
+		if (five.fire != null) {
+			sendNotification(
+				'Claude usage · 5-hour limit',
+				`${report.fiveHourPct}% of your 5-hour limit used${resetSuffix(report.fiveHourResetsAt)}.`,
+				{ urgency: urgencyFor(five.fire) },
+			)
+			log(`notified: 5h at ${report.fiveHourPct}% (crossed ${five.fire}%)`)
+		}
+		if (seven.fire != null) {
+			sendNotification(
+				'Claude usage · weekly limit',
+				`${report.sevenDayPct}% of your weekly limit used${resetSuffix(report.sevenDayResetsAt)}.`,
+				{ urgency: urgencyFor(seven.fire) },
+			)
+			log(`notified: weekly at ${report.sevenDayPct}% (crossed ${seven.fire}%)`)
+		}
 
-    updateStore(path, (store) => {
-      store.notify = { fiveHour: five.next, sevenDay: seven.next };
-    });
-  } catch (err) {
-    log(`notify skipped: ${(err as Error).message}`);
-  }
+		updateStore(path, store => {
+			store.notify = { fiveHour: five.next, sevenDay: seven.next }
+		})
+	} catch (error) {
+		log(`notify skipped: ${(error as Error).message}`)
+	}
 }

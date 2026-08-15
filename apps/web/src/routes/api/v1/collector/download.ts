@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { authenticateDevice } from "@/lib/device-auth";
-import { serveLatestAsset } from "@/lib/github-release";
+import { createFileRoute } from '@tanstack/react-router'
+import { authenticateDevice } from '@/lib/device-auth'
+import { serveLatestAsset } from '@/lib/github-release'
 
 /**
  * Streams one asset of the latest release to an authenticated device, so a
@@ -11,16 +11,18 @@ import { serveLatestAsset } from "@/lib/github-release";
  * through /asset instead.
  */
 async function GET(req: Request) {
-  const auth = await authenticateDevice(req, "collector-download", 5);
-  if ("response" in auth) return auth.response;
+	const auth = await authenticateDevice(req, 'collector-download', 5)
+	if ('response' in auth) {
+		return auth.response
+	}
 
-  return serveLatestAsset(new URL(req.url).searchParams.get("asset"));
+	return serveLatestAsset(new URL(req.url).searchParams.get('asset'))
 }
 
-export const Route = createFileRoute("/api/v1/collector/download")({
-  server: {
-    handlers: {
-      GET: ({ request }) => GET(request),
-    },
-  },
-});
+export const Route = createFileRoute('/api/v1/collector/download')({
+	server: {
+		handlers: {
+			GET: ({ request }) => GET(request),
+		},
+	},
+})

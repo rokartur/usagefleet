@@ -1,59 +1,69 @@
 // Lightweight in-memory fixed-window rate limiter. Adequate for a self-hosted
 // single-instance deployment; swap for a shared store if you scale horizontally.
 
-import { type, type Type } from "arktype";
+import { type } from 'arktype'
+import type { Type } from 'arktype'
 
 interface Bucket {
-  count: number;
-  resetAt: number;
-  /** Kept so eviction can tell a bucket that is actively refusing requests from
-   *  one that is merely occupying space. */
-  limit: number;
+	count: number
+	resetAt: number
+	/** Kept so eviction can tell a bucket that is actively refusing requests from
+	 *  one that is merely occupying space. */
+	limit: number
 }
 
-const buckets = new Map<string, Bucket>();
+const buckets = new Map<string, Bucket>()
 
 export interface RateResult {
-  ok: boolean;
-  /** Seconds until the window resets (for Retry-After). */
-  retryAfter: number;
+	ok: boolean
+	/** Seconds until the window resets (for Retry-After). */
+	retryAfter: number
 }
 
 /** Hard ceiling on distinct live buckets, so a flood of unique keys cannot
  *  exhaust memory (and cannot make the prune below an unbounded scan). */
-const MAX_BUCKETS = 10_000;
+const MAX_BUCKETS = 10_000
 
 export function rateLimit(key: string, limit: number, windowMs: number): RateResult {
-  const now = Date.now();
+	const now = Date.now()
 
-  if (buckets.size >= MAX_BUCKETS) {
-    // Drop what is not currently refusing anything: an expired window enforces
-    // nothing, and neither does a bucket still under its limit. A bucket AT its
-    // limit is actively throttling someone, so evicting it would hand exactly
-    // the caller causing the flood a free reset — those survive this pass.
-    for (const [k, b] of buckets) {
-      if (buckets.size < MAX_BUCKETS) break;
-      if (b.resetAt <= now || b.count < b.limit) buckets.delete(k);
-    }
-    // Still full means every remaining bucket is actively throttling. Nothing
-    // can be freed without losing enforcement, so stay bounded by dropping the
-    // oldest-inserted (Map keeps insertion order) and accept the reset.
-    for (const k of buckets.keys()) {
-      if (buckets.size < MAX_BUCKETS) break;
-      buckets.delete(k);
-    }
-  }
+	if (buckets.size >= MAX_BUCKETS) {
+		// Drop what is not currently refusing anything: an expired window enforces
+		// nothing, and neither does a bucket still under its limit. A bucket AT its
+		// limit is actively throttling someone, so evicting it would hand exactly
+		// the caller causing the flood a free reset — those survive this pass.
+		for (const [k, b] of buckets) {
+			if (buckets.size < MAX_BUCKETS) {
+				break
+			}
+			if (b.resetAt <= now || b.count < b.limit) {
+				buckets.delete(k)
+			}
+		}
+		// Still full means every remaining bucket is actively throttling. Nothing
+		// can be freed without losing enforcement, so stay bounded by dropping the
+		// oldest-inserted (Map keeps insertion order) and accept the reset.
+		for (const k of buckets.keys()) {
+			if (buckets.size < MAX_BUCKETS) {
+				break
+			}
+			buckets.delete(k)
+		}
+	}
 
-  let b = buckets.get(key);
-  if (!b || b.resetAt <= now) {
-    b = { count: 0, resetAt: now + windowMs, limit };
-    buckets.set(key, b);
-  }
-  b.count += 1;
-  if (b.count > limit) {
-    return { ok: false, retryAfter: Math.max(1, Math.ceil((b.resetAt - now) / 1000)) };
-  }
-  return { ok: true, retryAfter: 0 };
+	let b = buckets.get(key)
+	if (!b || b.resetAt <= now) {
+		b = { count: 0, limit, resetAt: now + windowMs }
+		buckets.set(key, b)
+	}
+	b.count += 1
+	if (b.count > limit) {
+		return {
+			ok: false,
+			retryAfter: Math.max(1, Math.ceil((b.resetAt - now) / 1000)),
+		}
+	}
+	return { ok: true, retryAfter: 0 }
 }
 
 /**
@@ -90,33 +100,30 @@ export function rateLimit(key: string, limit: number, windowMs: number): RateRes
  * `curl | sh` install will throttle strangers against each other.
  */
 export function clientIp(req: Request): string {
-  const trust = process.env.TRUST_PROXY;
-  if (!trust || trust === "false" || trust === "0") return "anon";
+	const trust = process.env.TRUST_PROXY
+	if (!trust || trust === 'false' || trust === '0') {
+		return 'anon'
+	}
 
-  const hops =
-    trust === "true"
-      ? 1
-      : Number.isFinite(Number(trust)) && Number(trust) > 0
-        ? Math.floor(Number(trust))
-        : 1;
+	const hops =
+		trust === 'true' ? 1 : Number.isFinite(Number(trust)) && Number(trust) > 0 ? Math.floor(Number(trust)) : 1
 
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) {
-    const parts = xff
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const idx = parts.length - hops;
-    if (idx >= 0 && parts[idx]) return parts[idx]!;
-  }
-  return "anon";
+	const xff = req.headers.get('x-forwarded-for')
+	if (xff) {
+		const parts = xff
+			.split(',')
+			.map(s => s.trim())
+			.filter(Boolean)
+		const idx = parts.length - hops
+		if (idx >= 0 && parts[idx]) {
+			return parts[idx]!
+		}
+	}
+	return 'anon'
 }
 
 export function tooMany(retryAfter: number): Response {
-  return Response.json(
-    { error: "rate limited" },
-    { status: 429, headers: { "retry-after": String(retryAfter) } },
-  );
+	return Response.json({ error: 'rate limited' }, { headers: { 'retry-after': String(retryAfter) }, status: 429 })
 }
 
 /** True when `key` has already spent its budget in the current window, without
@@ -124,8 +131,8 @@ export function tooMany(retryAfter: number): Response {
  *  doing work an unauthenticated caller can trigger, spend only when that work
  *  turns out to be a miss, so honest callers never draw down a shared bucket. */
 export function budgetExhausted(key: string, limit: number): boolean {
-  const b = buckets.get(key);
-  return b !== undefined && b.resetAt > Date.now() && b.count >= limit;
+	const b = buckets.get(key)
+	return b !== undefined && b.resetAt > Date.now() && b.count >= limit
 }
 
 /**
@@ -140,62 +147,65 @@ export function budgetExhausted(key: string, limit: number): boolean {
  * back as a ready `Response`, and `value` arrives parsed rather than `unknown`.
  */
 export async function readJsonCapped<S extends Type>(
-  req: Request,
-  maxBytes: number,
-  schema: S,
-): Promise<{ ok: true; value: S["infer"] } | { ok: false; response: Response }> {
-  const declared = Number(req.headers.get("content-length") ?? 0);
-  if (Number.isFinite(declared) && declared > maxBytes) return tooBig();
+	req: Request,
+	maxBytes: number,
+	schema: S,
+): Promise<{ ok: true; value: S['infer'] } | { ok: false; response: Response }> {
+	const declared = Number(req.headers.get('content-length') ?? 0)
+	if (Number.isFinite(declared) && declared > maxBytes) {
+		return tooBig()
+	}
 
-  const reader = req.body?.getReader();
-  if (!reader) return badJson();
+	const reader = req.body?.getReader()
+	if (!reader) {
+		return badJson()
+	}
 
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.length;
-      if (total > maxBytes) {
-        await reader.cancel();
-        return tooBig();
-      }
-      chunks.push(value);
-    }
-  } catch {
-    return badJson();
-  }
+	const chunks: Uint8Array[] = []
+	let total = 0
+	try {
+		for (;;) {
+			const { done, value } = await reader.read()
+			if (done) {
+				break
+			}
+			total += value.length
+			if (total > maxBytes) {
+				await reader.cancel()
+				return tooBig()
+			}
+			chunks.push(value)
+		}
+	} catch {
+		return badJson()
+	}
 
-  let raw: unknown;
-  try {
-    raw = JSON.parse(new TextDecoder().decode(Buffer.concat(chunks)));
-  } catch {
-    return badJson();
-  }
+	let raw: unknown
+	try {
+		raw = JSON.parse(new TextDecoder().decode(Buffer.concat(chunks)))
+	} catch {
+		return badJson()
+	}
 
-  const parsed = schema(raw);
-  return parsed instanceof type.errors
-    ? {
-        ok: false,
-        response: Response.json(
-          { error: "invalid payload", detail: parsed.summary },
-          { status: 400 },
-        ),
-      }
-    : { ok: true, value: parsed };
+	const parsed = schema(raw)
+	return parsed instanceof type.errors
+		? {
+				ok: false,
+				response: Response.json({ detail: parsed.summary, error: 'invalid payload' }, { status: 400 }),
+			}
+		: { ok: true, value: parsed }
 }
 
 function tooBig() {
-  return {
-    ok: false as const,
-    response: Response.json({ error: "payload too large" }, { status: 413 }),
-  };
+	return {
+		ok: false as const,
+		response: Response.json({ error: 'payload too large' }, { status: 413 }),
+	}
 }
 
 function badJson() {
-  return {
-    ok: false as const,
-    response: Response.json({ error: "invalid payload" }, { status: 400 }),
-  };
+	return {
+		ok: false as const,
+		response: Response.json({ error: 'invalid payload' }, { status: 400 }),
+	}
 }
