@@ -84,6 +84,8 @@ jobs:
 
       # No token: the OIDC identity above is the credential. Requires a trusted
       # publisher on npmjs.com pinned to this repo + workflow filename.
+      # --provenance needs this repo to stay public; npm rejects the bundle
+      # (422) if it ever flips back to private.
       - name: Publish to npm
         working-directory: apps/cli
         run: npm publish --provenance --access public
