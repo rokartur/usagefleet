@@ -38,3 +38,6 @@ apps/web/migrate.cjs
 
 # typescript
 *.tsbuildinfo
+
+# bun.lock is the lockfile; an npm one makes npm reconcile node_modules and break CI
+package-lock.json
