@@ -18,8 +18,8 @@ Two workspaces, one lockfile: `apps/web` (TanStack Start + better-auth + Drizzle
   produces a number on the dashboard.
 - [`docs/collector.md`](docs/collector.md) — CLI internals: watch loop, tailer
   offsets, limits reporting, prompt guard, per-OS autostart, self-update.
-- [`README.md`](README.md) — deployment, env vars, Docker. `.env.example` is the
-  authoritative env list.
+- [`README.md`](README.md) — product overview and local development.
+  `.env.example` is the authoritative env list.
 - [`apps/cli/README.md`](apps/cli/README.md) — the CLI's user-facing manual.
 
 ## Invariants

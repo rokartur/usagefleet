@@ -104,4 +104,4 @@ varies with seats. Prices live in Stripe, never in the catalog.
 `docker compose -f docker-compose.dev.yml up` for Postgres, then `bun run dev`.
 Schema changes are always a committed migration: `bun run db:generate`, then
 `bun run db:migrate` locally (the container runs it at boot). Commands live in
-`package.json`; env in `.env.example`; deployment in [`README.md`](../README.md).
+`package.json`; env in `.env.example`.
