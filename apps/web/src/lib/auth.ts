@@ -2,6 +2,7 @@ import { stripe as stripePlugin } from '@better-auth/stripe'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError } from 'better-auth/api'
+import { lastLoginMethod, username } from 'better-auth/plugins'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import Stripe from 'stripe'
 import { db } from '../db'
@@ -37,6 +38,26 @@ export function requiredEnv(name: string): string {
  *  lib/stripe-prices.ts reads the price list from it. */
 export const stripe = new Stripe(requiredEnv('STRIPE_SECRET_KEY'))
 
+/** Resend's REST API is one POST, so it needs no SDK. Every mail here carries a
+ *  link that grants access, which is why a rejected send must not pass quietly:
+ *  better-auth catches and logs whatever this throws, so the failure lands in
+ *  the server log instead of leaving someone waiting on a link that was never
+ *  accepted. Resend's error body can echo the recipient, so only the status
+ *  goes into the message. */
+async function sendMail(to: string, subject: string, text: string) {
+	const response = await fetch('https://api.resend.com/emails', {
+		method: 'POST',
+		headers: {
+			authorization: `Bearer ${requiredEnv('RESEND_API_KEY')}`,
+			'content-type': 'application/json',
+		},
+		body: JSON.stringify({ from: requiredEnv('MAIL_FROM'), to, subject, text }),
+	})
+	if (!response.ok) {
+		throw new Error(`Resend rejected "${subject}": ${response.status}`)
+	}
+}
+
 export const auth = betterAuth({
 	secret,
 	database: drizzleAdapter(db, {
@@ -55,12 +76,39 @@ export const auth = betterAuth({
 	// drizzle/0013_link_legacy_logins.sql: it never ran a verification step, so
 	// those rows would fail the check and could never link a provider.
 	//
-	// There is still no mailer here, so a password sign-up leaves emailVerified
-	// false and cannot be linked into later either. That stays as it is on
-	// purpose: flipping the flag without a verification step would let anyone
-	// register a password account on someone else's address and then absorb their
-	// provider login.
-	emailAndPassword: { enabled: true, disableSignUp: !signupEnabled() },
+	// requireEmailVerification is what keeps that linking honest for new accounts:
+	// without a confirmation step, anyone could register a password account on a
+	// stranger's address and then absorb their provider login.
+	//
+	// revokeSessionsOnPasswordReset is the point of a reset: whoever prompted it
+	// has to be able to push out a session they no longer control.
+	emailAndPassword: {
+		enabled: true,
+		disableSignUp: !signupEnabled(),
+		requireEmailVerification: true,
+		revokeSessionsOnPasswordReset: true,
+		sendResetPassword: ({ user, url }) =>
+			sendMail(
+				user.email,
+				'Reset your password',
+				`Set a new UsageFleet password:\n\n${url}\n\nThe link expires in an hour and signs out every other session. If you did not ask for this, ignore this email; your password stays as it is.`,
+			),
+	},
+
+	// The confirmation step behind requireEmailVerification. sendOnSignIn covers
+	// the lost-email case on its own: an unverified sign-in attempt is refused AND
+	// mails a fresh link, so there is nothing for a "resend" button to do.
+	emailVerification: {
+		sendOnSignUp: true,
+		sendOnSignIn: true,
+		autoSignInAfterVerification: true,
+		sendVerificationEmail: ({ user, url }) =>
+			sendMail(
+				user.email,
+				'Confirm your email',
+				`Confirm this address to finish signing in to UsageFleet:\n\n${url}\n\nThe link expires in an hour. If you did not sign up, ignore this email.`,
+			),
+	},
 
 	// Last resort for failures that arrive with no callback URL to return to (an
 	// expired OAuth state cookie, a hand-typed endpoint). Without it better-auth
@@ -98,6 +146,19 @@ export const auth = betterAuth({
 		},
 	},
 	plugins: [
+		// Adds /sign-in/username next to /sign-in/email. The default validator only
+		// accepts [a-zA-Z0-9_.], so a username can never contain '@' — which is what
+		// lets the login form pick an endpoint by looking for one, with no ambiguous
+		// case in between. Usernames are stored lowercased and unique;
+		// displayUsername keeps the typed casing.
+		username(),
+		// Records the last successful method in a readable cookie, so the login page
+		// can mark it. The built-in resolver knows /sign-in/email but not the
+		// username endpoint the plugin above adds; both are the same credentials
+		// form, so both report "email". Returning null falls through to the default.
+		lastLoginMethod({
+			customResolveMethod: ctx => (ctx.path === '/sign-in/username' ? 'email' : null),
+		}),
 		stripePlugin({
 			stripeClient: stripe,
 			stripeWebhookSecret: requiredEnv('STRIPE_WEBHOOK_SECRET'),

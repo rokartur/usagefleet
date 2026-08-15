@@ -36,12 +36,17 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       # Set to "false" to block new account creation.
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
-      # GitHub and Google OAuth apps — the only sign-in methods. Callback URLs
-      # must be <BETTER_AUTH_URL>/api/auth/callback/{github,google}.
+      # GitHub and Google OAuth apps. Callback URLs must be
+      # <BETTER_AUTH_URL>/api/auth/callback/{github,google}.
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?set GITHUB_CLIENT_ID in .env}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?set GITHUB_CLIENT_SECRET in .env}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?set GOOGLE_CLIENT_ID in .env}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?set GOOGLE_CLIENT_SECRET in .env}
+      # Resend, for the confirmation link a password sign-up must follow before
+      # it gets a session. Required: without it those accounts can be created
+      # but never entered. MAIL_FROM must use a domain verified in Resend.
+      RESEND_API_KEY: ${RESEND_API_KEY:?set RESEND_API_KEY in .env}
+      MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM in .env}
       # Set to the number of trusted reverse proxies in front of the app (or
       # "true" for one) so rate limiting reads a real client IP from
       # X-Forwarded-For. Leave "false" for direct exposure — see .env.example.

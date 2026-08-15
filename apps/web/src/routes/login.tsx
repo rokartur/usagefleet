@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { AuthForm } from '@/components/AuthForm'
 import { OAuthSignIn } from '@/components/OAuthSignIn'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { authClient } from '@/lib/auth-client'
 import { signupEnabled } from '@/lib/flags'
 import { isPaidPlan } from '@/lib/plans'
 import type { PaidPlan } from '@/lib/plans'
@@ -51,6 +52,14 @@ function LoginPage() {
 	// button, only the password form needs to know which one the visitor wants.
 	const [mode, setMode] = useState<'login' | 'signup'>('login')
 	const isSignup = mode === 'signup'
+	// The last-login-method plugin leaves a plain cookie, readable only in the
+	// browser, so reading it while rendering would make the server markup and the
+	// first client render disagree. Read once here rather than per button.
+	const [lastMethod, setLastMethod] = useState<string | null>(null)
+	useEffect(() => {
+		// oxlint-disable-next-line react/react-compiler -- document.cookie is only readable after mount
+		setLastMethod(authClient.getLastUsedLoginMethod())
+	}, [])
 	return (
 		<div className='flex flex-1 items-center justify-center p-6'>
 			<Card className='w-full max-w-sm [--card-spacing:--spacing(6)]'>
@@ -60,15 +69,21 @@ function LoginPage() {
 				</CardHeader>
 				<CardContent className='flex flex-col gap-6'>
 					<div className='flex flex-col gap-2'>
-						<OAuthSignIn provider='github' size='lg' plan={plan} />
-						<OAuthSignIn provider='google' size='lg' variant='outline' plan={plan} />
+						<OAuthSignIn provider='github' size='lg' plan={plan} lastUsed={lastMethod === 'github'} />
+						<OAuthSignIn
+							provider='google'
+							size='lg'
+							variant='outline'
+							plan={plan}
+							lastUsed={lastMethod === 'google'}
+						/>
 					</div>
 					<div className='flex items-center gap-3 text-xs text-muted-foreground'>
 						<Separator className='flex-1' />
 						or
 						<Separator className='flex-1' />
 					</div>
-					<AuthForm mode={mode} plan={plan} />
+					<AuthForm mode={mode} plan={plan} lastUsed={lastMethod === 'email'} />
 					{error && (
 						<p role='alert' className='text-center text-sm text-destructive'>
 							{error === 'signup_disabled'

@@ -6,6 +6,12 @@ export const user = pgTable('user', {
 	name: text('name').notNull(),
 	email: text('email').notNull().unique(),
 	emailVerified: boolean('email_verified').default(false).notNull(),
+	// Owned by the better-auth username plugin. Nullable because provider sign-ups
+	// never set one: those accounts sign in by email and simply have no second
+	// identifier. `username` is the lowercased lookup key, `displayUsername` keeps
+	// the casing the account was created with.
+	username: text('username').unique(),
+	displayUsername: text('display_username'),
 	image: text('image'),
 	// Written by the better-auth Stripe plugin on sign-up.
 	stripeCustomerId: text('stripe_customer_id'),

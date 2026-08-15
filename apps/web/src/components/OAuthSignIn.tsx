@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { signIn } from '@/lib/auth-client'
@@ -23,12 +23,6 @@ export const PROVIDERS = {
 
 export type ProviderId = keyof typeof PROVIDERS
 
-/** Which provider this browser last signed in with, so a returning visitor does
- *  not have to remember. A hint for the label below, never a source of truth. */
-const LAST_PROVIDER_KEY = 'usagefleet.last-provider'
-
-const isProviderId = (value: unknown): value is ProviderId => typeof value === 'string' && value in PROVIDERS
-
 /** Brand mark for a provider, sized to sit inline in a button. */
 export function ProviderMark({ provider }: { provider: ProviderId }) {
 	return (
@@ -46,27 +40,19 @@ export function ProviderMark({ provider }: { provider: ProviderId }) {
 export function OAuthSignIn({
 	provider,
 	plan,
+	lastUsed,
 	...buttonProps
 }: Omit<ComponentProps<typeof Button>, 'onClick' | 'children' | 'asChild'> & {
 	provider: ProviderId
 	/** Plan chosen on the landing page, carried across sign-in so a pricing CTA
 	 *  still lands on billing, and survives a failed attempt so a retry works. */
 	plan?: PaidPlan
+	/** This browser last signed in with this provider, so the button says so. */
+	lastUsed?: boolean
 }) {
 	const [pending, setPending] = useState(false)
-	const [lastUsed, setLastUsed] = useState<ProviderId | null>(null)
 	const { name } = PROVIDERS[provider]
 	const { callbackURL, errorCallbackURL } = signInRedirects(plan)
-
-	// localStorage exists only in the browser, so reading it while rendering
-	// would make the server markup and the first client render disagree.
-	useEffect(() => {
-		const stored = localStorage.getItem(LAST_PROVIDER_KEY)
-		if (isProviderId(stored)) {
-			// oxlint-disable-next-line react/react-compiler -- localStorage is only readable after mount
-			setLastUsed(stored)
-		}
-	}, [])
 
 	return (
 		<Button
@@ -75,10 +61,6 @@ export function OAuthSignIn({
 			disabled={pending || buttonProps.disabled}
 			onClick={async () => {
 				setPending(true)
-				// Recorded on intent rather than on success: a success navigates away
-				// before anything after the await is guaranteed to run, so an abandoned
-				// attempt marks the provider too.
-				localStorage.setItem(LAST_PROVIDER_KEY, provider)
 				const { error } = await signIn.social({
 					callbackURL,
 					errorCallbackURL,
@@ -96,7 +78,7 @@ export function OAuthSignIn({
 		>
 			<ProviderMark provider={provider} />
 			Continue with {name}
-			{lastUsed === provider && (
+			{lastUsed && (
 				<Badge variant='secondary' className='absolute -top-2 right-2 h-4.5 px-1.5 text-[10px] font-normal'>
 					Last used
 				</Badge>
