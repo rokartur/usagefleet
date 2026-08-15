@@ -1,9 +1,12 @@
-/** The command list, shared by `help` and the generated completion scripts, so
- *  a new command can't land in one and be missing from the other. `args` is the
- *  hint `help` prints after the name; completion only needs the bare name. */
+/** The user-facing command list, shared by `help` and the generated completion
+ *  scripts, so a command can't land in one and be missing from the other. `args`
+ *  is the hint `help` prints after the name; completion only needs the bare name.
+ *
+ *  `watch` is deliberately absent: it is the entrypoint the installed service
+ *  runs, not something to type. It still dispatches — every plist and unit on
+ *  disk names it — it just isn't advertised. */
 export const commands: readonly { name: string; args?: string; meaning: string }[] = [
 	{ name: 'run', meaning: 'scan once, upload usage + report limits' },
-	{ name: 'watch', args: '[--interval s]', meaning: 'poll continuously (default 15s)' },
 	{ name: 'limits', meaning: 'report only your real 5h/weekly usage' },
 	{ name: 'guard', meaning: 'exit 2 when the group is over a blocking limit' },
 	{ name: 'update', meaning: 'update to the latest release now' },
@@ -11,7 +14,6 @@ export const commands: readonly { name: string; args?: string; meaning: string }
 	{ name: 'status', meaning: 'service health, limits, resolved config' },
 	{ name: 'config', meaning: 'config file location and env overrides' },
 	{ name: 'completion', args: '<zsh|fish>', meaning: 'print a shell completion script' },
-	{ name: 'version', meaning: 'print the release version' },
 	{ name: 'install', args: '--token <t>', meaning: 'configure + install the service and prompt guard' },
 	{ name: 'uninstall', meaning: 'remove the service and the guard' },
 ]

@@ -380,8 +380,7 @@ async function main(): Promise<void> {
 		case 'completion': {
 			return cmdCompletion()
 		}
-		// Bare version, so the installer can compare builds without parsing help.
-		case 'version':
+		// Flags only: bare `usagefleet` already prints the version in its header.
 		case '--version':
 		case '-v': {
 			console.log(RELEASE_VERSION)

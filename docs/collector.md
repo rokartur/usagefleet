@@ -9,10 +9,14 @@ process per machine. User-facing usage lives in
 `index.ts` dispatches: `init`/`install` (interactive setup + autostart),
 `run` (one cycle), `watch` (the daemon loop), `limits` (one limits report),
 `guard` (the prompt hook), `status`, `config` (file path + env reference),
-`update`, `notify-test`, `uninstall`, `version`, `completion` (zsh/fish scripts).
+`update`, `notify-test`, `uninstall`, `completion` (zsh/fish scripts).
 
 The command list itself lives in `completion.ts` and drives both `help` and the
-generated completion scripts — add a command there, not in two places.
+generated completion scripts — add a command there, not in two places. Two
+entrypoints are deliberately missing from it, so they dispatch without being
+advertised: `watch`, which is what the installed service runs rather than
+something to type, and `--version`/`-v`, since bare `usagefleet` already prints
+the release in its header.
 
 ## The watch loop
 
