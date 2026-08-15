@@ -129,10 +129,7 @@ export async function runOnce(
 		} else if (outcome === 'plan') {
 			// The device sits outside the account's device limit (402). Every other
 			// file gets the same answer, so stop and say what unblocks it once.
-			log(
-				'warn',
-				`device outside your plan's device limit · free a slot or upgrade at ${cfg.endpoint}/devices · nothing is lost, uploads resume once it fits`,
-			)
+			log('warn', planWall(cfg.endpoint))
 			result.failed = true
 			break
 		} else if (outcome === 'invalid') {
@@ -254,6 +251,12 @@ function pruneMissingFiles(state: { files: Record<string, unknown> }, scanned: {
 	return removed
 }
 
+/** The one thing that unblocks a device parked outside the account's device limit.
+ *  Shared by both upload legs so the wording cannot drift between them. */
+function planWall(endpoint: string): string {
+	return `device outside your plan's device limit · free a slot or upgrade at ${endpoint}/devices · nothing is lost, uploads resume once it fits`
+}
+
 /**
  * Auto-detect the local Claude login, read the real 5h/weekly utilization from
  * Anthropic's rate-limit headers, and report it to the server. Best-effort —
@@ -291,9 +294,21 @@ export async function reportLimitsOnce(
 		log('warn', `limits fetch failed · ${(error as Error).message}`)
 		return null
 	}
-	const ok = await postLimits(report, cfg)
-	if (!ok) {
-		log('warn', 'limits upload failed')
+	// Same vocabulary as the usage leg: a rejection the operator can act on has to
+	// say which one it is, since this runs every cycle and an anonymous failure
+	// would repeat forever without ever naming the fix.
+	const outcome = await postLimits(report, cfg)
+	if (outcome === 'plan') {
+		log('warn', planWall(cfg.endpoint))
+	} else if (outcome === 'auth') {
+		log(
+			'warn',
+			'limits rejected · device token invalid or revoked · re-run `usagefleet install --token <device-token>`',
+		)
+	} else if (outcome === 'invalid') {
+		log('warn', 'limits rejected as malformed · this is a bug, please report it')
+	} else if (outcome !== 'ok') {
+		log('warn', 'limits upload failed · retrying next cycle')
 	}
 	// Cache the reading so `status` can show current usage without spending
 	// another billable API call.

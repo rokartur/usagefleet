@@ -74,7 +74,9 @@ export async function uploadBatch(payload: BatchPayload, cfg: Config): Promise<U
 	return { fatal: 'transient', ok: false }
 }
 
-/** Map a 4xx (never 429, the caller filters it) to a failure kind. */
+/** Map a non-OK status to a failure kind. uploadBatch only ever passes a 4xx it
+ *  has already decided not to retry; postLimits passes anything, and the 5xx/429
+ *  fall-through to 'transient' is the answer it wants. */
 function classifyClientError(status: number): UploadFailure {
 	if (status === 401 || status === 403) {
 		return 'auth'
@@ -107,8 +109,12 @@ function retryAfterMs(header: string | null | undefined, fallback: number): numb
 	return Math.min(Math.max(wait, 0), 60_000) + Math.floor(Math.random() * 500)
 }
 
-/** Report the account's real limit utilization to the server. */
-export async function postLimits(report: LimitsReport, cfg: Config): Promise<boolean> {
+/** Report the account's real limit utilization to the server. Shares uploadBatch's
+ *  failure vocabulary so a plan wall reads as one on this leg too: it runs every
+ *  cycle even when no usage records moved, so collapsing 402 to a bare failure
+ *  would log an unactionable warning forever. Single-shot by design — a stale
+ *  reading is worth less than the next cycle's fresh one. */
+export async function postLimits(report: LimitsReport, cfg: Config): Promise<'ok' | UploadFailure> {
 	try {
 		const res = await fetch(`${cfg.endpoint}/api/v1/limits`, {
 			body: JSON.stringify(report),
@@ -119,8 +125,8 @@ export async function postLimits(report: LimitsReport, cfg: Config): Promise<boo
 			method: 'POST',
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 		})
-		return res.ok
+		return res.ok ? 'ok' : classifyClientError(res.status)
 	} catch {
-		return false
+		return 'transient'
 	}
 }

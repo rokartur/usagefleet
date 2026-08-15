@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { LimitsReport } from './claude-limits.js'
 import type { BatchPayload, Config } from './types.js'
-import { uploadBatch } from './uploader.js'
+import { postLimits, uploadBatch } from './uploader.js'
 
 const cfg: Config = {
 	batchSize: 100,
@@ -89,5 +90,50 @@ describe('uploadBatch failure classification', () => {
 			fatal: 'transient',
 			ok: false,
 		})
+	})
+})
+
+// This leg runs every cycle even when no usage records moved, so a plan-walled
+// device is the case that decides between one actionable warning and an
+// anonymous "limits upload failed" every five minutes, forever.
+describe(postLimits, () => {
+	const report: LimitsReport = {
+		fiveHourPct: 10,
+		fiveHourResetsAt: null,
+		modelLimits: [],
+		sevenDayPct: 20,
+		sevenDayResetsAt: null,
+		source: 'sub',
+	}
+
+	it('2xx → ok', async () => {
+		mockFetch(200)
+		await expect(postLimits(report, cfg)).resolves.toBe('ok')
+	})
+
+	it('402 → plan, not a bare failure', async () => {
+		mockFetch(402)
+		await expect(postLimits(report, cfg)).resolves.toBe('plan')
+	})
+
+	it('401 → auth', async () => {
+		mockFetch(401)
+		await expect(postLimits(report, cfg)).resolves.toBe('auth')
+	})
+
+	// Single-shot by design: 5xx and a dead network both wait for the next cycle.
+	it.each([500, 503])('%i → transient', async status => {
+		mockFetch(status)
+		await expect(postLimits(report, cfg)).resolves.toBe('transient')
+	})
+
+	it('network error → transient', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				throw new Error('ECONNREFUSED')
+			}),
+		)
+		await expect(postLimits(report, cfg)).resolves.toBe('transient')
 	})
 })
