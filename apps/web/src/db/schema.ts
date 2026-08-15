@@ -32,8 +32,8 @@ export const groups = pgTable(
 		color: text('color').notNull().default('#6366f1'),
 		// When on, this group's devices refuse new prompts once the group has eaten
 		// its budget slice (an equal share of the account limit) for that window.
-		// Enforced by `usagefleet guard` via GET /api/v1/limits; DB-only switches,
-		// there is no UI for them.
+		// Enforced by `usagefleet guard` via GET /api/v1/limits; owners toggle them
+		// per group in the group dialog.
 		blockOnSessionLimit: boolean('block_on_session_limit').notNull().default(false),
 		blockOnWeeklyLimit: boolean('block_on_weekly_limit').notNull().default(false),
 		createdAt: timestamp('created_at').defaultNow().notNull(),

@@ -48,17 +48,30 @@ export const createGroup = createServerFn({ method: 'POST' })
 		if ((await groupCount(user.id)) >= deviceLimit) {
 			return
 		}
-		await db.insert(groups).values({ color, id: randomUUID(), name, ownerId: user.id })
+		await db.insert(groups).values({
+			blockOnSessionLimit: formData.has('blockOnSessionLimit'),
+			blockOnWeeklyLimit: formData.has('blockOnWeeklyLimit'),
+			color,
+			id: randomUUID(),
+			name,
+			ownerId: user.id,
+		})
 	})
 
-/** Edit a group's color (and optionally name). */
+/** Edit a group's color, name and its two blocking switches. */
 export const updateGroup = createServerFn({ method: 'POST' })
 	.inputValidator((formData: FormData) => formData)
 	.handler(async ({ data: formData }) => {
 		const user = await requireUser()
 		const id = String(formData.get('id'))
 		const color = safeColor(String(formData.get('color') ?? '#6366f1'))
-		const set: { color: string; name?: string } = { color }
+		// Unchecked boxes aren't submitted, so absence is the "off" signal — the
+		// dialog always posts both fields.
+		const set: { blockOnSessionLimit: boolean; blockOnWeeklyLimit: boolean; color: string; name?: string } = {
+			blockOnSessionLimit: formData.has('blockOnSessionLimit'),
+			blockOnWeeklyLimit: formData.has('blockOnWeeklyLimit'),
+			color,
+		}
 		const rawName = formData.get('name')
 		if (rawName != null) {
 			const name = String(rawName).trim()

@@ -2,6 +2,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { PencilIcon, PlusIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
 	Dialog,
 	DialogClose,
@@ -12,7 +13,15 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from '@/components/ui/dialog'
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field'
+import {
+	Field,
+	FieldContent,
+	FieldDescription,
+	FieldGroup,
+	FieldLabel,
+	FieldLegend,
+	FieldSet,
+} from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/toast'
 import { createGroup, updateGroup } from '@/lib/actions'
@@ -62,13 +71,36 @@ function ColorField({ selected }: { selected?: string }) {
 	)
 }
 
-/** Create (no `group`) or rename/recolor (with `group`) — one dialog, since the
- *  fields and the server-action shape are identical. */
+/** One blocking switch. Off by default: a group only ever blocks itself, and
+ *  only once its owner turns this on. */
+function BlockField({ name, label, description, defaultChecked }: BlockFieldProps) {
+	return (
+		<Field orientation='horizontal'>
+			<Checkbox id={name} name={name} defaultChecked={defaultChecked} />
+			<FieldContent>
+				<FieldLabel htmlFor={name} className='font-normal'>
+					{label}
+				</FieldLabel>
+				<FieldDescription>{description}</FieldDescription>
+			</FieldContent>
+		</Field>
+	)
+}
+
+interface BlockFieldProps {
+	name: 'blockOnSessionLimit' | 'blockOnWeeklyLimit'
+	label: string
+	description: string
+	defaultChecked?: boolean
+}
+
+/** Create (no `group`) or edit (with `group`) — one dialog, since the fields
+ *  and the server-action shape are identical. */
 export function GroupFormDialog({
 	group,
 	atCap = false,
 }: {
-	group?: { id: string; name: string; color: string }
+	group?: { id: string; name: string; color: string; blockOnSessionLimit: boolean; blockOnWeeklyLimit: boolean }
 	atCap?: boolean
 }) {
 	const [open, setOpen] = useState(false)
@@ -134,6 +166,27 @@ export function GroupFormDialog({
 							/>
 						</Field>
 						<ColorField selected={group?.color} />
+						<FieldSet>
+							<FieldLegend variant='label' className='mb-2'>
+								Blocking
+							</FieldLegend>
+							<BlockField
+								name='blockOnSessionLimit'
+								label='Block at 100% of the 5-hour slice'
+								description="Refuse new prompts on this group's devices until the 5-hour window resets."
+								defaultChecked={group?.blockOnSessionLimit}
+							/>
+							<BlockField
+								name='blockOnWeeklyLimit'
+								label='Block at 100% of the weekly slice'
+								description='Same, for the weekly window.'
+								defaultChecked={group?.blockOnWeeklyLimit}
+							/>
+							<FieldDescription>
+								Enforced by the collector&apos;s prompt hook, installed by{' '}
+								<code>usagefleet install</code>.
+							</FieldDescription>
+						</FieldSet>
 					</FieldGroup>
 					<DialogFooter>
 						<DialogClose render={<Button variant='outline' type='button' />}>Cancel</DialogClose>

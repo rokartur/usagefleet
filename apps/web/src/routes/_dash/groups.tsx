@@ -92,11 +92,27 @@ function GroupsPage() {
 										: 'Empty, so its slice of the limit goes unused.'}
 								</p>
 							</div>
+							{(g.blockOnSessionLimit || g.blockOnWeeklyLimit) && (
+								<span className='text-xs text-muted-foreground'>
+									blocks at 100% ·{' '}
+									{[g.blockOnSessionLimit && '5h', g.blockOnWeeklyLimit && 'weekly']
+										.filter(Boolean)
+										.join(' + ')}
+								</span>
+							)}
 							<span className='text-sm text-muted-foreground tabular-nums'>
 								{g.deviceNames.length} {g.deviceNames.length === 1 ? 'device' : 'devices'}
 							</span>
 							<div className='flex gap-1'>
-								<GroupFormDialog group={{ id: g.id, name: g.name, color: g.color }} />
+								<GroupFormDialog
+									group={{
+										blockOnSessionLimit: g.blockOnSessionLimit,
+										blockOnWeeklyLimit: g.blockOnWeeklyLimit,
+										color: g.color,
+										id: g.id,
+										name: g.name,
+									}}
+								/>
 								<ConfirmAction
 									action={deleteGroup}
 									id={g.id}
