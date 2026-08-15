@@ -67,14 +67,14 @@ describe('store', () => {
 		})
 	})
 
-	it('keeps a token written by a concurrent init when saving offsets', () => {
+	it('keeps a token written by a concurrent install when saving offsets', () => {
 		const path = join(mkdtempSync(join(tmpdir(), 'uf-store-')), 'config.json')
 		updateStore(path, s => {
 			s.token = 'uf_first'
 			s.state.files['/a.jsonl'] = { inode: 1, offset: 10 }
 		})
 
-		// Someone ran `usagefleet init` after the service loaded its copy.
+		// Someone ran `usagefleet install` after the service loaded its copy.
 		updateStore(path, s => {
 			s.token = 'uf_rotated'
 		})

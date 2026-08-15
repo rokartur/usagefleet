@@ -18,7 +18,7 @@ export const TOKEN_PLACEHOLDER = 'PASTE_YOUR_DEVICE_TOKEN'
 export function installCommands(token: string) {
 	const origin = siteUrl()
 	const endpoint = origin === HOSTED_ORIGIN ? '' : ` --endpoint ${origin}`
-	const steps = [`npm i -g ${PACKAGE}`, `usagefleet init --token ${token}${endpoint}`, 'usagefleet install']
+	const steps = [`npm i -g ${PACKAGE}`, `usagefleet install --token ${token}${endpoint}`]
 	return [
 		{ command: steps.join(' && '), id: 'unix', label: 'macOS / Linux' },
 		{ command: steps.join('; '), id: 'windows', label: 'Windows' },

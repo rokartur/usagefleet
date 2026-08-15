@@ -122,7 +122,7 @@ export async function runOnce(
 			// remaining files would 401 identically, so stop this cycle and surface.
 			log(
 				'warn',
-				'auth rejected · device token invalid or revoked · re-run `usagefleet init` with a fresh token, then restart the service',
+				'auth rejected · device token invalid or revoked · re-run `usagefleet install --token <t>` with a fresh token',
 			)
 			result.failed = true
 			break
@@ -158,7 +158,7 @@ export async function runOnce(
 	// One durable write per cycle rather than one per file: the store is fsynced
 	// on every save, and a crash mid-cycle only costs a re-upload the server
 	// dedups. Only our own section is replaced, so a token written by a
-	// concurrent `usagefleet init` survives.
+	// concurrent `usagefleet install` survives.
 	if (pruneMissingFiles(state, files) || advanced) {
 		updateStore(cfg.storePath, store => {
 			store.state.files = state.files

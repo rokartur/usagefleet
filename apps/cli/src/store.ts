@@ -94,7 +94,7 @@ export function readStore(path: string = storePath()): Store {
 
 /**
  * Read-modify-write the store atomically. Re-reading inside the call is what
- * lets `usagefleet init` change the token while the service is mid-cycle: the
+ * lets `usagefleet install` change the token while the service is mid-cycle: the
  * service's next save picks up the new token instead of overwriting it with the
  * copy it loaded minutes ago.
  *

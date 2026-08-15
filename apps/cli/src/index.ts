@@ -248,31 +248,26 @@ function limitHealth(fiveHour: number | null, sevenDay: number | null): 'ok' | '
 	return worst >= 95 ? 'bad' : worst >= 80 ? 'warn' : 'ok'
 }
 
-function cmdInit(): void {
-	// Endpoint is optional: it only exists for self-hosted deployments, and
-	// leaving it unset keeps whatever a previous init wrote.
-	const endpoint = flag('endpoint') ?? process.env.USAGEFLEET_ENDPOINT
-	const token = flag('token') ?? process.env.USAGEFLEET_TOKEN
-	if (!token) {
-		console.error(fail('init', 'a device token is required'))
-		console.error(hint('  usagefleet init --token <device-token>'))
-		console.error(hint('  add --endpoint <url> when self-hosting'))
-		process.exit(1)
+/** Setup in one command: persist the flags (when given), then install the
+ *  background service, which refuses to install without a resolvable token.
+ *  The write merges over the existing store, so re-running install rotates the
+ *  token without resetting tail offsets. Endpoint only matters when
+ *  self-hosting; unset keeps whatever is configured. */
+async function cmdInstall(): Promise<void> {
+	const endpoint = flag('endpoint')
+	const token = flag('token')
+	if (endpoint || token) {
+		updateStore(storePath(), store => {
+			if (endpoint) {
+				store.endpoint = endpoint
+			}
+			if (token) {
+				store.token = token
+			}
+		})
 	}
-	const path = storePath()
-	// Merges over whatever is already there, so tail offsets and projectsDir
-	// survive a re-init and the device does not re-upload its whole history.
-	updateStore(path, store => {
-		if (endpoint) {
-			store.endpoint = endpoint
-		}
-		store.token = token
-	})
-	console.log(step('configured', `${host(loadConfig().endpoint)} · ${tilde(path)}`))
-	console.log('')
-	console.log(hint('next:'))
-	console.log(hint('  usagefleet install    run in the background'))
-	console.log(hint('  usagefleet status     current state'))
+	const { install } = await import('./service.js')
+	install()
 }
 
 /** Command list and env reference, in the same padded-column style as the
@@ -287,8 +282,7 @@ function help(): void {
 		['notify-test', 'fire a test desktop notification'],
 		['status', 'service health, limits, resolved config'],
 		['version', 'print the release version'],
-		['init --token <t>', 'write the config file'],
-		['install', 'install the background service + prompt guard'],
+		['install --token <t>', 'configure + install the service and prompt guard'],
 		['uninstall', 'remove the service and the guard'],
 	]
 	const env: [string, string][] = [
@@ -371,12 +365,10 @@ async function main(): Promise<void> {
 			console.log(RELEASE_VERSION)
 			return
 		}
-		case 'init': {
-			return cmdInit()
-		}
+		// `init` was the separate config step; it now just does the whole setup.
+		case 'init':
 		case 'install': {
-			const { install } = await import('./service.js')
-			return install()
+			return cmdInstall()
 		}
 		case 'uninstall': {
 			const { uninstall } = await import('./service.js')

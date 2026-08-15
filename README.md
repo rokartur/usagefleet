@@ -14,7 +14,7 @@ share of your **5-hour session** and **weekly** limits.
 > Phones are out of scope: the Claude mobile app keeps no local usage logs.
 
 Setup is the same on macOS, Linux and Windows — `npm i -g @usagefleet/cli`, then
-`usagefleet init --token uf_xxx && usagefleet install`. Details, env vars and
+`usagefleet install --token uf_xxx`. Details, env vars and
 troubleshooting: **[apps/cli/README.md](apps/cli/README.md)**.
 
 ## How usage is measured

@@ -240,14 +240,14 @@ export function install(): void {
 	// Pre-flight: refuse to install a service that can't resolve a token,
 	// otherwise the baked `watch` process throws on every launch and the service
 	// manager crash-loops it invisibly (only the log file shows it). Use the same
-	// env-OR-file precedence loadConfig() uses so a prior `init` is honored; the
-	// endpoint needs no check, it falls back to the hosted default.
+	// env-OR-file precedence loadConfig() uses so an earlier install's token is
+	// honored; the endpoint needs no check, it falls back to the hosted default.
 	const file = readStore()
 	const endpoint = process.env.USAGEFLEET_ENDPOINT || file.endpoint || DEFAULT_ENDPOINT
 	const token = process.env.USAGEFLEET_TOKEN || file.token || ''
 	if (!token) {
 		console.error(fail('config', 'no device token resolved'))
-		console.error(hint('  usagefleet init --token <device-token>'))
+		console.error(hint('  usagefleet install --token <device-token>'))
 		console.error(hint('  or set USAGEFLEET_TOKEN'))
 		process.exit(1)
 	}
@@ -307,7 +307,7 @@ ${envXml}
 		mkdirSync(join(homedir(), 'Library', 'LaunchAgents'), { recursive: true })
 		mkdirSync(macLogDir(), { recursive: true })
 		// 0600: this file carries USAGEFLEET_TOKEN and ANTHROPIC_API_KEY, the same
-		// secrets `init` deliberately writes at 0600.
+		// secrets the config file deliberately holds at 0600.
 		writeFileSync(path, plist, { encoding: 'utf-8', mode: 0o600 })
 		chmodSync(path, 0o600) // writeFileSync's mode does not apply to an existing file
 		const domain = `gui/${process.getuid?.()}`

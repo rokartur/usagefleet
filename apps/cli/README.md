@@ -9,14 +9,13 @@ UsageFleet server. Read-only on the log files. Zero runtime dependencies
 
 ## Install
 
-Three commands, identical on macOS, Linux and Windows. You only need a device
+Two commands, identical on macOS, Linux and Windows. You only need a device
 **token** from the server's Devices page (endpoint defaults to
 `https://usagefleet.com`):
 
 ```bash
 npm i -g @usagefleet/cli
-usagefleet init --token uf_xxx      # add --endpoint <url> when self-hosting
-usagefleet install                  # autostart at login
+usagefleet install --token uf_xxx   # autostart at login; --endpoint <url> when self-hosting
 ```
 
 In PowerShell chain them with `;` instead of `&&` — Windows PowerShell 5.1 has
@@ -44,7 +43,7 @@ bun run src/index.ts status   # or: npm run build && node dist/index.js status
 Get a device **token** from the server's Devices page, then either:
 
 ```bash
-usagefleet init --endpoint https://track.example.com --token uf_xxx
+usagefleet install --endpoint https://track.example.com --token uf_xxx
 # writes ~/.config/usagefleet/config.json
 ```
 
@@ -120,9 +119,9 @@ set USAGEFLEET_TOKEN=uf_xxx
 ```
 
 > Prefer not to put a long-lived token in shell history/rc files? Use
-> `usagefleet init --endpoint <url> --token <t>` instead — it writes
+> `usagefleet install --endpoint <url> --token <t>` instead — it writes
 > `~/.config/usagefleet/config.json` (mode `600`), which the collector reads
-> automatically. `init` merges, so re-running it rotates the token without
+> automatically. The write merges, so re-running it rotates the token without
 > resetting your tail offsets.
 > When run as a service, `usagefleet install` bakes every `USAGEFLEET_*` value
 > that is currently set (plus `ANTHROPIC_API_KEY`) into the launchd/systemd unit.

@@ -19,7 +19,7 @@ function withStore(store: Record<string, unknown>): void {
 }
 
 describe(loadConfig, () => {
-	// `init --token` writes no endpoint, so setup on the hosted service is a
+	// `install --token` writes no endpoint, so setup on the hosted service is a
 	// token and nothing else.
 	it('falls back to the hosted endpoint when none is configured', () => {
 		withStore({ token: 'uf_x' })
