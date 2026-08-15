@@ -227,6 +227,7 @@ function pruneMissingFiles(state: { files: Record<string, unknown> }, scanned: {
 		if (seen.has(fp) || existsSync(fp)) {
 			continue
 		}
+		// oxlint-disable-next-line typescript/no-dynamic-delete -- state.files is a JSON blob keyed by path
 		delete state.files[fp]
 		removed = true
 	}

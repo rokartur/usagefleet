@@ -63,6 +63,7 @@ export function OAuthSignIn({
 	useEffect(() => {
 		const stored = localStorage.getItem(LAST_PROVIDER_KEY)
 		if (isProviderId(stored)) {
+			// oxlint-disable-next-line react/react-compiler -- localStorage is only readable after mount
 			setLastUsed(stored)
 		}
 	}, [])

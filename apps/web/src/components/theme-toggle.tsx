@@ -15,6 +15,7 @@ const THEMES = [
 export function ThemeToggle() {
 	const { theme, setTheme } = useTheme()
 	const [mounted, setMounted] = useState(false)
+	// oxlint-disable-next-line react/react-compiler -- the mount flag is the point
 	useEffect(() => setMounted(true), [])
 
 	return (

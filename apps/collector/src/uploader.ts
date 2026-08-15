@@ -5,7 +5,9 @@ const MAX_ATTEMPTS = 6
 const REQUEST_TIMEOUT_MS = 15_000
 
 function sleep(ms: number): Promise<void> {
-	return new Promise(r => setTimeout(r, ms))
+	return new Promise(resolve => {
+		setTimeout(resolve, ms)
+	})
 }
 
 /** Why an upload failed, so the caller can decide whether to advance the offset.

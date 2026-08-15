@@ -144,7 +144,8 @@ function bucketize(folded: UsageRecord[], start: Date, end: Date, granularity: T
 		}
 		const bs = floorBucket(t, bucketMs)
 		const bucket = buckets.get(bs)
-		if (!bucket) {
+		const acc = cellAcc.get(bs)
+		if (!(bucket && acc)) {
 			continue
 		} // defensive; in-window events always land in a bucket
 		addInto(bucket.totals, ev)
@@ -154,7 +155,6 @@ function bucketize(folded: UsageRecord[], start: Date, end: Date, granularity: T
 		addInto((bucket.byModel[mk] ??= emptyTotals()), ev)
 		const sk = ev.source ?? 'cli'
 		const dk = ev.deviceId ?? 'unknown'
-		const acc = cellAcc.get(bs)!
 		const ck = cellKey(gk, mk, sk, dk)
 		let cell = acc.get(ck)
 		if (!cell) {
@@ -164,7 +164,10 @@ function bucketize(folded: UsageRecord[], start: Date, end: Date, granularity: T
 	}
 
 	for (const [bs, acc] of cellAcc) {
-		buckets.get(bs)!.cells = [...acc.values()]
+		const bucket = buckets.get(bs)
+		if (bucket) {
+			bucket.cells = [...acc.values()]
+		}
 	}
 
 	return [...buckets.values()].toSorted((a, b) => a.ts.localeCompare(b.ts))

@@ -121,25 +121,25 @@ async function cmdWatch(): Promise<void> {
 			timer = setTimeout(tick, interval)
 		}
 	}
-	for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-		process.on(sig, () => {
-			stopping = true
-			if (timer) {
-				clearTimeout(timer)
+	function shutdown() {
+		stopping = true
+		if (timer) {
+			clearTimeout(timer)
+		}
+		console.log(`\n[${ts()}] stopping…`)
+		// Let an in-flight cycle finish committing offsets; hard-exit fallback.
+		const bail = setTimeout(() => process.exit(0), 5000)
+		bail.unref()
+		const wait = setInterval(() => {
+			if (!running) {
+				clearInterval(wait)
+				process.exit(0)
 			}
-			console.log(`\n[${ts()}] stopping…`)
-			// Let an in-flight cycle finish committing offsets; hard-exit fallback.
-			const bail = setTimeout(() => process.exit(0), 5000)
-			bail.unref()
-			const wait = setInterval(() => {
-				if (!running) {
-					clearInterval(wait)
-					process.exit(0)
-				}
-			}, 100)
-			wait.unref()
-		})
+		}, 100)
+		wait.unref()
 	}
+	process.on('SIGINT', shutdown)
+	process.on('SIGTERM', shutdown)
 	await tick()
 }
 

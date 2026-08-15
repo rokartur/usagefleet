@@ -12,10 +12,10 @@ import {
 	primaryKey,
 	uniqueIndex,
 } from 'drizzle-orm/pg-core'
+import { user } from './auth-schema'
 
 // Re-export the better-auth-owned tables (user/session/account/verification).
 export * from './auth-schema'
-import { user } from './auth-schema'
 
 export const osEnum = pgEnum('os', ['mac', 'linux', 'windows'])
 export const planEnum = pgEnum('plan', ['pro', 'max5', 'max20', 'custom'])

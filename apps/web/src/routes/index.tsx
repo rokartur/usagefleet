@@ -126,55 +126,59 @@ interface Tier {
 	highlight: boolean
 }
 
-const pricingTiers = (prices: PlanPrices): Tier[] => [
-	{
-		id: null,
-		plan: 'Free',
-		note: 'start here',
-		price: '$0',
-		period: null,
-		priceCents: 0,
-		devices: FREE_DEVICES,
-		perk: '5h and weekly windows',
-		highlight: false,
-	},
-	{
-		id: 'solo',
-		plan: PLANS.solo.label,
-		note: 'most people',
-		price: formatPlanPrice(prices.solo),
-		period: '/ mo',
-		priceCents: prices.solo,
-		devices: PLANS.solo.devices,
-		perk: 'Everything in Free',
-		highlight: true,
-	},
-	{
-		id: 'fleet',
-		plan: PLANS.fleet.label,
-		note: 'teams, CI, servers',
-		price: formatPlanPrice(prices.fleet),
-		period: '/ mo',
-		priceCents: prices.fleet,
-		devices: PLANS.fleet.devices,
-		perk: 'Everything in Solo',
-		highlight: false,
-	},
-]
+function pricingTiers(prices: PlanPrices): Tier[] {
+	return [
+		{
+			id: null,
+			plan: 'Free',
+			note: 'start here',
+			price: '$0',
+			period: null,
+			priceCents: 0,
+			devices: FREE_DEVICES,
+			perk: '5h and weekly windows',
+			highlight: false,
+		},
+		{
+			id: 'solo',
+			plan: PLANS.solo.label,
+			note: 'most people',
+			price: formatPlanPrice(prices.solo),
+			period: '/ mo',
+			priceCents: prices.solo,
+			devices: PLANS.solo.devices,
+			perk: 'Everything in Free',
+			highlight: true,
+		},
+		{
+			id: 'fleet',
+			plan: PLANS.fleet.label,
+			note: 'teams, CI, servers',
+			price: formatPlanPrice(prices.fleet),
+			period: '/ mo',
+			priceCents: prices.fleet,
+			devices: PLANS.fleet.devices,
+			perk: 'Everything in Solo',
+			highlight: false,
+		},
+	]
+}
 
 /** Priced per device rather than by tier, so it sits below the grid instead of
  *  inside it: `devices` and `price` here are the floor, not the whole offer. */
-const customTier = (prices: PlanPrices): Tier => ({
-	id: 'custom',
-	plan: PLANS.custom.label,
-	note: 'bigger fleets',
-	price: formatPlanPrice(prices.custom),
-	period: '/ device / mo',
-	priceCents: planPriceCents('custom', PLANS.custom.minDevices, prices),
-	devices: PLANS.custom.minDevices,
-	perk: 'Everything in Fleet',
-	highlight: false,
-})
+function customTier(prices: PlanPrices): Tier {
+	return {
+		id: 'custom',
+		plan: PLANS.custom.label,
+		note: 'bigger fleets',
+		price: formatPlanPrice(prices.custom),
+		period: '/ device / mo',
+		priceCents: planPriceCents('custom', PLANS.custom.minDevices, prices),
+		devices: PLANS.custom.minDevices,
+		perk: 'Everything in Fleet',
+		highlight: false,
+	}
+}
 
 const sums = EXAMPLE_GROUPS.reduce(
 	(sum, g) => ({
@@ -225,8 +229,8 @@ function Landing() {
 
 					<div className='relative z-10 mt-[25px]'>
 						<p className='max-w-[48ch] text-sm leading-relaxed text-neutral-400'>
-							UsageFleet reports Anthropic's own 5 hour and weekly utilization, then splits it across the
-							device groups you define. Sign in with GitHub or Google, add a machine, done.
+							UsageFleet reports Anthropic&apos;s own 5 hour and weekly utilization, then splits it across
+							the device groups you define. Sign in with GitHub or Google, add a machine, done.
 						</p>
 						<Link
 							to={signedIn ? '/dashboard' : '/login'}

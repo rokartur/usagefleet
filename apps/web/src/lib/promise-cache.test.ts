@@ -83,7 +83,7 @@ describe(createPromiseCache, () => {
 	it('lets a late rejection evict only its own entry, not the flight that replaced it', async () => {
 		let failFirst!: (e: Error) => void
 		const flights: Promise<string>[] = [
-			new Promise((_, reject) => {
+			new Promise((_resolve, reject) => {
 				failFirst = reject
 			}),
 			Promise.resolve('fresh'),

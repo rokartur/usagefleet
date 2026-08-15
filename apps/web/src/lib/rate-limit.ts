@@ -114,9 +114,9 @@ export function clientIp(req: Request): string {
 			.split(',')
 			.map(s => s.trim())
 			.filter(Boolean)
-		const idx = parts.length - hops
-		if (idx >= 0 && parts[idx]) {
-			return parts[idx]!
+		const client = parts[parts.length - hops]
+		if (client) {
+			return client
 		}
 	}
 	return 'anon'

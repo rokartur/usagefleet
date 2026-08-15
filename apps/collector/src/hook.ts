@@ -87,7 +87,7 @@ function editSettings(transform: (s: ClaudeSettings) => ClaudeSettings, onWrite:
 		try {
 			const parsed: unknown = JSON.parse(raw)
 			if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-				throw new Error()
+				throw new Error('settings JSON is not an object')
 			}
 			settings = parsed as ClaudeSettings
 		} catch {
