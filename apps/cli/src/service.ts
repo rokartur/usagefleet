@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
+import { DEFAULT_ENDPOINT } from './config.js'
 import { installPromptHook, uninstallPromptHook } from './hook.js'
 import { readStore } from './store.js'
 import { fail, header, hint, host, row, step, tilde, warn } from './ui.js'
@@ -236,17 +237,18 @@ function xml(s: string): string {
 }
 
 export function install(): void {
-	// Pre-flight: refuse to install a service that can't resolve an endpoint+token,
+	// Pre-flight: refuse to install a service that can't resolve a token,
 	// otherwise the baked `watch` process throws on every launch and the service
 	// manager crash-loops it invisibly (only the log file shows it). Use the same
-	// env-OR-file precedence loadConfig() uses so a prior `init` is honored.
+	// env-OR-file precedence loadConfig() uses so a prior `init` is honored; the
+	// endpoint needs no check, it falls back to the hosted default.
 	const file = readStore()
-	const endpoint = process.env.USAGEFLEET_ENDPOINT || file.endpoint || ''
+	const endpoint = process.env.USAGEFLEET_ENDPOINT || file.endpoint || DEFAULT_ENDPOINT
 	const token = process.env.USAGEFLEET_TOKEN || file.token || ''
-	if (!endpoint || !token) {
-		console.error(fail('config', 'no endpoint or token resolved'))
-		console.error(hint('  usagefleet init --endpoint <url> --token <device-token>'))
-		console.error(hint('  or set USAGEFLEET_ENDPOINT and USAGEFLEET_TOKEN'))
+	if (!token) {
+		console.error(fail('config', 'no device token resolved'))
+		console.error(hint('  usagefleet init --token <device-token>'))
+		console.error(hint('  or set USAGEFLEET_TOKEN'))
 		process.exit(1)
 	}
 

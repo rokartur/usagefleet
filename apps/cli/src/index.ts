@@ -242,21 +242,26 @@ function limitHealth(fiveHour: number | null, sevenDay: number | null): 'ok' | '
 }
 
 function cmdInit(): void {
+	// Endpoint is optional: it only exists for self-hosted deployments, and
+	// leaving it unset keeps whatever a previous init wrote.
 	const endpoint = flag('endpoint') ?? process.env.USAGEFLEET_ENDPOINT
 	const token = flag('token') ?? process.env.USAGEFLEET_TOKEN
-	if (!endpoint || !token) {
-		console.error(fail('init', 'endpoint and token are required'))
-		console.error(hint('  usagefleet init --endpoint <url> --token <device-token>'))
+	if (!token) {
+		console.error(fail('init', 'a device token is required'))
+		console.error(hint('  usagefleet init --token <device-token>'))
+		console.error(hint('  add --endpoint <url> when self-hosting'))
 		process.exit(1)
 	}
 	const path = storePath()
 	// Merges over whatever is already there, so tail offsets and projectsDir
 	// survive a re-init and the device does not re-upload its whole history.
 	updateStore(path, store => {
-		store.endpoint = endpoint
+		if (endpoint) {
+			store.endpoint = endpoint
+		}
 		store.token = token
 	})
-	console.log(step('configured', `${host(endpoint)} · ${tilde(path)}`))
+	console.log(step('configured', `${host(loadConfig().endpoint)} · ${tilde(path)}`))
 	console.log('')
 	console.log(hint('next:'))
 	console.log(hint('  usagefleet install    run in the background'))
@@ -275,12 +280,12 @@ function help(): void {
 		['notify-test', 'fire a test desktop notification'],
 		['status', 'service health, limits, resolved config'],
 		['version', 'print the release version'],
-		['init --endpoint --token', 'write the config file'],
+		['init --token <t>', 'write the config file'],
 		['install', 'install the background service + prompt guard'],
 		['uninstall', 'remove the service and the guard'],
 	]
 	const env: [string, string][] = [
-		['USAGEFLEET_ENDPOINT', 'server base URL'],
+		['USAGEFLEET_ENDPOINT', 'server base URL (self-hosting only)'],
 		['USAGEFLEET_TOKEN', 'device token from the Devices page'],
 		['USAGEFLEET_PROJECTS', 'override ~/.claude/projects'],
 		['USAGEFLEET_DESKTOP', 'override the Claude Desktop dir ("off" disables)'],

@@ -4,6 +4,10 @@ import type { Config } from './types.js'
 
 /** Matches the server's BatchSchema `.max(1000)`. */
 const MAX_BATCH = 1000
+
+/** The hosted service. Only self-hosted deployments have to name an endpoint,
+ *  so setup on the hosted one is a token and nothing else. */
+export const DEFAULT_ENDPOINT = 'https://usagefleet.com'
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
 
 /** Resolve config from env first, then the stored settings (see store.ts). */
@@ -11,11 +15,8 @@ export function loadConfig(): Config {
 	const file = readStore()
 	// Use `||` (not `??`) so an empty-string env var falls back to the config
 	// file — launchd/systemd units may inject empty USAGEFLEET_* values.
-	const endpoint = (process.env.USAGEFLEET_ENDPOINT || file.endpoint || '').replace(/\/+$/, '')
+	const endpoint = (process.env.USAGEFLEET_ENDPOINT || file.endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '')
 	const token = process.env.USAGEFLEET_TOKEN || file.token || ''
-	if (!endpoint) {
-		throw new Error('USAGEFLEET_ENDPOINT is not set')
-	}
 	if (!token) {
 		throw new Error('USAGEFLEET_TOKEN is not set')
 	}
