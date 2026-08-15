@@ -42,8 +42,9 @@ export const stripe = new Stripe(requiredEnv('STRIPE_SECRET_KEY'))
  *  link that grants access, which is why a rejected send must not pass quietly:
  *  better-auth catches and logs whatever this throws, so the failure lands in
  *  the server log instead of leaving someone waiting on a link that was never
- *  accepted. Resend's error body can echo the recipient, so only the status
- *  goes into the message. */
+ *  accepted. Resend's own `message` is the only thing that distinguishes a bad
+ *  MAIL_FROM from an unverified domain from a rejected recipient, so it goes
+ *  into the error; the recipient never does. */
 async function sendMail(to: string, subject: string, text: string) {
 	const response = await fetch('https://api.resend.com/emails', {
 		method: 'POST',
@@ -54,7 +55,11 @@ async function sendMail(to: string, subject: string, text: string) {
 		body: JSON.stringify({ from: requiredEnv('MAIL_FROM'), to, subject, text }),
 	})
 	if (!response.ok) {
-		throw new Error(`Resend rejected "${subject}": ${response.status}`)
+		const reason = await response
+			.json()
+			.then(body => (body as { message?: string }).message)
+			.catch(() => undefined)
+		throw new Error(`Resend rejected "${subject}": ${response.status}${reason ? ` ${reason}` : ''}`)
 	}
 }
 
