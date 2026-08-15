@@ -43,11 +43,17 @@ function run(cmd: string, args: string[]): Promise<number | null> {
  * install is worse than one that skips a release. `force` is the manual
  * `usagefleet update`, which ignores USAGEFLEET_UPDATE=0 but still refuses to
  * touch a dev build.
+ *
+ * `log` carries the level so the caller can pick the right glyph: the CLI
+ * renders progress as a step and every dead end as a warning.
  */
-export async function checkForUpdate(log: (msg: string) => void, force = false): Promise<string | null> {
+export async function checkForUpdate(
+	log: (level: 'ok' | 'warn', msg: string) => void,
+	force = false,
+): Promise<string | null> {
 	if (RELEASE_VERSION === 'dev') {
 		if (force) {
-			log('update: this is a dev build — install the published package first.')
+			log('warn', 'dev build · install the published package first')
 		}
 		return null
 	}
@@ -69,14 +75,14 @@ export async function checkForUpdate(log: (msg: string) => void, force = false):
 		const res = await fetch(`${REGISTRY}/${PACKAGE}/latest`, { signal: AbortSignal.timeout(15_000) })
 		if (!res.ok) {
 			if (force) {
-				log(`update: registry has no release info (${res.status}).`)
+				log('warn', `registry has no release info (${res.status})`)
 			}
 			return null
 		}
 		latest = ((await res.json()) as { version?: string }).version
 	} catch (error) {
 		if (force) {
-			log(`update: cannot reach the npm registry (${(error as Error).message}).`)
+			log('warn', `npm registry unreachable · ${(error as Error).message}`)
 		}
 		return null
 	}
@@ -86,18 +92,19 @@ export async function checkForUpdate(log: (msg: string) => void, force = false):
 	}
 	if (latest === RELEASE_VERSION) {
 		if (force) {
-			log(`update: already on ${RELEASE_VERSION}.`)
+			log('ok', `already current · ${RELEASE_VERSION}`)
 		}
 		return null
 	}
 
-	log(`update: ${RELEASE_VERSION} → ${latest}, installing ${PACKAGE}…`)
+	log('ok', `${RELEASE_VERSION} → ${latest} · installing ${PACKAGE}…`)
 	const code = await run(npmCommand(), ['install', '--global', `${PACKAGE}@${latest}`])
 	if (code !== 0) {
 		log(
+			'warn',
 			code === null
-				? 'update: npm is not available — reinstall with `npm i -g @usagefleet/cli`.'
-				: `update: npm install failed (exit ${code}) — if the global prefix needs root, run it yourself.`,
+				? 'npm not available · reinstall with `npm i -g @usagefleet/cli`'
+				: `npm install failed (exit ${code}) · if the global prefix needs root, run it yourself`,
 		)
 		return null
 	}
@@ -106,6 +113,6 @@ export async function checkForUpdate(log: (msg: string) => void, force = false):
 	// kills this process tree. npm replaced the file behind `self`, so this is
 	// already the new version.
 	spawn(process.execPath, [self, 'install'], { detached: true, stdio: 'ignore' }).unref()
-	log(`update: installed ${latest}, restarting service.`)
+	log('ok', `installed ${latest} · restarting service`)
 	return latest
 }

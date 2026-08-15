@@ -11,6 +11,7 @@ import { listJsonlFiles } from './scanner.js'
 import { readStore, updateStore } from './store.js'
 import { tailFile } from './tailer.js'
 import type { Config, UsageRecord, UsageSource } from './types.js'
+import { tilde } from './ui.js'
 import { postLimits, uploadBatch } from './uploader.js'
 import type { UploadFailure } from './uploader.js'
 
@@ -85,7 +86,7 @@ export async function runOnce(
 			tail = tailFile(fp, state.files[fp], source)
 		} catch (error) {
 			// One unreadable/oversized file must not abort the whole cycle.
-			log(`skip ${fp}: ${(error as Error).message}`)
+			log(`skipped ${tilde(fp)} · ${(error as Error).message}`)
 			continue
 		}
 		if (!tail || tail.consumedBytes === 0) {
@@ -116,7 +117,7 @@ export async function runOnce(
 			// the offset so it uploads once a fresh token is configured. Retrying the
 			// remaining files would 401 identically, so stop this cycle and surface.
 			log(
-				`auth rejected (401/403) — device token invalid or revoked; re-run \`usagefleet init\` with a fresh token, then restart the service`,
+				'auth rejected · device token invalid or revoked · re-run `usagefleet init` with a fresh token, then restart the service',
 			)
 			result.failed = true
 			break
@@ -124,13 +125,13 @@ export async function runOnce(
 			// The whole batch was rejected, not individual records (see sendChunk).
 			// Keep the offset: this needs a collector or server fix, not a purge.
 			log(
-				`upload for ${fp} rejected as a whole batch — keeping the offset; check that this collector version and OS are supported by the server`,
+				`batch rejected for ${tilde(fp)} · offset kept · check this collector version and OS are supported by the server`,
 			)
 			result.failed = true
 		} else {
 			// transient (402 outside plan, 5xx, network, timeout): keep the offset and
 			// retry next cycle, but DO NOT break — later files must still get a turn.
-			log(`upload failed for ${fp} (transient) — will retry next cycle`)
+			log(`upload failed for ${tilde(fp)} · transient · retrying next cycle`)
 			result.failed = true
 		}
 	}
@@ -198,11 +199,11 @@ async function sendChunk(
 			// Give up on the record theory. The caller keeps the offset, so the
 			// records counted on the way down are retried, not lost — untally them
 			// rather than report a loss that did not happen.
-			log(`every split of this batch was rejected, so the batch itself is bad, not its records — nothing skipped`)
+			log('every split was rejected · the batch is bad, not its records · nothing skipped')
 			result.dropped = dropCeiling - MAX_DROPPED_PER_CHUNK
 			return 'invalid'
 		}
-		log(`server rejected record ${single.uuid} as malformed — skipping it`)
+		log(`record ${single.uuid} rejected as malformed · skipped`)
 		result.dropped += 1
 		result.failed = true
 		return 'ok'
@@ -251,13 +252,12 @@ export async function reportLimitsOnce(
 			// "Works by hand, broken as a service" signature: a launchd agent can be
 			// denied the login-Keychain read. Make it diagnosable instead of silent.
 			log(
-				"limits skipped: login Keychain read for 'Claude Code-credentials' was denied " +
-					'(typical under a background launchd agent). Grant /usr/bin/security access to the ' +
-					'item, or set ANTHROPIC_API_KEY for the service.',
+				"limits skipped · keychain read for 'Claude Code-credentials' denied, typical under a launchd agent · " +
+					'grant /usr/bin/security access to the item, or set ANTHROPIC_API_KEY for the service',
 			)
 		} else {
 			log(
-				'no usable Claude login — missing, or expired with a refresh that failed; ' +
+				'no usable claude login · missing, or expired with a failed refresh · ' +
 					'sign in with `claude` or set ANTHROPIC_API_KEY',
 			)
 		}
@@ -267,7 +267,7 @@ export async function reportLimitsOnce(
 	try {
 		report = await fetchLimits(creds)
 	} catch (error) {
-		log(`limits fetch failed: ${(error as Error).message}`)
+		log(`limits fetch failed · ${(error as Error).message}`)
 		return null
 	}
 	const ok = await postLimits(report, cfg)

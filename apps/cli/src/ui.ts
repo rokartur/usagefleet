@@ -1,10 +1,17 @@
 /**
- * Terminal output helpers, "quiet" style: one accent colour, detail in gray,
- * a padded label column so lines align.
+ * The CLI's only output surface, "quiet" style: lowercase labels, one accent
+ * colour, detail in gray, a padded label column so lines align. Every command
+ * — install, status, watch, the collector's own stream — prints through these
+ * helpers, so a TTY and a service log read the same.
  *
  * Colour is dropped when stdout is not a TTY (service logs, CI, pipes) or when
- * NO_COLOR is set. Bars are plain characters, so a log file still shows them.
+ * NO_COLOR is set. Glyphs and bars are plain characters, so a log file still
+ * shows them.
  */
+
+import { homedir } from 'node:os'
+import { detectOs } from './os.js'
+import { RELEASE_VERSION } from './release.js'
 
 const useColor = process.stdout.isTTY === true && !process.env.NO_COLOR
 
@@ -13,30 +20,90 @@ function paint(code: string): (s: string) => string {
 }
 
 export const dim = paint('90')
+/** One step below `dim`: timestamps, which are structure rather than content. */
+export const dimmer = paint('2;90')
 export const green = paint('32')
 export const yellow = paint('33')
 export const red = paint('31')
 export const blue = paint('34')
 export const bold = paint('1')
 
-/** Width of the label column shared by `step` and `row`. */
-const LABEL = 10
+/** Width of the label column shared by every labelled line. */
+const LABEL = 12
 
-/** "✓ installed   ~/.local/bin/usagefleet" — a completed step. */
+/** "usagefleet 1.2.55  mac-arm64" — the banner an interactive command opens
+ *  with. `detail` replaces the platform when a command has something better to
+ *  say about itself (watch states its interval). */
+export function header(detail = `${detectOs()}-${process.arch}`): string {
+	const build = RELEASE_VERSION === 'dev' ? ' · local build, self-update off' : ''
+	return `${blue('usagefleet')} ${dim(`${RELEASE_VERSION}${build}  ${detail}`)}`
+}
+
+/** Server without its scheme: the host is the part worth reading. */
+export function host(endpoint: string): string {
+	return endpoint.replace(/^https?:\/\//, '').replace(/\/$/, '')
+}
+
+/** "✓ installed    ~/.local/bin/usagefleet" — a completed step. */
 export function step(label: string, detail = ''): string {
 	return `${green('✓')} ${label.padEnd(LABEL)} ${dim(detail)}`
 }
 
-/** "● service     running" — state with a health-coloured dot. */
+/** "✗ verify failed  expected 4f8c…" — a step that did not happen. */
+export function fail(label: string, detail = ''): string {
+	return `${red('✗')} ${label.padEnd(LABEL)} ${dim(detail)}`
+}
+
+/** "! service      systemctl unavailable" — worked, but not fully. */
+export function warn(label: string, detail = ''): string {
+	return `${yellow('!')} ${label.padEnd(LABEL)} ${dim(detail)}`
+}
+
+/** "● service      running" — state with a health-coloured dot. */
 export function state(health: 'ok' | 'warn' | 'bad', label: string, detail: string): string {
 	const dot = health === 'ok' ? green('●') : health === 'warn' ? yellow('●') : red('●')
 	return `${dot} ${label.padEnd(LABEL)} ${detail}`
 }
 
-/** "  config      ~/.config/usagefleet/config.json" — a plain detail line. */
+/** "  config       ~/.config/usagefleet/config.json" — a plain detail line. */
 export function row(label: string, detail: string): string {
 	return `  ${label.padEnd(LABEL)} ${dim(detail)}`
 }
+
+/** A closing suggestion, or any line that is context rather than result. */
+export function hint(text: string): string {
+	return dim(text)
+}
+
+/** Home-relative path, because `~/.claude/projects` reads and wraps better than
+ *  the absolute one — and hides the user's account name in a pasted terminal. */
+export function tilde(path: string): string {
+	const home = homedir()
+	return home && path.startsWith(home) ? `~${path.slice(home.length)}` : path
+}
+
+/** Day of the last printed stream line. The date is stated on rollover only:
+ *  HH:MM:SS alone is unreadable in a service log that spans a week, while a
+ *  one-shot command is already dated by the shell that ran it. */
+let lastDay = ''
+
+/**
+ * One line of the live stream: "09:14:02 ↑ 12 sent · 12 accepted".
+ * Used by `watch`, `run` and every message the collector emits, so the service
+ * log is the same stream a foreground run shows.
+ */
+export function line(glyph: string, text: string): void {
+	const now = new Date()
+	const day = now.toLocaleDateString('en-CA')
+	if (lastDay && day !== lastDay) {
+		console.log(dimmer(`── ${day}`))
+	}
+	lastDay = day
+	console.log(`${dimmer(now.toTimeString().slice(0, 8))} ${glyph} ${text}`)
+}
+
+/** Neutral stream glyph, for messages that are neither good nor bad news. */
+export const note = dim('·')
 
 /** Percentage as a fixed-width string, so successive log lines line up. */
 export function pct(value: number | null): string {

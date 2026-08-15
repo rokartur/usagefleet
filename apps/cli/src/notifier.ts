@@ -132,7 +132,7 @@ export function maybeNotify(
 				`${report.fiveHourPct}% of your 5-hour limit used${resetSuffix(report.fiveHourResetsAt)}.`,
 				{ urgency: urgencyFor(five.fire) },
 			)
-			log(`notified: 5h at ${report.fiveHourPct}% (crossed ${five.fire}%)`)
+			log(`notified · 5h at ${report.fiveHourPct}% · crossed ${five.fire}%`)
 		}
 		if (seven.fire != null) {
 			sendNotification(
@@ -140,13 +140,13 @@ export function maybeNotify(
 				`${report.sevenDayPct}% of your weekly limit used${resetSuffix(report.sevenDayResetsAt)}.`,
 				{ urgency: urgencyFor(seven.fire) },
 			)
-			log(`notified: weekly at ${report.sevenDayPct}% (crossed ${seven.fire}%)`)
+			log(`notified · weekly at ${report.sevenDayPct}% · crossed ${seven.fire}%`)
 		}
 
 		updateStore(path, store => {
 			store.notify = { fiveHour: five.next, sevenDay: seven.next }
 		})
 	} catch (error) {
-		log(`notify skipped: ${(error as Error).message}`)
+		log(`notify skipped · ${(error as Error).message}`)
 	}
 }

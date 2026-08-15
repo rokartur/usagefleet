@@ -9,7 +9,26 @@ import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
 import { serviceStatus } from './service.js'
 import { readStore, storePath, updateStore } from './store.js'
-import { ago, bar, bold, dim, green, pct, row, state as stateLine, step, yellow } from './ui.js'
+import {
+	ago,
+	bar,
+	blue,
+	dim,
+	fail,
+	green,
+	header,
+	hint,
+	host,
+	line,
+	note,
+	pct,
+	row,
+	state as stateLine,
+	step,
+	tilde,
+	warn,
+	yellow,
+} from './ui.js'
 import { checkForUpdate } from './update.js'
 
 function flag(name: string): string | undefined {
@@ -29,10 +48,6 @@ function flag(name: string): string | undefined {
 	return undefined
 }
 
-function ts(): string {
-	return new Date().toISOString().replace('T', ' ').slice(0, 19)
-}
-
 /** "5h ██░░░░░░░░   2% · weekly ████░░░░░░  13%" — the shared limits line.
  *  Bars are plain characters, so they survive a service log as well as a TTY. */
 function limitsSummary(limits: {
@@ -44,15 +59,23 @@ function limitsSummary(limits: {
 	return `5h ${bar(limits.fiveHourPct)} ${pct(limits.fiveHourPct)} · weekly ${bar(limits.sevenDayPct)} ${pct(limits.sevenDayPct)}${models}`
 }
 
+/** Upload result as one stream line — the shape `run` and `watch` share.
+ *  Dropped records are the only part worth a colour: they are lost data. */
+function cycleLine(r: { sent: number; accepted: number; duplicates: number; dropped: number; files: number }): void {
+	const dropped = r.dropped > 0 ? ` · ${yellow(`${r.dropped} dropped`)}` : ''
+	line(
+		r.dropped > 0 ? yellow('!') : green('↑'),
+		`${r.sent} sent ${dim(`· ${r.accepted} accepted · ${r.duplicates} dup · ${r.files} file${r.files === 1 ? '' : 's'}`)}${dropped}`,
+	)
+}
+
 async function cmdRun(): Promise<void> {
 	const cfg = loadConfig()
-	const r = await runOnce(cfg, m => console.log(`[${ts()}] ${m}`))
-	console.log(
-		`[${ts()}] scanned ${r.files} files · sent ${r.sent} · accepted ${r.accepted} · duplicates ${r.duplicates}${r.dropped > 0 ? ` · DROPPED ${r.dropped}` : ''}${r.failed ? ' · FAILED' : ''}`,
-	)
-	const limits = await reportLimitsOnce(cfg, m => console.log(`[${ts()}] ${m}`))
+	const r = await runOnce(cfg, m => line(note, m))
+	cycleLine(r)
+	const limits = await reportLimitsOnce(cfg, m => line(note, m))
 	if (limits) {
-		console.log(`[${ts()}] limits (${limits.source}): ${limitsSummary(limits)}`)
+		line(note, `${limitsSummary(limits)} ${dim(`· ${limits.source}`)}`)
 	}
 	if (r.failed) {
 		process.exitCode = 1
@@ -61,12 +84,12 @@ async function cmdRun(): Promise<void> {
 
 async function cmdLimits(): Promise<void> {
 	const cfg = loadConfig()
-	const limits = await reportLimitsOnce(cfg, m => console.log(`[${ts()}] ${m}`))
+	const limits = await reportLimitsOnce(cfg, m => line(note, m))
 	if (!limits) {
 		process.exitCode = 1
 		return
 	}
-	console.log(`[${ts()}] reported ${limits.source}: ${limitsSummary(limits)}`)
+	line(note, `${limitsSummary(limits)} ${dim(`· ${limits.source}`)}`)
 }
 
 async function cmdWatch(): Promise<void> {
@@ -86,11 +109,10 @@ async function cmdWatch(): Promise<void> {
 	const rawUpdate = Number(process.env.USAGEFLEET_UPDATE_INTERVAL ?? 6 * 60 * 60)
 	const updateInterval = Math.max(60, Number.isFinite(rawUpdate) && rawUpdate > 0 ? rawUpdate : 6 * 60 * 60) * 1000
 	let lastUpdateAt = 0
-	console.log(header())
-	console.log(dim(`[${ts()}] watching every ${interval / 1000}s → ${cfg.endpoint}`))
-	for (const dir of [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs].filter((d): d is string => !!d)) {
-		console.log(dim(`           ${dir}`))
-	}
+	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs].filter((d): d is string => !!d)
+	console.log(header(`watching every ${interval / 1000}s`))
+	console.log(hint(`${watching.map(tilde).join(' · ')} → ${host(cfg.endpoint)}`))
+	console.log('')
 	let stopping = false
 	let timer: ReturnType<typeof setTimeout> | null = null
 	let running = false
@@ -100,28 +122,26 @@ async function cmdWatch(): Promise<void> {
 		}
 		running = true
 		try {
-			const r = await runOnce(cfg, m => console.log(`[${ts()}] ${m}`))
+			const r = await runOnce(cfg, m => line(note, m))
 			// Dropped records are real data loss, so they must show up even in a
 			// cycle that uploaded nothing.
 			if (r.sent > 0 || r.dropped > 0) {
-				console.log(
-					`[${ts()}] ${r.dropped > 0 ? yellow('!') : green('↑')} sent ${r.sent} · accepted ${r.accepted} · dup ${r.duplicates}${r.dropped > 0 ? ` · ${yellow(`DROPPED ${r.dropped}`)}` : ''}`,
-				)
+				cycleLine(r)
 			}
 			const nowMs = Date.now()
 			if (nowMs - lastUpdateAt >= updateInterval) {
 				lastUpdateAt = nowMs
-				await checkForUpdate(m => console.log(`[${ts()}] ${m}`))
+				await checkForUpdate((level, m) => line(level === 'ok' ? blue('↻') : yellow('!'), m))
 			}
 			if (nowMs - lastLimitsAt >= limitsInterval) {
 				lastLimitsAt = nowMs
-				const limits = await reportLimitsOnce(cfg, m => console.log(`[${ts()}] ${m}`))
+				const limits = await reportLimitsOnce(cfg, m => line(note, m))
 				if (limits) {
-					console.log(`[${ts()}] limits (${limits.source}): ${limitsSummary(limits)}`)
+					line(note, limitsSummary(limits))
 				}
 			}
 		} catch (error) {
-			console.error(`[${ts()}] cycle error:`, (error as Error).message)
+			line(yellow('!'), `cycle error ${dim((error as Error).message)}`)
 		} finally {
 			running = false
 		}
@@ -134,7 +154,7 @@ async function cmdWatch(): Promise<void> {
 		if (timer) {
 			clearTimeout(timer)
 		}
-		console.log(`\n[${ts()}] stopping…`)
+		line(note, dim('stopping…'))
 		// Let an in-flight cycle finish committing offsets; hard-exit fallback.
 		const bail = setTimeout(() => process.exit(0), 5000)
 		bail.unref()
@@ -154,13 +174,13 @@ async function cmdWatch(): Promise<void> {
 function cmdNotifyTest(): void {
 	const cfg = loadNotifyConfig()
 	if (!cfg.enabled) {
-		console.log('Notifications are disabled (USAGEFLEET_NOTIFY=0).')
+		console.log(warn('notify', 'disabled · unset USAGEFLEET_NOTIFY=0 to enable'))
 		return
 	}
 	sendNotification('usagefleet', 'Test notification — desktop alerts are working.', {
 		urgency: 'normal',
 	})
-	console.log(`[${ts()}] sent a test notification via ${detectOs()} (thresholds: ${cfg.thresholds.join(', ')}%)`)
+	console.log(step('notified', `${detectOs()} · thresholds ${cfg.thresholds.join(', ')}%`))
 }
 
 async function cmdStatus(): Promise<void> {
@@ -203,16 +223,16 @@ async function cmdStatus(): Promise<void> {
 	)
 
 	console.log('')
-	console.log(row('endpoint', cfg.endpoint))
+	console.log(row('endpoint', host(cfg.endpoint)))
 	console.log(row('device', `${state.deviceId} · token ${cfg.token.slice(0, 8)}…`))
 	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs].filter((d): d is string => !!d)
 	for (const [i, dir] of watching.entries()) {
-		console.log(row(i === 0 ? 'watching' : '', dir))
+		console.log(row(i === 0 ? 'watching' : '', tilde(dir)))
 	}
 	console.log(
 		row('tracked', `${tracked} file${tracked === 1 ? '' : 's'} · ${mb} MB read · synced ${ago(state.updatedAt)}`),
 	)
-	console.log(row('config', cfg.storePath))
+	console.log(row('config', tilde(cfg.storePath)))
 }
 
 /** Worst of the two windows decides the dot colour. */
@@ -221,17 +241,12 @@ function limitHealth(fiveHour: number | null, sevenDay: number | null): 'ok' | '
 	return worst >= 95 ? 'bad' : worst >= 80 ? 'warn' : 'ok'
 }
 
-/** "usagefleet 1.2.55  mac" — the one-line banner every command opens with. */
-function header(): string {
-	const build = RELEASE_VERSION === 'dev' ? dim(' (local build · self-update off)') : ''
-	return `${bold('usagefleet')} ${RELEASE_VERSION}${build}  ${dim(detectOs())}`
-}
-
 function cmdInit(): void {
 	const endpoint = flag('endpoint') ?? process.env.USAGEFLEET_ENDPOINT
 	const token = flag('token') ?? process.env.USAGEFLEET_TOKEN
 	if (!endpoint || !token) {
-		console.error('Usage: usagefleet init --endpoint <url> --token <device-token>')
+		console.error(fail('init', 'endpoint and token are required'))
+		console.error(hint('  usagefleet init --endpoint <url> --token <device-token>'))
 		process.exit(1)
 	}
 	const path = storePath()
@@ -241,40 +256,59 @@ function cmdInit(): void {
 		store.endpoint = endpoint
 		store.token = token
 	})
-	console.log(step('configured', `${endpoint} · ${path}`))
+	console.log(step('configured', `${host(endpoint)} · ${tilde(path)}`))
+	console.log('')
+	console.log(hint('next:'))
+	console.log(hint('  usagefleet install    run in the background'))
+	console.log(hint('  usagefleet status     current state'))
 }
 
+/** Command list and env reference, in the same padded-column style as the
+ *  result lines: name in white, meaning in gray. */
 function help(): void {
-	console.log(`usagefleet ${RELEASE_VERSION} — Claude usage collector
+	const commands: [string, string][] = [
+		['run', 'scan once, upload usage + report limits'],
+		['watch [--interval s]', 'poll continuously (default 15s)'],
+		['limits', 'report only your real 5h/weekly usage'],
+		['guard', 'exit 2 when the group is over a blocking limit'],
+		['update', 'update to the latest release now'],
+		['notify-test', 'fire a test desktop notification'],
+		['status', 'service health, limits, resolved config'],
+		['version', 'print the release version'],
+		['init --endpoint --token', 'write the config file'],
+		['install', 'install the background service + prompt guard'],
+		['uninstall', 'remove the service and the guard'],
+	]
+	const env: [string, string][] = [
+		['USAGEFLEET_ENDPOINT', 'server base URL'],
+		['USAGEFLEET_TOKEN', 'device token from the Devices page'],
+		['USAGEFLEET_PROJECTS', 'override ~/.claude/projects'],
+		['USAGEFLEET_DESKTOP', 'override the Claude Desktop dir ("off" disables)'],
+		['USAGEFLEET_PI', 'override pi session dirs, comma-separated'],
+		['USAGEFLEET_INTERVAL', 'watch interval seconds'],
+		['USAGEFLEET_NOTIFY', 'desktop notifications (0 disables)'],
+		['USAGEFLEET_HOOK', 'register the guard on install (0 skips)'],
+		['USAGEFLEET_UPDATE', 'self-update while watching (0 disables)'],
+		['USAGEFLEET_UPDATE_INTERVAL', 'seconds between update checks (default 21600)'],
+		['USAGEFLEET_NOTIFY_THRESHOLDS', 'comma list of % alerts (default 80,95)'],
+		['USAGEFLEET_CONFIG', 'relocate the config file'],
+	]
+	const pad = (rows: [string, string][]) => Math.max(...rows.map(([name]) => name.length))
+	const print = (rows: [string, string][]) => {
+		const width = pad(rows)
+		for (const [name, meaning] of rows) {
+			console.log(`  ${name.padEnd(width)}  ${dim(meaning)}`)
+		}
+	}
 
-Usage:
-  usagefleet run                 Scan once, upload usage + report limits
-  usagefleet watch [--interval s] Poll continuously (default 15s)
-  usagefleet limits              Report only your real 5h/weekly limit usage
-  usagefleet guard               Exit 2 if this device's group is over a blocking limit
-                                   (use as a Claude Code UserPromptSubmit hook)
-  usagefleet update              Update to the latest release now (watch does this every 6h)
-  usagefleet notify-test         Fire a test desktop notification
-  usagefleet status              Show service health, limits, resolved config
-  usagefleet version             Print the release version
-  usagefleet init --endpoint <url> --token <t>   Write ~/.config/usagefleet/config.json
-  usagefleet install             Install as a background service (launchd/systemd/Task Scheduler)
-                                   and register the guard as a Claude Code hook
-  usagefleet uninstall           Remove the background service and the hook
-
-Config (env overrides ~/.config/usagefleet/config.json, which holds settings,
-tail offsets and notification marks; USAGEFLEET_CONFIG relocates it):
-  USAGEFLEET_ENDPOINT   server base URL (e.g. https://track.example.com)
-  USAGEFLEET_TOKEN      device token from the Devices page
-  USAGEFLEET_PROJECTS   override ~/.claude/projects (Claude Code)
-  USAGEFLEET_DESKTOP    override Claude Desktop sessions dir ("off" to disable)
-  USAGEFLEET_PI         override pi sessions dirs, comma-separated ("off" to disable)
-  USAGEFLEET_INTERVAL   watch interval seconds
-  USAGEFLEET_NOTIFY     desktop notifications on/off (default on; 0 to disable)
-  USAGEFLEET_HOOK       register the guard in ~/.claude/settings.json on install (0 to skip)
-  USAGEFLEET_UPDATE     self-update while watching (0 to disable)
-  USAGEFLEET_UPDATE_INTERVAL  seconds between update checks (default 21600 = 6h)
-  USAGEFLEET_NOTIFY_THRESHOLDS  comma list of % alerts (default 80,95)`)
+	console.log(header())
+	console.log(hint('claude usage collector'))
+	console.log('')
+	print(commands)
+	console.log('')
+	console.log(hint('env — overrides ~/.config/usagefleet/config.json, which holds'))
+	console.log(hint('settings, tail offsets and notification marks'))
+	print(env)
 }
 
 async function main(): Promise<void> {
@@ -282,10 +316,10 @@ async function main(): Promise<void> {
 	// not silently kill the background service. One-shot commands still set a
 	// non-zero exit via their own error paths.
 	process.on('unhandledRejection', reason => {
-		console.error(`[${ts()}] unhandledRejection:`, reason)
+		line(yellow('!'), `unhandled rejection ${dim(String(reason))}`)
 	})
 	process.on('uncaughtException', err => {
-		console.error(`[${ts()}] uncaughtException:`, (err as Error).message)
+		line(yellow('!'), `uncaught exception ${dim((err as Error).message)}`)
 	})
 
 	const cmd = process.argv[2] ?? 'help'
@@ -304,7 +338,12 @@ async function main(): Promise<void> {
 			return
 		}
 		case 'update': {
-			await checkForUpdate(m => console.log(`[${ts()}] ${m}`), true)
+			console.log(header())
+			console.log('')
+			await checkForUpdate(
+				(level, m) => console.log(level === 'ok' ? step('update', m) : warn('update', m)),
+				true,
+			)
 			return
 		}
 		case 'notify-test': {
@@ -338,6 +377,6 @@ async function main(): Promise<void> {
 }
 
 main().catch(error => {
-	console.error((error as Error).message)
+	console.error(fail('error', (error as Error).message))
 	process.exit(1)
 })

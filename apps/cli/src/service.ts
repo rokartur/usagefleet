@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { installPromptHook, uninstallPromptHook } from './hook.js'
 import { readStore } from './store.js'
-import { row, step } from './ui.js'
+import { fail, header, hint, host, row, step, tilde, warn } from './ui.js'
 
 const LABEL = 'dev.usagefleet.collector'
 /** Scheduled Task name on Windows (mirrors the launchd label / systemd unit). */
@@ -244,12 +244,15 @@ export function install(): void {
 	const endpoint = process.env.USAGEFLEET_ENDPOINT || file.endpoint || ''
 	const token = process.env.USAGEFLEET_TOKEN || file.token || ''
 	if (!endpoint || !token) {
-		console.error(
-			'No endpoint/token resolved. Run `usagefleet init --endpoint <url> --token <t>` ' +
-				'(or set USAGEFLEET_ENDPOINT and USAGEFLEET_TOKEN) before installing.',
-		)
+		console.error(fail('config', 'no endpoint or token resolved'))
+		console.error(hint('  usagefleet init --endpoint <url> --token <device-token>'))
+		console.error(hint('  or set USAGEFLEET_ENDPOINT and USAGEFLEET_TOKEN'))
 		process.exit(1)
 	}
+
+	console.log(header())
+	console.log('')
+	console.log(step('configured', host(endpoint)))
 
 	// Windows: stop a running task first, or `schtasks /run` below is ignored (the
 	// task is IgnoreNew) — leaving the OLD version resident after an "update".
@@ -263,10 +266,7 @@ export function install(): void {
 	const prog = programArgs()
 	const shadow = shadowingBinary(process.env.PATH, process.argv[1] ?? process.execPath)
 	if (shadow) {
-		console.warn(
-			`Another usagefleet is earlier on your PATH (${shadow}). The service below runs this one, ` +
-				`but your shell keeps running that one — delete it: rm ${shadow}`,
-		)
+		console.log(warn('path', `another usagefleet runs first · rm ${tilde(shadow)}`))
 	}
 	const env = presentEnv()
 
@@ -338,7 +338,8 @@ ${envXml}
 			/* best-effort */
 		}
 		console.log(step('service', 'launchd · starts at login'))
-		return
+		console.log(row('logs', tilde(macLogDir())))
+		return collectingNow()
 	}
 
 	if (process.platform === 'linux') {
@@ -402,12 +403,12 @@ WantedBy=default.target
 				}
 			}
 			console.log(step('service', 'systemd · starts at login'))
-		} else {
-			console.log('Could not drive systemctl automatically. Enable it manually:')
-			console.log('  systemctl --user daemon-reload')
-			console.log('  systemctl --user enable --now usagefleet')
-			console.log('  loginctl enable-linger $USER   # keep running after logout')
+			return collectingNow()
 		}
+		console.log(warn('service', 'systemctl not driveable · enable it manually'))
+		console.log(hint('  systemctl --user daemon-reload'))
+		console.log(hint('  systemctl --user enable --now usagefleet'))
+		console.log(hint('  loginctl enable-linger $USER    keep running after logout'))
 		return
 	}
 
@@ -432,21 +433,30 @@ WantedBy=default.target
 		rmSync(xmlPath, { force: true })
 
 		if (!created) {
+			console.error(fail('service', 'scheduled task rejected · register it manually'))
 			console.error(
-				'Could not register the scheduled task. Register it manually:\n' +
-					`  schtasks /create /tn ${TASK} /sc onlogon /tr "wscript.exe //B //Nologo \\"${vbsPath}\\""`,
+				hint(`  schtasks /create /tn ${TASK} /sc onlogon /tr "wscript.exe //B //Nologo \\"${vbsPath}\\""`),
 			)
 			process.exit(1)
 		}
 		// Start now so install/update takes effect immediately, not at next logon.
 		schtasks('/run', '/tn', TASK)
 		console.log(step('service', 'scheduled task · starts at logon'))
-		console.log(row('logs', windowsLogPath()))
-		return
+		console.log(row('logs', tilde(windowsLogPath())))
+		return collectingNow()
 	}
 
-	console.log(`Unsupported platform for service install: ${process.platform}.`)
-	console.log(`Run it yourself with: ${prog.join(' ')}`)
+	console.log(warn('service', `no autostart on ${process.platform} · run it yourself`))
+	console.log(hint(`  ${prog.join(' ')}`))
+}
+
+/** Closing lines of a successful install: what is happening, and the two
+ *  commands worth knowing next. */
+function collectingNow(): void {
+	console.log('')
+	console.log(hint('collecting now.'))
+	console.log(hint('  usagefleet status    current state'))
+	console.log(hint('  usagefleet watch     foreground, live log'))
 }
 
 export interface ServiceStatus {
@@ -529,7 +539,8 @@ export function uninstall(): void {
 			}
 		}
 		removeStableBin()
-		console.log(`Removed launchd agent (delete ${path} to fully clean up).`)
+		console.log(step('removed', 'launchd agent'))
+		console.log(row('leftover', `${tilde(path)} · delete to fully clean up`))
 		return
 	}
 	if (process.platform === 'linux') {
@@ -541,7 +552,8 @@ export function uninstall(): void {
 			/* ignore */
 		}
 		removeStableBin()
-		console.log(`Disabled systemd unit (delete ${systemdUnitPath()} to fully clean up).`)
+		console.log(step('removed', 'systemd unit'))
+		console.log(row('leftover', `${tilde(systemdUnitPath())} · delete to fully clean up`))
 		return
 	}
 	if (process.platform === 'win32') {
@@ -553,8 +565,8 @@ export function uninstall(): void {
 			/* ignore */
 		}
 		removeStableBin()
-		console.log(deleted ? `Removed scheduled task "${TASK}".` : `No scheduled task "${TASK}" found.`)
+		console.log(deleted ? step('removed', `scheduled task ${TASK}`) : row('service', `no task ${TASK} found`))
 		return
 	}
-	console.log(`Nothing to uninstall on ${process.platform}.`)
+	console.log(row('service', `nothing to uninstall on ${process.platform}`))
 }

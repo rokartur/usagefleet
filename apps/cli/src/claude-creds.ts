@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { homedir, userInfo } from 'node:os'
 import { join } from 'node:path'
 import { writeFileAtomic } from './atomic-write.js'
+import { dim, line, yellow } from './ui.js'
 
 export interface ClaudeCreds {
 	source: 'sub' | 'api'
@@ -145,9 +146,9 @@ async function refreshOauth(blob: OAuthBlob, from: 'file' | 'keychain'): Promise
 		// The refresh already rotated the token server-side, so the stored one is
 		// now dead: keep using the new one in memory (valid for hours) and make the
 		// failure loud — on restart the user will have to `claude login` again.
-		console.error(
-			`could not save the refreshed Claude token (${(error as Error).message}) — ` +
-				'run `claude login` if limits stop reporting after a restart',
+		line(
+			yellow('!'),
+			`could not save the refreshed claude token ${dim(`· ${(error as Error).message} · run \`claude login\` if limits stop reporting after a restart`)}`,
 		)
 	}
 	return {

@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { writeFileAtomic } from './atomic-write.js'
 import { claudeSettingsPath } from './paths.js'
+import { step, tilde, warn } from './ui.js'
 
 /** Outer bound on the hook, in seconds. runGuard's own fetch gives up after 5s
  *  and fails open; this only matters if the process itself wedges. */
@@ -91,7 +92,7 @@ function editSettings(transform: (s: ClaudeSettings) => ClaudeSettings, onWrite:
 			}
 			settings = parsed as ClaudeSettings
 		} catch {
-			console.warn(`Could not parse ${path} — left it untouched. Fix the JSON and re-run.`)
+			console.log(warn('hook', `${tilde(path)} is not valid JSON · left untouched`))
 			return
 		}
 	}
@@ -120,10 +121,10 @@ export function installPromptHook(program: string[]): void {
 	const command = guardCommand(program)
 	editSettings(
 		s => withGuardHook(s, command),
-		path => console.log(`Registered the over-limit prompt guard in ${path}.`),
+		path => console.log(step('hook', `prompt guard · ${tilde(path)}`)),
 	)
 }
 
 export function uninstallPromptHook(): void {
-	editSettings(withoutGuardHook, path => console.log(`Removed the prompt guard from ${path}.`))
+	editSettings(withoutGuardHook, path => console.log(step('removed', `prompt guard · ${tilde(path)}`)))
 }

@@ -1,6 +1,7 @@
 import { closeSync, openSync, readSync, statSync } from 'node:fs'
 import { parseLine } from './parser.js'
 import type { FileState, UsageRecord, UsageSource } from './types.js'
+import { dim, line, tilde, yellow } from './ui.js'
 
 /** Max bytes read from a single file per cycle (bounds memory on huge backlogs). */
 const MAX_READ = 16 * 1024 * 1024
@@ -56,7 +57,7 @@ export function tailFile(
 		// No newline in a full MAX_READ window = one pathologically long line.
 		// Skip past it so the file can't stall forever.
 		if (length >= MAX_READ) {
-			console.warn(`usagefleet: skipping a line > ${MAX_READ} bytes in ${filePath} at offset ${start}`)
+			line(yellow('!'), `skipped a line > ${MAX_READ} bytes ${dim(`· ${tilde(filePath)} at ${start}`)}`)
 			return {
 				consumedBytes: length,
 				nextState: { ...base, offset: start + length },
