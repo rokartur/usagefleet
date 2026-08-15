@@ -26,7 +26,6 @@ export const green = paint('32')
 export const yellow = paint('33')
 export const red = paint('31')
 export const blue = paint('34')
-export const bold = paint('1')
 
 /** Width of the label column shared by every labelled line. */
 const LABEL = 12

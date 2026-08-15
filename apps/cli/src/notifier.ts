@@ -1,8 +1,8 @@
 import type { LimitsReport } from './claude-limits.js'
 import { sendNotification } from './notify.js'
 import type { Urgency } from './notify.js'
-import { freshWindow, readStore, storePath, updateStore } from './store.js'
-import type { NotifyState, WindowNotifyState } from './types.js'
+import { readStore, storePath, updateStore } from './store.js'
+import type { WindowNotifyState } from './types.js'
 import type { Log } from './ui.js'
 
 export interface NotifyConfig {
@@ -33,13 +33,6 @@ export function loadNotifyConfig(env: Record<string, string | undefined> = proce
 		}
 	}
 	return { enabled, thresholds }
-}
-
-/** Per-window high-water mark so each threshold notifies at most once per
- *  window. `resetsAt` ties the mark to a specific window — when it changes the
- *  window has rolled over and the mark clears. */
-export function emptyNotifyState(): NotifyState {
-	return { fiveHour: freshWindow(), sevenDay: freshWindow() }
 }
 
 /**
