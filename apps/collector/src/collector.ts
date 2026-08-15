@@ -6,7 +6,7 @@ import { fetchLimits } from './claude-limits.js'
 import type { LimitsReport } from './claude-limits.js'
 import { maybeNotify } from './notifier.js'
 import { detectOs } from './os.js'
-import { RELEASE_TAG } from './release.js'
+import { RELEASE_VERSION } from './release.js'
 import { listJsonlFiles } from './scanner.js'
 import { readStore, updateStore } from './store.js'
 import { tailFile } from './tailer.js'
@@ -174,7 +174,7 @@ async function sendChunk(
 ): Promise<'ok' | UploadFailure> {
 	const res = await uploadBatch(
 		{
-			collectorVersion: RELEASE_TAG,
+			collectorVersion: RELEASE_VERSION,
 			hostname: hostname(),
 			os: detectOs(),
 			records,

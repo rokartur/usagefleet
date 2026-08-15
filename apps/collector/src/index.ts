@@ -6,7 +6,7 @@ import { runGuard } from './guard.js'
 import { loadNotifyConfig } from './notifier.js'
 import { sendNotification } from './notify.js'
 import { detectOs } from './os.js'
-import { RELEASE_TAG } from './release.js'
+import { RELEASE_VERSION } from './release.js'
 import { readStore, storePath, updateStore } from './store.js'
 import { checkForUpdate } from './update.js'
 
@@ -161,7 +161,7 @@ async function cmdStatus(): Promise<void> {
 	const tracked = Object.keys(state.files).length
 	const bytes = Object.values(state.files).reduce((a, f) => a + f.offset, 0)
 	console.log(`os:        ${detectOs()}`)
-	console.log(`release:   ${RELEASE_TAG}${RELEASE_TAG === 'dev' ? ' (local build \u2014 self-update disabled)' : ''}`)
+	console.log(`release:   ${RELEASE_VERSION}${RELEASE_VERSION === 'dev' ? ' (local build \u2014 self-update disabled)' : ''}`)
 	console.log(`config:    ${cfg.storePath}`)
 	console.log(`endpoint:  ${cfg.endpoint}`)
 	console.log(`token:     ${cfg.token.slice(0, 8)}…`)
@@ -195,7 +195,7 @@ function cmdInit(): void {
 }
 
 function help(): void {
-	console.log(`usagefleet v${RELEASE_TAG} — Claude usage collector
+	console.log(`usagefleet ${RELEASE_VERSION} — Claude usage collector
 
 Usage:
   usagefleet run                 Scan once, upload usage + report limits

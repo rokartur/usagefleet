@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { chmodSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { isSecureEndpoint } from './config.js'
-import { RELEASE_TAG } from './release.js'
+import { RELEASE_VERSION } from './release.js'
 import { looksLikeCompiledBinary } from './service.js'
 import type { Config } from './types.js'
 
@@ -62,7 +62,7 @@ export function swapIn(downloaded: string, target: string): void {
 
 /**
  * Pull a newer collector binary from the server (which proxies GitHub Releases)
- * and hand over to it. Returns the new tag when an update was started.
+ * and hand over to it. Returns the new version when an update was started.
  *
  * Every failure path is a silent no-op — a self-updater that breaks a working
  * install is worse than one that skips a release. `force` is the manual
@@ -74,7 +74,7 @@ export async function checkForUpdate(
 	log: (msg: string) => void,
 	force = false,
 ): Promise<string | null> {
-	if (RELEASE_TAG === 'dev') {
+	if (RELEASE_VERSION === 'dev') {
 		if (force) {
 			log('update: this is a dev build — install a release binary first.')
 		}
@@ -118,16 +118,18 @@ export async function checkForUpdate(
 		return null
 	}
 	const latest = (await res.json()) as LatestResponse
-	if (!latest.tag || latest.tag === RELEASE_TAG) {
+	// Releases are tagged "v1.2.3" but binaries carry the bare version.
+	const latestVersion = latest.tag?.replace(/^v/, '')
+	if (!latestVersion || latestVersion === RELEASE_VERSION) {
 		if (force) {
-			log(`update: already on ${RELEASE_TAG}.`)
+			log(`update: already on ${RELEASE_VERSION}.`)
 		}
 		return null
 	}
 
 	const want = latest.sha256?.[asset]
 	if (!want) {
-		log(`update: ${latest.tag} has no checksum for ${asset} — skipping.`)
+		log(`update: ${latestVersion} has no checksum for ${asset} — skipping.`)
 		return null
 	}
 
@@ -135,7 +137,7 @@ export async function checkForUpdate(
 	// is an atomic rename rather than a copy that could tear.
 	const target = process.execPath
 	const tmp = join(dirname(target), `.${basename(target)}.download`)
-	log(`update: ${RELEASE_TAG} → ${latest.tag}, downloading ${asset}…`)
+	log(`update: ${RELEASE_VERSION} → ${latestVersion}, downloading ${asset}…`)
 	try {
 		const dl = await fetch(`${cfg.endpoint}/api/v1/collector/download?asset=${encodeURIComponent(asset)}`, {
 			headers: { 'x-api-key': cfg.token },
@@ -165,6 +167,6 @@ export async function checkForUpdate(
 	// Detached: `install` restarts the service, which kills this process tree.
 	const child = spawn(target, ['install'], { detached: true, stdio: 'ignore' })
 	child.unref()
-	log(`update: installed ${latest.tag}, restarting service.`)
-	return latest.tag
+	log(`update: installed ${latestVersion}, restarting service.`)
+	return latestVersion
 }

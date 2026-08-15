@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // The updater only runs on release builds, and hands over by spawning the new
 // binary — both have to be faked to exercise the download path at all.
-vi.mock(import('./release.js'), () => ({ RELEASE_TAG: 'v1.0.0.1' }))
+vi.mock(import('./release.js'), () => ({ RELEASE_VERSION: '1.0.1' }))
 const spawn = vi.fn(() => ({ unref: vi.fn() }))
 vi.mock(import('node:child_process'), () => ({ spawn }))
 
@@ -45,7 +45,7 @@ afterEach(() => {
 function stubServer(payload: string, advertised = sha256(payload)) {
 	vi.stubGlobal('fetch', async (url: string) =>
 		url.includes('/latest')
-			? Response.json({ sha256: { [ASSET]: advertised }, tag: 'v9.9.9.9' })
+			? Response.json({ sha256: { [ASSET]: advertised }, tag: 'v9.9.9' })
 			: new Response(payload),
 	)
 }
@@ -59,7 +59,8 @@ describe('checkForUpdate', () => {
 		const bin = fakeBinary('old binary')
 		stubServer('new binary')
 
-		await expect(checkForUpdate(cfg, () => {})).resolves.toBe('v9.9.9.9')
+		// Tags carry a leading "v", the baked version does not.
+		await expect(checkForUpdate(cfg, () => {})).resolves.toBe('9.9.9')
 		expect(readFileSync(bin, 'utf-8')).toBe('new binary')
 		expect(spawn).toHaveBeenCalledWith(bin, ['install'], expect.anything())
 	})
@@ -77,7 +78,7 @@ describe('checkForUpdate', () => {
 
 	it('stays put when the server reports the tag we already run', async () => {
 		const bin = fakeBinary('old binary')
-		vi.stubGlobal('fetch', async () => Response.json({ sha256: {}, tag: 'v1.0.0.1' }))
+		vi.stubGlobal('fetch', async () => Response.json({ sha256: {}, tag: 'v1.0.1' }))
 
 		await expect(checkForUpdate(cfg, () => {})).resolves.toBeNull()
 		expect(readFileSync(bin, 'utf-8')).toBe('old binary')
