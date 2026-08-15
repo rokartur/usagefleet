@@ -49,7 +49,9 @@ jobs:
         run: bun install --frozen-lockfile
 
       # This package self-installs onto user machines, so nothing ships until
-      # the linter and the suite agree it should.
+      # the linter and the suite agree it should. The type checker gates it too,
+      # one step later: apps/cli's prepublishOnly runs `tsc`, so a type error
+      # fails the publish itself.
       - name: Lint
         run: bun run lint
 
