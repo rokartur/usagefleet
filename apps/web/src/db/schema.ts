@@ -117,8 +117,12 @@ export interface StoredModelLimit {
 	resetsAt: string | null
 }
 
-// Per-user limit configuration. Defaults mirror the `max5` plan preset; the
-// numbers approximate Anthropic's (opaque) limits and are editable in Settings.
+// Per-user dashboard configuration. `weekResetWeekday`/`weekResetHourUtc` and
+// the cache-TTL column are live. `plan`, `sessionLimitTokens` and
+// `weeklyLimitTokens` are not: they backed a local estimate of Anthropic's
+// opaque limits, which the collector's reported percentages replaced. Nothing
+// reads or writes them, and no UI edits them. Left in place because dropping
+// columns is a one-way migration, not because they mean anything.
 export const userSettings = pgTable('user_settings', {
 	userId: text('user_id')
 		.primaryKey()

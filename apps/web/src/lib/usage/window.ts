@@ -1,5 +1,4 @@
-import { foldAndSum } from './fold'
-import type { TokenTotals, UsageRecord } from './types'
+import type { UsageRecord } from './types'
 
 /**
  * Start of the current weekly window: the most recent occurrence of
@@ -36,15 +35,4 @@ export function filterByWindow(events: UsageRecord[], start: Date, end: Date): U
 		const t = x.ts.getTime()
 		return t >= s && t <= e
 	})
-}
-
-/** Folded token totals for the current weekly window. */
-export function weeklyTotals(
-	events: UsageRecord[],
-	now: Date,
-	weekday: number,
-	hourUtc: number,
-): { start: Date; totals: TokenTotals } {
-	const start = weekWindowStart(now, weekday, hourUtc)
-	return { start, totals: foldAndSum(filterByWindow(events, start, now)) }
 }

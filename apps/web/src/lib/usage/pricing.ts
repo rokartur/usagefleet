@@ -154,8 +154,3 @@ export function costForTokens(t: TokenCounts, model: string | null, ttl: CacheTt
 export function costUsd(e: UsageRecord, ttl: CacheTtl = '5m'): number {
 	return costForTokens(e, e.model, ttl)
 }
-
-/** Cost of pre-summed totals, assuming a single representative model. */
-export function costForTotals(totals: TokenTotals, model: string | null, ttl: CacheTtl = '5m'): number {
-	return costForTokens(totals, model, ttl)
-}

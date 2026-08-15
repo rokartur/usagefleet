@@ -40,11 +40,6 @@ export function sumRecords(events: UsageRecord[]): TokenTotals {
 	return t
 }
 
-/** Fold then sum — the standard aggregate over raw event rows. */
-export function foldAndSum(events: UsageRecord[]): TokenTotals {
-	return sumRecords(foldEvents(events))
-}
-
 /** "Billable" tokens = input + output + cache_creation (EXCLUDES cache_read,
  *  which is replayed context and ~97% of raw totals — see usage.test.ts).
  *  Display metric only; group splits weigh by estimated cost (pricing.ts). */

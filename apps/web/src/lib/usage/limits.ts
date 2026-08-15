@@ -1,34 +1,14 @@
-export type PlanId = 'pro' | 'max5' | 'max20' | 'custom'
-
-export interface PlanLimits {
-	sessionLimitTokens: number
-	weeklyLimitTokens: number
-}
-
 /**
- * Per-plan default limits. Anthropic's real subscription limits are opaque
- * compute-hour caps over a rolling 5h window plus a weekly window; these
- * token figures are community-derived ESTIMATES (per ccusage /
- * Claude-Code-Usage-Monitor) used as denominators for the % displays. Users
- * can override them in Settings (plan = "custom").
+ * How long a reported utilization reading stays trustworthy. The collector's
+ * limits leg can die on its own (it needs live Claude credentials) while usage
+ * upload keeps working, and nothing decays the stored percentage — so past this
+ * age a reading is treated as absent rather than current. Shared by the
+ * dashboard's "offline" badge and by the prompt-blocking read, which must not
+ * refuse work on a percentage whose window has long since reset.
+ *
+ * ponytail: three times the collector's default 300s limits interval. An
+ * operator who raises USAGEFLEET_LIMITS_INTERVAL past this turns prompt
+ * blocking off across the fleet, silently. Derive it from the reported interval
+ * if that combination ever needs to work.
  */
-export const PLAN_PRESETS: Record<Exclude<PlanId, 'custom'>, PlanLimits> = {
-	max20: { sessionLimitTokens: 220_000, weeklyLimitTokens: 5_500_000 },
-	max5: { sessionLimitTokens: 88_000, weeklyLimitTokens: 2_200_000 },
-	pro: { sessionLimitTokens: 19_000, weeklyLimitTokens: 475_000 },
-}
-
-export function limitsForPlan(plan: PlanId, custom?: PlanLimits): PlanLimits {
-	if (plan === 'custom') {
-		return custom ?? PLAN_PRESETS.max5
-	}
-	return PLAN_PRESETS[plan]
-}
-
-/** Percent of a limit, clamped to [0, ∞) and rounded. 0 limit → 0. */
-export function pct(used: number, limit: number): number {
-	if (limit <= 0) {
-		return 0
-	}
-	return Math.max(0, Math.round((used / limit) * 100))
-}
+export const LIMITS_STALE_MS = 15 * 60 * 1000

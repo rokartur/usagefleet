@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { computeDashboardUsage } from './aggregate'
-import { buildSessionBlocks, activeBlock, floorToHourUtc } from './blocks'
-import { foldEvents, foldAndSum, recordTotal } from './fold'
-import { pct, limitsForPlan, PLAN_PRESETS } from './limits'
+import { foldEvents, recordTotal } from './fold'
 import { modelBreakdown, modelLabel } from './models'
-import { costForTotals, costUsd, priceFor } from './pricing'
+import { costForTokens, costUsd, priceFor } from './pricing'
 import type { TokenTotals, UsageRecord } from './types'
-import { pastWindowStarts, weekWindowStart, weeklyTotals } from './window'
+import { pastWindowStarts, weekWindowStart } from './window'
 
-function rec(p: Partial<UsageRecord> & { uuid: string; ts: string }): UsageRecord {
+// `ts` is omitted before the intersection: Partial<UsageRecord> contributes
+// `ts?: Date`, and intersecting that with `ts: string` yields `Date & string`,
+// which no literal can satisfy.
+function rec(p: Partial<Omit<UsageRecord, 'ts'>> & { uuid: string; ts: string }): UsageRecord {
 	return {
 		messageId: null,
 		requestId: null,
@@ -71,16 +71,6 @@ const m2 = rec({
 	ts: '2026-06-18T10:20:00Z',
 	uuid: 'u2',
 })
-const old = rec({
-	groupId: 'g1',
-	inputTokens: 5,
-	messageId: 'msg_0',
-	outputTokens: 5,
-	requestId: 'req_0',
-	ts: '2026-06-10T08:00:00Z',
-	uuid: 'u0',
-})
-
 const NOW = new Date('2026-06-18T12:30:00Z')
 
 describe('fold', () => {
@@ -91,50 +81,10 @@ describe('fold', () => {
 		expect(recordTotal(folded[0])).toBe(6 + 312 + 13_240 + 17_499) // 31057
 	})
 
-	it('does not overcount when summing streamed segments', () => {
-		const totals = foldAndSum([...m1, m2])
-		expect(totals.totalTokens).toBe(31_057 + 1060) // 32117, not 3x m1
-		expect(totals.outputTokens).toBe(312 + 50)
-	})
-
 	it('folds lines without a messageId by uuid', () => {
 		const a = rec({ outputTokens: 5, ts: '2026-06-18T10:00:00Z', uuid: 'x' })
 		const b = rec({ outputTokens: 7, ts: '2026-06-18T10:00:00Z', uuid: 'y' })
 		expect(foldEvents([a, b])).toHaveLength(2)
-	})
-})
-
-describe('blocks', () => {
-	it('floors to the UTC hour', () => {
-		expect(floorToHourUtc(new Date('2026-06-18T10:15:42.500Z')).toISOString()).toBe('2026-06-18T10:00:00.000Z')
-	})
-
-	it('splits blocks on a >5h gap and merges within 5h', () => {
-		const within = [
-			rec({ outputTokens: 1, ts: '2026-06-18T09:00:00Z', uuid: 'a' }),
-			rec({ outputTokens: 1, ts: '2026-06-18T11:00:00Z', uuid: 'b' }),
-		]
-		const gapped = [
-			rec({ outputTokens: 1, ts: '2026-06-18T09:00:00Z', uuid: 'a' }),
-			rec({ outputTokens: 1, ts: '2026-06-18T15:30:00Z', uuid: 'b' }),
-		]
-		const far = new Date('2026-06-19T00:00:00Z')
-		expect(buildSessionBlocks(within, far)).toHaveLength(1)
-		expect(buildSessionBlocks(gapped, far)).toHaveLength(2)
-	})
-
-	it('marks the recent block active and detects its window', () => {
-		const blocks = buildSessionBlocks([...m1, m2, old], NOW)
-		expect(blocks).toHaveLength(2) // old session + current
-		const active = activeBlock([...m1, m2, old], NOW)
-		expect(active).not.toBeNull()
-		expect(active!.start.toISOString()).toBe('2026-06-18T10:00:00.000Z')
-		expect(active!.end.toISOString()).toBe('2026-06-18T15:00:00.000Z')
-		expect(active!.totals.totalTokens).toBe(32_117)
-	})
-
-	it('returns no active block when last activity is >5h old', () => {
-		expect(activeBlock(m1, new Date('2026-06-18T20:00:00Z'))).toBeNull()
 	})
 })
 
@@ -146,11 +96,6 @@ describe('weekly window', () => {
 	it("walks back when this week's reset is still in the future (Friday)", () => {
 		// NOW is Thursday 06-18; this week's Friday (06-19) is future → previous Friday 06-12
 		expect(weekWindowStart(NOW, 5, 0).toISOString()).toBe('2026-06-12T00:00:00.000Z')
-	})
-
-	it('excludes events before the window start', () => {
-		const { totals } = weeklyTotals([...m1, m2, old], NOW, 1, 0)
-		expect(totals.totalTokens).toBe(32_117) // `old` (06-10) excluded
 	})
 })
 
@@ -176,21 +121,6 @@ describe('past windows', () => {
 	})
 })
 
-describe('limits', () => {
-	it('computes percent', () => {
-		expect(pct(32_117, 88_000)).toBe(36)
-		expect(pct(5, 0)).toBe(0)
-	})
-
-	it('resolves plan presets', () => {
-		expect(limitsForPlan('max5')).toStrictEqual(PLAN_PRESETS.max5)
-		expect(limitsForPlan('custom', { sessionLimitTokens: 1, weeklyLimitTokens: 2 })).toStrictEqual({
-			sessionLimitTokens: 1,
-			weeklyLimitTokens: 2,
-		})
-	})
-})
-
 describe('pricing', () => {
 	it('prices per million tokens by model family and version', () => {
 		const mtok = (over: Partial<TokenTotals>): TokenTotals => ({
@@ -202,21 +132,21 @@ describe('pricing', () => {
 			...over,
 		})
 		// Opus 4.5+ current tier: $5 in / $25 out per MTok.
-		expect(costForTotals(mtok({ inputTokens: 1_000_000 }), 'claude-opus-4-8')).toBeCloseTo(5)
-		expect(costForTotals(mtok({ outputTokens: 1_000_000 }), 'claude-opus-4-8')).toBeCloseTo(25)
+		expect(costForTokens(mtok({ inputTokens: 1_000_000 }), 'claude-opus-4-8')).toBeCloseTo(5)
+		expect(costForTokens(mtok({ outputTokens: 1_000_000 }), 'claude-opus-4-8')).toBeCloseTo(25)
 		// Opus 4.1 legacy tier: $15 in / $75 out per MTok.
-		expect(costForTotals(mtok({ inputTokens: 1_000_000 }), 'claude-opus-4-1')).toBeCloseTo(15)
-		expect(costForTotals(mtok({ outputTokens: 1_000_000 }), 'claude-opus-4-1')).toBeCloseTo(75)
+		expect(costForTokens(mtok({ inputTokens: 1_000_000 }), 'claude-opus-4-1')).toBeCloseTo(15)
+		expect(costForTokens(mtok({ outputTokens: 1_000_000 }), 'claude-opus-4-1')).toBeCloseTo(75)
 		// Haiku 4.5 ($1/$5) vs Haiku 3.5 legacy ($0.80/$4).
-		expect(costForTotals(mtok({ inputTokens: 1_000_000 }), 'claude-haiku-4-5')).toBeCloseTo(1)
-		expect(costForTotals(mtok({ inputTokens: 1_000_000 }), 'claude-3-5-haiku')).toBeCloseTo(0.8)
+		expect(costForTokens(mtok({ inputTokens: 1_000_000 }), 'claude-haiku-4-5')).toBeCloseTo(1)
+		expect(costForTokens(mtok({ inputTokens: 1_000_000 }), 'claude-3-5-haiku')).toBeCloseTo(0.8)
 		// Sonnet flat $3 in / $15 out; cache read 0.1x. Cache writes default to the
 		// 5m rate (1.25x) because that is what Claude Code writes unless
 		// ENABLE_PROMPT_CACHING_1H is set; 1h is 2x.
-		expect(costForTotals(mtok({ inputTokens: 1_000_000 }), 'claude-sonnet-4-6')).toBeCloseTo(3)
-		expect(costForTotals(mtok({ cacheCreationTokens: 1_000_000 }), 'claude-sonnet-4-6')).toBeCloseTo(3.75)
-		expect(costForTotals(mtok({ cacheCreationTokens: 1_000_000 }), 'claude-sonnet-4-6', '1h')).toBeCloseTo(6)
-		expect(costForTotals(mtok({ cacheReadTokens: 1_000_000 }), 'claude-sonnet-4-6')).toBeCloseTo(0.3)
+		expect(costForTokens(mtok({ inputTokens: 1_000_000 }), 'claude-sonnet-4-6')).toBeCloseTo(3)
+		expect(costForTokens(mtok({ cacheCreationTokens: 1_000_000 }), 'claude-sonnet-4-6')).toBeCloseTo(3.75)
+		expect(costForTokens(mtok({ cacheCreationTokens: 1_000_000 }), 'claude-sonnet-4-6', '1h')).toBeCloseTo(6)
+		expect(costForTokens(mtok({ cacheReadTokens: 1_000_000 }), 'claude-sonnet-4-6')).toBeCloseTo(0.3)
 	})
 
 	it('prices fable at the frontier tier ($10/$50, cache 20/1)', () => {
@@ -290,7 +220,7 @@ describe('model breakdown', () => {
 
 	it("buckets events without a model id under 'unknown'", () => {
 		const noModel = rec({
-			model: null as unknown as string,
+			model: null,
 			outputTokens: 5,
 			ts: '2026-06-18T10:00:00Z',
 			uuid: 'n1',
@@ -302,44 +232,3 @@ describe('model breakdown', () => {
 	})
 })
 
-describe('dashboard aggregate', () => {
-	const cfg = {
-		sessionLimitTokens: 88_000,
-		weekResetHourUtc: 0,
-		weekResetWeekday: 1,
-		weeklyLimitTokens: 2_200_000,
-	}
-	const groups = [
-		{ color: '#111', id: 'g1', name: 'Laptops' },
-		{ color: '#222', id: 'g2', name: 'Desktops' },
-	]
-
-	it('attaches a per-group model breakdown over the weekly window', () => {
-		const dash = computeDashboardUsage([...m1, m2, old], groups, cfg, NOW)
-		const g1 = dash.groups.find(g => g.groupId === 'g1')!
-		// `old` (06-10) precedes weekStart (06-15) → excluded; only m1 (sonnet) remains.
-		expect(g1.models.map(m => m.label)).toStrictEqual(['Sonnet 4.6'])
-		expect(g1.models[0].totals.totalTokens).toBe(31_057)
-		const g2 = dash.groups.find(g => g.groupId === 'g2')!
-		expect(g2.models.map(m => m.label)).toStrictEqual(['Sonnet 4.6'])
-	})
-
-	it('splits the shared session window across groups', () => {
-		const dash = computeDashboardUsage([...m1, m2, old], groups, cfg, NOW)
-		expect(dash.overall.session.totalTokens).toBe(32_117)
-		expect(dash.overall.sessionPct).toBe(36)
-		const g1 = dash.groups.find(g => g.groupId === 'g1')!
-		const g2 = dash.groups.find(g => g.groupId === 'g2')!
-		expect(g1.session.totalTokens).toBe(31_057) // m1 only (old is outside the 5h window)
-		expect(g2.session.totalTokens).toBe(1060)
-		// group session shares sum to the overall session total
-		expect(g1.session.totalTokens + g2.session.totalTokens).toBe(dash.overall.session.totalTokens)
-	})
-
-	it('computes weekly per group and overall', () => {
-		const dash = computeDashboardUsage([...m1, m2, old], groups, cfg, NOW)
-		expect(dash.overall.weekly.totalTokens).toBe(32_117)
-		expect(dash.overall.weeklyPct).toBe(1)
-		expect(dash.weekStart.toISOString()).toBe('2026-06-15T00:00:00.000Z')
-	})
-})
