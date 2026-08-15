@@ -35,6 +35,22 @@ describe(loadConfig, () => {
 		withStore({})
 		expect(() => loadConfig()).toThrow(/USAGEFLEET_TOKEN/)
 	})
+
+	// `install --endpoint/--token` reach loadConfig by setting these vars, so env
+	// outranking the file is what makes an explicit flag win over a stale store.
+	// Flip this precedence and `install --token <new>` silently keeps the old one.
+	it('prefers env over the config file', () => {
+		withStore({ endpoint: 'https://old.example.com', token: 'uf_old' })
+		process.env.USAGEFLEET_ENDPOINT = 'https://new.example.com'
+		process.env.USAGEFLEET_TOKEN = 'uf_new'
+		expect(loadConfig()).toMatchObject({ endpoint: 'https://new.example.com', token: 'uf_new' })
+	})
+
+	it('rejects a non-https endpoint before it can carry the token', () => {
+		withStore({ token: 'uf_x' })
+		process.env.USAGEFLEET_ENDPOINT = 'http://track.example.com'
+		expect(() => loadConfig()).toThrow(/must be https/)
+	})
 })
 
 describe(resolvePiDirs, () => {

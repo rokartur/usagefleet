@@ -8,7 +8,7 @@ import { sendNotification } from './notify.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
 import { serviceStatus } from './service.js'
-import { readStore, storePath, updateStore } from './store.js'
+import { readStore } from './store.js'
 import {
 	ago,
 	bar,
@@ -248,23 +248,24 @@ function limitHealth(fiveHour: number | null, sevenDay: number | null): 'ok' | '
 	return worst >= 95 ? 'bad' : worst >= 80 ? 'warn' : 'ok'
 }
 
-/** Setup in one command: persist the flags (when given), then install the
- *  background service, which refuses to install without a resolvable token.
- *  The write merges over the existing store, so re-running install rotates the
- *  token without resetting tail offsets. Endpoint only matters when
- *  self-hosting; unset keeps whatever is configured. */
+/** Setup in one command: hand the flags to install(), which resolves and
+ *  persists them, then installs the background service — it refuses without a
+ *  resolvable token. Endpoint only matters when self-hosting; unset keeps
+ *  whatever is configured. */
 async function cmdInstall(): Promise<void> {
+	// Apply the flags to the env loadConfig() reads rather than writing them to the
+	// store, so there is exactly one precedence chain and install() persists its
+	// single winner. Writing to the store first inverted the precedence: loadConfig
+	// prefers the env, so a stale USAGEFLEET_TOKEN in the install shell beat the
+	// flag and got written back over it, silently voiding token rotation. It also
+	// means a rejected value never reaches disk.
 	const endpoint = flag('endpoint')
 	const token = flag('token')
-	if (endpoint || token) {
-		updateStore(storePath(), store => {
-			if (endpoint) {
-				store.endpoint = endpoint
-			}
-			if (token) {
-				store.token = token
-			}
-		})
+	if (endpoint) {
+		process.env.USAGEFLEET_ENDPOINT = endpoint
+	}
+	if (token) {
+		process.env.USAGEFLEET_TOKEN = token
 	}
 	const { install } = await import('./service.js')
 	install()

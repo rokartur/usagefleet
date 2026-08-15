@@ -2,9 +2,10 @@ import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
-import { DEFAULT_ENDPOINT } from './config.js'
+import { DEFAULT_ENDPOINT, loadConfig } from './config.js'
 import { installPromptHook, uninstallPromptHook } from './hook.js'
-import { readStore } from './store.js'
+import { readStore, storePath, updateStore } from './store.js'
+import type { Config } from './types.js'
 import { fail, header, hint, host, row, step, tilde, warn } from './ui.js'
 
 const LABEL = 'dev.usagefleet.collector'
@@ -237,24 +238,41 @@ function xml(s: string): string {
 }
 
 export function install(): void {
-	// Pre-flight: refuse to install a service that can't resolve a token,
-	// otherwise the baked `watch` process throws on every launch and the service
-	// manager crash-loops it invisibly (only the log file shows it). Use the same
-	// env-OR-file precedence loadConfig() uses so an earlier install's token is
-	// honored; the endpoint needs no check, it falls back to the hosted default.
-	const file = readStore()
-	const endpoint = process.env.USAGEFLEET_ENDPOINT || file.endpoint || DEFAULT_ENDPOINT
-	const token = process.env.USAGEFLEET_TOKEN || file.token || ''
-	if (!token) {
-		console.error(fail('config', 'no device token resolved'))
-		console.error(hint('  usagefleet install --token <device-token>'))
-		console.error(hint('  or set USAGEFLEET_TOKEN'))
-		process.exit(1)
+	// Pre-flight: refuse to install a service whose baked `watch` would throw on
+	// every launch, because the service manager crash-loops it invisibly (only the
+	// log file shows it). Resolving through loadConfig() is what makes this a real
+	// pre-flight rather than a lookalike: it is the same call `watch` makes, so a
+	// missing token or a non-https endpoint fails here or not at all.
+	let cfg: Config
+	try {
+		cfg = loadConfig()
+	} catch (error) {
+		console.error(fail('config', (error as Error).message))
+		console.error(hint('  usagefleet install --endpoint <url> --token <device-token>'))
+		return process.exit(1)
+	}
+
+	// Config that only ever lived in this shell's env is lost to every later
+	// invocation: `usagefleet guard` runs from Claude Code's environment, which
+	// carries no USAGEFLEET_* vars (hook.ts bakes the command, not the env). The
+	// endpoint would fall back to the hosted default and send this device's token
+	// there; the token would be missing outright and the guard would fail open. So
+	// pin both to disk. The default endpoint is stored as absent rather than
+	// written out, so it can still move under an existing install.
+	const desiredEndpoint = cfg.endpoint === DEFAULT_ENDPOINT ? undefined : cfg.endpoint
+	const stored = readStore()
+	if (stored.token !== cfg.token || stored.endpoint !== desiredEndpoint) {
+		// Only on a real change: `update` re-runs install every six hours, and this
+		// file is shared with the running collector's offset writes.
+		updateStore(storePath(), store => {
+			store.token = cfg.token
+			store.endpoint = desiredEndpoint
+		})
 	}
 
 	console.log(header())
 	console.log('')
-	console.log(step('configured', host(endpoint)))
+	console.log(step('configured', host(cfg.endpoint)))
 
 	// Windows: stop a running task first, or `schtasks /run` below is ignored (the
 	// task is IgnoreNew) — leaving the OLD version resident after an "update".

@@ -22,7 +22,7 @@ export function loadConfig(): Config {
 	}
 	if (!isSecureEndpoint(endpoint)) {
 		throw new Error(
-			`USAGEFLEET_ENDPOINT must be https (got ${endpoint}). It carries the device token on every request and self-update executes a binary fetched from it.`,
+			`endpoint must be https (got ${endpoint}). It carries the device token on every request. Set --endpoint or USAGEFLEET_ENDPOINT.`,
 		)
 	}
 	// Guard batch size: "0" (infinite loop), NaN (silent drop), fractional → 100.
