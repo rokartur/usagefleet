@@ -10,9 +10,10 @@ on:
 
 permissions:
   contents: write
-  # npm provenance: lets the registry attest that this tarball was built here,
-  # from this commit. The package installs itself onto user machines, so the
-  # chain from source to install is worth publishing.
+  # The whole npm credential: this job authenticates to the registry as "the
+  # release.yml workflow of this repo" over OIDC (npm trusted publishing), so
+  # there is no publish token to leak, and the registry attests that the tarball
+  # was built here, from this commit.
   id-token: write
 
 concurrency:
@@ -30,14 +31,19 @@ jobs:
         with:
           bun-version: latest
 
-      # Node for the publish itself (registry auth + provenance). Not the
-      # version users get: oxlint strips types off oxlint.config.ts natively,
-      # which needs >=22.18, while the package itself still supports Node 20.
+      # Node for the publish itself, not the version users get: oxlint strips
+      # types off oxlint.config.ts natively (needs >=22.18) and trusted
+      # publishing needs >=22.14, while the package itself still supports 20.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
+
+      # Trusted publishing landed in npm 11.5.1; the runner image's bundled npm
+      # is whatever Node 24 shipped with, so don't leave it to chance.
+      - name: Upgrade npm
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -73,11 +79,18 @@ jobs:
             echo "export const RELEASE_VERSION: string = \"$VERSION\";"
           } > src/release.ts
 
+      # No token: the OIDC identity above is the credential. Requires a trusted
+      # publisher on npmjs.com pinned to this repo + workflow filename.
       - name: Publish to npm
         working-directory: apps/cli
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # The exact bytes that went to the registry, attached to the release so a
+      # version can be inspected or installed offline (`npm i -g ./<file>.tgz`)
+      # without going through npm. dist/ is already built by prepublishOnly.
+      - name: Pack the published tarball
+        working-directory: apps/cli
+        run: npm pack
 
       - name: Tag the release
         uses: softprops/action-gh-release@v2
@@ -96,5 +109,6 @@ jobs:
 
             Already installed? It updates itself within six hours, or run
             `usagefleet update`.
+          files: apps/cli/usagefleet-cli-${{ steps.meta.outputs.version }}.tgz
           make_latest: true
           generate_release_notes: true

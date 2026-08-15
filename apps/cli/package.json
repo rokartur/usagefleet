@@ -11,6 +11,11 @@
 	],
 	"homepage": "https://usagefleet.com",
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/rokartur/usagefleet.git",
+		"directory": "apps/cli"
+	},
 	"bin": {
 		"usagefleet": "dist/index.js"
 	},
