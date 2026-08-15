@@ -103,8 +103,8 @@ jobs:
 
             ```bash
             npm i -g @usagefleet/cli
-            usagefleet init --token uf_xxx
-            usagefleet install   # autostart: launchd / systemd / Task Scheduler
+            # autostart: launchd / systemd / Task Scheduler
+            usagefleet install --token uf_xxx
             ```
 
             Already installed? It updates itself within six hours, or run
