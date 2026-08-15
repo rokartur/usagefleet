@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "free_device_limit" integer;

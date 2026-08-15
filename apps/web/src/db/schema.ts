@@ -128,9 +128,13 @@ export const userSettings = pgTable('user_settings', {
 	weeklyLimitTokens: bigint('weekly_limit_tokens', { mode: 'number' }).notNull().default(2_200_000),
 	weekResetWeekday: integer('week_reset_weekday').notNull().default(1), // 0=Sun
 	weekResetHourUtc: integer('week_reset_hour_utc').notNull().default(0),
-	// Neither the group cap nor the device cap is stored here — both come from
-	// the account's Stripe plan (see lib/billing.ts) so they can't be
+	// Neither the group cap nor the paid device cap is stored here — both come
+	// from the account's Stripe plan (see lib/billing.ts) so they can't be
 	// self-granted. A group may exist per device slot.
+	// The one exception: an admin can raise how many devices THIS account gets
+	// without a subscription (null = the catalog's FREE_DEVICES). Only ever set
+	// from the admin panel, never from Settings.
+	freeDeviceLimit: integer('free_device_limit'),
 	// Cache-write TTL used for pricing ('5m' | '1h'). Claude Code writes 5m caches
 	// unless the user sets ENABLE_PROMPT_CACHING_1H=1.
 	cacheWriteTtl: text('cache_write_ttl').notNull().default('5m'),

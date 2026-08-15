@@ -46,8 +46,20 @@ export type PlanId = PaidPlan | 'free'
  *  Declaration order is the order tiers are offered in. */
 export const PAID_PLANS = Object.keys(PLANS) as PaidPlan[]
 
-/** Devices an account gets without paying — enough to try it on one machine. */
+/** Devices an account gets without paying — enough to try it on one machine.
+ *  An admin can raise it per account (user_settings.free_device_limit). */
 export const FREE_DEVICES = 1
+
+/** Reads the admin panel's free-allowance field. Blank or unparseable clears the
+ *  grant back to FREE_DEVICES; anything else is clamped to a whole number in
+ *  [0, the custom plan's ceiling] so a slipped keystroke can't hand out 8000
+ *  devices. */
+export const parseFreeDeviceLimit = (raw: string): number | null => {
+	const devices = Math.trunc(Number(raw))
+	return raw.trim() === '' || !Number.isFinite(devices)
+		? null
+		: Math.min(Math.max(devices, 0), PLANS.custom.maxDevices)
+}
 
 /** Narrows a plan name stored by Stripe to one we still sell. `Object.hasOwn`,
  *  not `in` — `in` walks the prototype chain, so "toString" would resolve to a

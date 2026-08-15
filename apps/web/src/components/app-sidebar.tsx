@@ -7,6 +7,7 @@ import {
 	LayersIcon,
 	MonitorSmartphoneIcon,
 	Settings2Icon,
+	ShieldIcon,
 	SlashIcon,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -34,6 +35,9 @@ const NAV: { href: string; label: string; icon: LucideIcon }[] = [
 	{ href: '/devices', icon: MonitorSmartphoneIcon, label: 'Devices' },
 	{ href: '/billing', icon: CreditCardIcon, label: 'Billing' },
 	{ href: '/settings', icon: Settings2Icon, label: 'Settings' },
+	// Rendered only for ADMIN_EMAILS accounts, but listed here unconditionally so
+	// PageTitle can name the page it is on.
+	{ href: '/admin', icon: ShieldIcon, label: 'Admin' },
 ]
 
 /** The shell's single <h1>: the current section's name, derived from the route
@@ -112,7 +116,7 @@ function NavUser({ email }: { email: string }) {
 	)
 }
 
-export function AppSidebar({ email }: { email: string }) {
+export function AppSidebar({ email, isAdmin }: { email: string; isAdmin: boolean }) {
 	const pathname = useRouterState({
 		select: state => state.location.pathname,
 	})
@@ -147,7 +151,7 @@ export function AppSidebar({ email }: { email: string }) {
 					<SidebarGroupLabel>Overview</SidebarGroupLabel>
 					<SidebarGroupContent>
 						<SidebarMenu>
-							{NAV.map(n => (
+							{NAV.filter(n => isAdmin || n.href !== '/admin').map(n => (
 								<SidebarMenuItem key={n.href}>
 									<SidebarMenuButton
 										isActive={pathname.startsWith(n.href)}

@@ -75,6 +75,12 @@ secret and stable; changing it invalidates all existing sessions.
 (enforced server-side by better-auth, not just hidden in the UI). Typical flow:
 sign up once, then set `ALLOW_SIGNUP=false` and `docker compose up -d` to apply.
 
+**Admin panel** — list `ADMIN_EMAILS=you@example.com,ops@example.com` to unlock
+`/admin`: every account with its plan and device usage, plus a per-account
+device allowance for accounts with no subscription (blank = the default 1).
+Admin is env-only and never stored on the account, so a stolen session can't
+grant itself the panel. Empty (the default) means the panel is off for everyone.
+
 **Upgrading from the email + password release** — sign-in is now GitHub/Google
 only. Existing users keep their account by signing in with a provider that
 reports the *same* address; migration `0013_link_legacy_logins.sql` marks their
@@ -166,6 +172,6 @@ Bun workspaces — one lockfile, one `node_modules`, two apps.
 | `apps/web/src/lib/auth.ts` | better-auth (GitHub + Google OAuth, Stripe); device auth is a separate hashed token |
 | `apps/web/src/lib/plans.ts` | plan catalog; `billing.ts` turns a subscription into a device cap |
 | `apps/web/src/routes/api/v1/usage.ts` | ingestion endpoint (`x-api-key`, dedup on `uuid`) |
-| `apps/web/src/routes/_dash/` | dashboard, groups, devices, billing, settings |
+| `apps/web/src/routes/_dash/` | dashboard, groups, devices, billing, settings, admin |
 | `apps/cli/` | the `usagefleet` CLI, published as `@usagefleet/cli`, zero runtime deps |
 | `apps/web/Dockerfile`, `docker-compose.yml` | two-container deployment (build context = repo root) |

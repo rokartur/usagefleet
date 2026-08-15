@@ -1,13 +1,13 @@
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm'
 import { db } from '@/db'
-import { devices, subscription } from '@/db/schema'
+import { devices, subscription, userSettings } from '@/db/schema'
 import { isPaidPlan, planDevices } from '@/lib/plans'
 import type { PlanId } from '@/lib/plans'
 
 /** Stripe keeps a subscription alive while it retries a failed charge
  *  (`past_due`) and cancels it on its own if dunning fails — don't yank a
  *  customer's devices on one declined card. */
-const ENTITLING_STATUSES = ['active', 'trialing', 'past_due']
+export const ENTITLING_STATUSES = ['active', 'trialing', 'past_due']
 
 export interface AccountPlan {
 	plan: PlanId
@@ -27,18 +27,28 @@ export interface AccountPlan {
  *  webhook keeps in sync. Anything unrecognised or lapsed falls back to free —
  *  this is the only place device caps come from. */
 export async function accountPlan(userId: string): Promise<AccountPlan> {
-	const [row] = await db
-		.select()
-		.from(subscription)
-		.where(and(eq(subscription.referenceId, userId), inArray(subscription.status, ENTITLING_STATUSES)))
-		.orderBy(desc(subscription.periodEnd))
-		.limit(1)
+	const [[row], [settings]] = await Promise.all([
+		db
+			.select()
+			.from(subscription)
+			.where(and(eq(subscription.referenceId, userId), inArray(subscription.status, ENTITLING_STATUSES)))
+			.orderBy(desc(subscription.periodEnd))
+			.limit(1),
+		db
+			.select({ freeDeviceLimit: userSettings.freeDeviceLimit })
+			.from(userSettings)
+			.where(eq(userSettings.userId, userId))
+			.limit(1),
+	])
 
 	const plan: PlanId = row && isPaidPlan(row.plan) ? row.plan : 'free'
 	const seats = plan === 'custom' ? (row?.seats ?? null) : null
+	// An admin-granted free allowance only ever replaces the free tier's cap; a
+	// paid plan's cap stays whatever Stripe actually billed for.
+	const freeGrant = plan === 'free' ? settings?.freeDeviceLimit : null
 	return {
 		cancelAtPeriodEnd: row?.cancelAtPeriodEnd ?? false,
-		deviceLimit: planDevices(plan, seats),
+		deviceLimit: freeGrant ?? planDevices(plan, seats),
 		periodEnd: row?.periodEnd ?? null,
 		plan,
 		seats,

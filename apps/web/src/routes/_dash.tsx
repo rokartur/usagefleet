@@ -2,13 +2,15 @@ import { createFileRoute, Outlet } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { AppSidebar, PageTitle } from '@/components/app-sidebar'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { isAdminEmail } from '@/lib/flags'
 import { requireUser } from '@/lib/session'
 
 /** Guards every dashboard route and hands the shell what it needs. Throwing the
  *  redirect from here (via requireUser) stops the child loaders from running. */
 const dashShell = createServerFn().handler(async () => {
 	const user = await requireUser()
-	return { email: user.email }
+	// Only decides whether the nav link renders; /admin re-checks server-side.
+	return { email: user.email, isAdmin: isAdminEmail(user.email) }
 })
 
 export const Route = createFileRoute('/_dash')({
@@ -23,10 +25,10 @@ const SHELL = { '--shell': '72rem' } as React.CSSProperties
 const COLUMN = 'flex w-full max-w-4xl'
 
 function DashLayout() {
-	const { email } = Route.useLoaderData()
+	const { email, isAdmin } = Route.useLoaderData()
 	return (
 		<SidebarProvider className='mx-auto max-w-(--shell)' style={SHELL}>
-			<AppSidebar email={email} />
+			<AppSidebar email={email} isAdmin={isAdmin} />
 			<SidebarInset>
 				{/* Header and content share one centred column so the page title lines
             up with the cards below it. */}

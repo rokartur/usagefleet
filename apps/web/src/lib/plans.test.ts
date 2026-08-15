@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { formatPlanPrice, FREE_DEVICES, isPaidPlan, PAID_PLANS, PLANS, planDevices, planPriceCents } from './plans'
+import {
+	formatPlanPrice,
+	FREE_DEVICES,
+	isPaidPlan,
+	PAID_PLANS,
+	PLANS,
+	parseFreeDeviceLimit,
+	planDevices,
+	planPriceCents,
+} from './plans'
 import type { PlanPrices } from './plans'
 
 /** Stands in for what lib/stripe-prices.ts reads back from Stripe. */
@@ -40,6 +49,19 @@ describe('plan catalog', () => {
 		expect(planPriceCents('custom', 11, PRICES)).toBe(385)
 		expect(planPriceCents('solo', null, PRICES)).toBe(100)
 		expect(planPriceCents('free', null, PRICES)).toBe(0)
+	})
+
+	it('reads an admin free-device grant, or clears it', () => {
+		expect(parseFreeDeviceLimit('5')).toBe(5)
+		expect(parseFreeDeviceLimit('0')).toBe(0)
+		// Blank is "no grant", not zero devices — Number('') is 0, so the order of
+		// these checks is the whole test.
+		expect(parseFreeDeviceLimit('')).toBeNull()
+		expect(parseFreeDeviceLimit('  ')).toBeNull()
+		expect(parseFreeDeviceLimit('lots')).toBeNull()
+		expect(parseFreeDeviceLimit('-3')).toBe(0)
+		expect(parseFreeDeviceLimit('2.9')).toBe(2)
+		expect(parseFreeDeviceLimit('99999')).toBe(PLANS.custom.maxDevices)
 	})
 
 	it('shows cents only when the price has any', () => {

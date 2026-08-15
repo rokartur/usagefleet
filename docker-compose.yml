@@ -36,6 +36,8 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       # Set to "false" to block new account creation.
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
+      # Comma-separated emails allowed into the /admin panel.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # GitHub and Google OAuth apps. Callback URLs must be
       # <BETTER_AUTH_URL>/api/auth/callback/{github,google}.
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?set GITHUB_CLIENT_ID in .env}

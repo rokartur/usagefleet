@@ -1,6 +1,7 @@
 import { redirect } from '@tanstack/react-router'
 import { getRequest } from '@tanstack/react-start/server'
 import { auth } from '@/lib/auth'
+import { isAdminEmail } from '@/lib/flags'
 
 /** Reads the better-auth session from the in-flight request. Server-side only:
  *  call it from a server function, a server route, or a route `beforeLoad` that
@@ -18,4 +19,15 @@ export async function requireUser() {
 		throw redirect({ to: '/login' })
 	}
 	return session.user
+}
+
+/** Guard for the admin panel. Every admin server function calls it — the route
+ *  guard only hides the page, it does not protect the mutations behind it.
+ *  Non-admins are sent to their own dashboard rather than told a panel exists. */
+export async function requireAdmin() {
+	const user = await requireUser()
+	if (!isAdminEmail(user.email)) {
+		throw redirect({ to: '/dashboard' })
+	}
+	return user
 }
