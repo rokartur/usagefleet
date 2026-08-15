@@ -13,9 +13,9 @@ Two workspaces, one lockfile: `apps/web` (TanStack Start + better-auth + Drizzle
 - [`docs/architecture.md`](docs/architecture.md) — request flow, data model, auth,
   entitlement, where each subsystem lives. Read before touching routes, schema,
   billing or the ingest API.
-- [`docs/usage-math.md`](docs/usage-math.md) — fold, 5h blocks, weekly window,
-  the cost-weighted group split, pricing. Read before touching anything that
-  produces a number on the dashboard.
+- [`docs/usage-math.md`](docs/usage-math.md) — fold, windows, the cost-weighted
+  group split, pricing. Read before touching anything that produces a number on
+  the dashboard.
 - [`docs/collector.md`](docs/collector.md) — CLI internals: watch loop, tailer
   offsets, limits reporting, prompt guard, per-OS autostart, self-update.
 - [`README.md`](README.md) — product overview and local development.

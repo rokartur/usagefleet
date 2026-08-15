@@ -21,6 +21,8 @@ Node ≥ 20). Bun is the package manager; do not add a `package-lock.json`.
 bun run format   # oxfmt: tabs, single quotes, no semicolons, 120 cols
 bun run lint     # oxlint
 bun run test     # usage math + collector unit tests
+
+cd apps/cli && bunx tsc --noEmit   # release.yml gates every npm publish on this
 ```
 
 Commits are Conventional Commits: `type(scope): imperative subject`, where type
@@ -31,8 +33,8 @@ one logical change.
 
 - [`docs/architecture.md`](docs/architecture.md) — request flow, data model,
   auth, entitlement. Read before touching routes, schema, billing or ingest.
-- [`docs/usage-math.md`](docs/usage-math.md) — fold, 5h blocks, weekly window,
-  the group split, pricing. Read before changing any number on the dashboard.
+- [`docs/usage-math.md`](docs/usage-math.md) — fold, windows, the group split,
+  pricing. Read before changing any number on the dashboard.
 - [`docs/collector.md`](docs/collector.md) — CLI internals.
 - [`AGENTS.md`](AGENTS.md) — the invariants, in short form. They are the part
   that silently produces wrong numbers when broken.

@@ -21,7 +21,7 @@ Free for one device.
 The percentages are Anthropic's, not an estimate: a small collector on each
 machine reads them from the `anthropic-ratelimit-unified-5h/7d-utilization`
 response headers using the Claude login you already have there. UsageFleet only
-*splits* them, by each group's share of billable tokens.
+*splits* them, by each group's share of estimated cost.
 
 A group's number is measured against **its own slice** of the account (1/N with
 N groups), so "62%" means that group used 62% of its budget — not 62% of yours.
@@ -98,7 +98,7 @@ commit the SQL under `apps/web/drizzle/`.
 | Path | What |
 |------|------|
 | `apps/web/src/db/` | Drizzle schema (auth, subscription, groups, devices, usage) |
-| `apps/web/src/lib/usage/` | fold, 5h blocks, weekly window, limits, pricing (pure, tested) |
+| `apps/web/src/lib/usage/` | fold, windows, pricing (pure, tested); the group split lives in `lib/data.ts` |
 | `apps/web/src/routes/api/v1/usage.ts` | ingestion endpoint (`x-api-key`, dedup on `uuid`) |
 | `apps/web/src/routes/_dash/` | dashboard, groups, devices, billing, settings, admin |
 | `apps/cli/` | the `usagefleet` collector |

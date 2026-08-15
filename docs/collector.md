@@ -50,6 +50,14 @@ API key — and `claude-limits.ts` sends a **1-token** request to
 `...-7d-fable-utilization`. That is why the limits ping is rate-limited
 separately from the usage scan: every one costs a billable token.
 
+For a subscription login there is a **second** source: `api/oauth/usage` on the
+same host, the undocumented endpoint Claude Code's own `/usage` uses. The
+Messages headers only carry the account-wide 5h/7d windows, so the per-model
+caps ("Fable · 24% used") come from here. It is a separate request and so a
+separate failure point — a non-OK response or an unexpected shape yields no
+model limits while the 5h/7d figures still report normally. Its values are
+already 0–100 percentages, unlike the header fractions.
+
 The parsed report goes to `POST /api/v1/limits`. Percentages are clamped to
 0–100 and accept both the `37` and `0.37` header forms.
 
@@ -71,6 +79,12 @@ It **fails open** by design: unconfigured, offline, timed out (5s), non-OK
 response, junk JSON, or a server too old to send the fields all return 0. Only an
 explicit `blocked: true` blocks. A tracker outage must never stop someone from
 working.
+
+The server fails open too: it only answers `blocked: true` while the account's
+last reported utilization is under 15 minutes old. Limits reporting needs live
+Claude credentials and can stop while usage upload keeps working, so without
+that window a frozen percentage would refuse prompts indefinitely. Raising
+`USAGEFLEET_LIMITS_INTERVAL` past 15 min therefore turns blocking off.
 
 ## State and config
 

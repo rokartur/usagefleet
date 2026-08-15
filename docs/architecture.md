@@ -71,9 +71,12 @@ Data access is layered so pages stay thin:
 
 ## Ingest API contract
 
-Both endpoints: `Authorization: Bearer <device token>` →
-`authenticateDevice()` (hash lookup, revoked check, `last_seen_at` touch) →
-plan re-check → arktype-validated body read through `readJsonCapped`.
+All three endpoints: `x-api-key` or `Authorization: Bearer <device token>` →
+`authenticateDevice()` (hash lookup, revoked check) → plan re-check. The two
+POSTs then read an arktype-validated body through `readJsonCapped`; the GET has
+no body. A device outside the plan gets `402` from all three, which the guard
+treats as open like any other non-OK. `last_seen_at` is touched by the two POST
+handlers, and on the `402` path so a parked device still shows as alive.
 
 - `POST /api/v1/usage` — `{ records: [...] }`, ≤1000 per batch. Responds with
   accepted/duplicate counts. At-least-once by design: the collector only commits
@@ -81,8 +84,14 @@ plan re-check → arktype-validated body read through `readJsonCapped`.
   replay.
 - `POST /api/v1/limits` — the parsed rate-limit headers. Writes `user_settings`
   and upserts the peak into `limit_sample`.
-- `GET /api/v1/limits` — what `usagefleet guard` asks before a prompt:
-  `{ blocked, reason? }` based on the device's group toggles and its budget slice.
+- `GET /api/v1/limits` — what `usagefleet guard` asks before a prompt. Returns
+  `{ group, sessionPct, weeklyPct, blocked, blockedWindow, blockedUntil,
+  reportedAt }`; the guard reads `blocked` to decide and `blockedWindow` /
+  `blockedUntil` to word the refusal. `blocked` is true only when the device's
+  group has the matching switch on, that window is at 100% of the group's budget
+  slice, and the last reported utilization is younger than `LIMITS_STALE_MS`
+  (15 min). A stale reading never blocks: the limits leg can die while upload
+  keeps working, and nothing decays the stored percentage.
 
 Status codes carry meaning to the CLI: `401` revoked/unknown token (stop),
 `402` device outside the plan's device limit (park, keep data), `400/422`

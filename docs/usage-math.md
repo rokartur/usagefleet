@@ -12,8 +12,7 @@ double-counts by a large factor.
 
 `foldEvents()` keys by `(messageId, requestId)` — falling back to the row's own
 `uuid` — and keeps the row with the **largest** total, i.e. the terminal segment.
-`foldAndSum()` is the standard aggregate. `sumRecords()` is for already-folded
-input only.
+`sumRecords()` is for already-folded input only.
 
 SQL aggregates do the same fold in-database (`loadDailyAggregates`,
 `loadWindowAggregates`): `DISTINCT ON (fold key) ... ORDER BY total DESC`. If you
@@ -36,10 +35,11 @@ apportioning a percentage.
 
 ## Windows
 
-- **5h blocks** (`blocks.ts`, the ccusage algorithm): start = first event floored
-  to the UTC hour, end = +5h. A new block opens when an event is ≥5h past the
-  block start *or* ≥5h after the previous event. `activeBlock()` returns the one
-  containing `now` whose last event is <5h old.
+- **5h window**: Anthropic's, not ours. The collector reports the open window's
+  utilization together with its `resets_at`, and the dashboard anchors on that
+  instant. There is no local block-boundary reconstruction from event
+  timestamps — an earlier ccusage-style implementation was deleted once the
+  collector began reporting the real numbers.
 - **Weekly window** (`window.ts`): most recent `weekday`@`hourUtc` at or before
   now, from `user_settings` (default Monday 00:00 UTC).
 - **Past windows** (`pastWindowStarts`): strided backwards from Claude's reported
@@ -51,10 +51,9 @@ apportioning a percentage.
 The headline 5h and weekly numbers are Anthropic's own utilization, read by the
 collector from `anthropic-ratelimit-unified-*` headers and stored on
 `user_settings`. Until the collector reports once, the dashboard shows
-`connected: false`. Local token limits in Settings are only a fallback estimate.
+`connected: false`.
 
-`splitByShare()` (`lib/data.ts`) apportions one official percentage across groups
-(or devices):
+`splitByShare()` (`lib/data.ts`) apportions one official percentage across groups:
 
 1. filter folded events to the window,
 2. bucket by key, sum each bucket's estimated cost,
@@ -80,7 +79,10 @@ reconstruction from token counts.
 
 ## When you change any of this
 
-`usage.test.ts`, `daily-agg.test.ts`, `timeline.test.ts` and `data.test.ts` pin
-the fold, the block boundaries and the split. Run `bun run test` in `apps/web`.
-Keep new math in `lib/usage/` as a pure function with a test; routes and
-components consume it.
+`usage.test.ts` and `daily-agg.test.ts` pin the fold and the aggregate sums;
+`data.test.ts` pins the past-window construction and `groupBudgetPct`, i.e. the
+budget-slice rule above. Run `bun run test` in `apps/web`. Keep new math in
+`lib/usage/` as a pure function with a test; routes and components consume it.
+
+`splitByShare` is still uncovered — it needs a `UsageRecord[]` fixture and the
+pricing table, so a test for it is a fixture exercise rather than a one-liner.
