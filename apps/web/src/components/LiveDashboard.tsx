@@ -7,6 +7,7 @@ import { InstallCommand } from '@/components/InstallCommand'
 import { ResetCountdown } from '@/components/ResetCountdown'
 import { Button } from '@/components/ui/button'
 import { Section, UsageBar } from '@/components/usage-ui'
+import { useMounted } from '@/hooks/use-mounted'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO, SpendPeriod } from '@/lib/data'
 import { formatRelative, formatTokens, formatUsd } from '@/lib/format'
 import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
@@ -73,9 +74,12 @@ const splitOf = (dash: DashboardDTO, pct: (g: LiveGroupUsage) => number) =>
 
 /** "live · subscription · updated 40s ago" for one account. A dead poll is a
  *  fleet-wide fact, the report age is per account: one machine can stop
- *  reporting while the other keeps going. */
+ *  reporting while the other keeps going. `now` is 0 until the tab mounts, and
+ *  everything clock-derived stays out of the markup until then: the server's
+ *  wall clock is not the viewer's, so an age rendered during SSR can hydrate
+ *  into different text. */
 function StatusLine({ dash, now, pollDown }: { dash: DashboardDTO; now: number; pollDown: boolean }) {
-	const reportAge = dash.reportedAt ? now - Date.parse(dash.reportedAt) : 0
+	const reportAge = now && dash.reportedAt ? now - Date.parse(dash.reportedAt) : 0
 	const stale = pollDown || reportAge > LIMITS_STALE_MS
 	const label = pollDown ? 'reconnecting…' : stale ? 'collector offline' : 'live'
 	const source = dash.source === 'sub' ? 'subscription' : dash.source === 'api' ? 'API key' : '—'
@@ -83,7 +87,7 @@ function StatusLine({ dash, now, pollDown }: { dash: DashboardDTO; now: number; 
 		<p className='flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground'>
 			<span className={cn('size-1.5 rounded-full', stale ? 'bg-amber-500' : 'bg-emerald-500')} aria-hidden />
 			<span className={stale ? 'text-amber-500' : 'text-foreground'}>{label}</span>· {source}
-			{dash.reportedAt ? ` · updated ${formatRelative(new Date(dash.reportedAt))}` : ''}
+			{now && dash.reportedAt ? ` · updated ${formatRelative(new Date(dash.reportedAt))}` : ''}
 		</p>
 	)
 }
@@ -338,8 +342,12 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO[]; set
 	const [dashes, setDashes] = useState<DashboardDTO[]>(initial)
 	const [lastOk, setLastOk] = useState(() => Date.now())
 	// `now` advances once a second (below) so the staleness check stays a pure
-	// read of state during render.
-	const [now, setNow] = useState(() => Date.now())
+	// read of state during render, and reads 0 until the client owns the tree: the
+	// server's clock is not the viewer's, so an age rendered into the SSR markup
+	// hydrates into different text. 0 reads as "fresh", which a page that just
+	// rendered is.
+	const [clock, setClock] = useState(() => Date.now())
+	const now = useMounted() ? clock : 0
 	// Which group rows are expanded (groupId or "ungrouped").
 	const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
 	// Serialises polling: /api/dashboard scans the whole window, so a server
@@ -398,7 +406,7 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO[]; set
 
 	useEffect(() => {
 		const id = setInterval(refresh, POLL_MS)
-		const ticker = setInterval(() => setNow(Date.now()), 1000)
+		const ticker = setInterval(() => setClock(Date.now()), 1000)
 		const onVisible = () => {
 			if (document.visibilityState === 'visible') {
 				refresh()

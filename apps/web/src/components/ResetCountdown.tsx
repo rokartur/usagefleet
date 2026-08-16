@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useMounted } from '@/hooks/use-mounted'
 
 function countdown(resetsAt: string | null): string {
 	if (!resetsAt) {
@@ -52,19 +53,23 @@ export function ResetCountdown({ resetsAt }: { resetsAt: string | null }) {
 	// Single state bumped each second; both labels recompute from `resetsAt` and
 	// the current time, so the weekday prefix stays correct across the 24h boundary.
 	const [, setTick] = useState(0)
+	// Both labels read the wall clock, and one of them the viewer's timezone.
+	// Neither survives being rendered on the server, so this stays empty until the
+	// client owns the tree.
+	const mounted = useMounted()
 
 	useEffect(() => {
 		const id = setInterval(() => setTick(t => t + 1), 1000)
 		return () => clearInterval(id)
 	}, [])
 
-	const label = countdown(resetsAt)
+	const label = mounted ? countdown(resetsAt) : ''
 	if (!label) {
 		return null
 	}
 	const clock = clockLabel(resetsAt)
 	return (
-		<span suppressHydrationWarning>
+		<span>
 			{label}
 			{clock && <span className='text-neutral-500'> · at {clock}</span>}
 		</span>
