@@ -40,7 +40,10 @@ export function InstallCommand({ token }: { token: string }) {
 			{commands.map(c => (
 				<TabsContent key={c.id} value={c.id}>
 					<div className='flex items-start gap-2'>
-						<pre className='min-w-0 flex-1 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs'>
+						{/* Wraps rather than scrolls: the token makes this line far wider than
+						    the dialog, and `wrap-anywhere` keeps its min-content size at one
+						    character so it can never widen the layout around it. */}
+						<pre className='min-w-0 flex-1 rounded-lg bg-muted p-3 font-mono text-xs wrap-anywhere whitespace-pre-wrap'>
 							{c.command}
 						</pre>
 						<Button
