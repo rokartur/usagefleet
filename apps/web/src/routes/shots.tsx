@@ -227,16 +227,17 @@ function ShotsPage() {
 		}
 	}, [])
 
+	// Same shell numbers as _dash.tsx, or the screenshots stop matching the app.
 	return (
-		<SidebarProvider className='mx-auto max-w-(--shell)' style={{ '--shell': '72rem' } as React.CSSProperties}>
+		<SidebarProvider className='mx-auto max-w-(--shell)' style={{ '--shell': '80rem' } as React.CSSProperties}>
 			<AppSidebar email='you@example.com' isAdmin={false} />
 			<SidebarInset>
 				<header className='sticky top-0 z-10 flex h-14 shrink-0 items-center border-b bg-background/80 px-4 backdrop-blur md:px-6'>
-					<div className='flex w-full max-w-4xl items-center gap-2'>
+					<div className='flex w-full max-w-5xl items-center gap-2'>
 						<PageTitle />
 					</div>
 				</header>
-				<div className='flex w-full max-w-4xl flex-1 flex-col gap-6 p-4 md:p-6'>
+				<div className='flex w-full max-w-5xl flex-1 flex-col gap-6 p-4 md:p-6'>
 					<LiveDashboard initial={[dashboard]} setup={null} />
 					<WindowHistory history={windows} />
 					<UsageExplorer history={history} />

@@ -18,11 +18,13 @@ export const Route = createFileRoute('/_dash')({
 	component: DashLayout,
 })
 
-/** Sidebar (16rem) plus the content column (56rem): the shell is centred at this
- *  width so the sidebar sits next to the content, not at the viewport edge. */
-const SHELL = { '--shell': '72rem' } as React.CSSProperties
+/** Sidebar (16rem) plus the content column (64rem). The total matches the
+ *  marketing pages' max-w-7xl so the frame doesn't resize when you cross from
+ *  one into the other, and centring it keeps the sidebar next to the content
+ *  rather than at the viewport edge. */
+const SHELL = { '--shell': '80rem' } as React.CSSProperties
 
-const COLUMN = 'flex w-full max-w-4xl'
+const COLUMN = 'flex w-full max-w-5xl'
 
 function DashLayout() {
 	const { email, isAdmin } = Route.useLoaderData()
