@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { monthKey, sumAgg } from './daily-agg'
+import { monthKey } from './daily-agg'
 import type { DailyAggRow } from './daily-agg'
+import { sumTokens } from './fold'
+import { EMPTY_TOTALS } from './types'
 
 function row(p: Partial<DailyAggRow> & { day: string }): DailyAggRow {
 	return {
@@ -49,8 +51,8 @@ describe('daily-agg', () => {
 		expect(monthKey(new Date('2026-06-30T23:30:00Z'))).toBe('2026-06')
 	})
 
-	it('sumAgg totals every component and the grand total', () => {
-		const t = sumAgg(ROWS)
+	it('sumTokens totals every component and the grand total', () => {
+		const t = sumTokens(ROWS)
 		expect(t.inputTokens).toBe(21) // 10 + 3 + 8
 		expect(t.outputTokens).toBe(26) // 5 + 1 + 20
 		expect(t.cacheCreationTokens).toBe(2)
@@ -58,8 +60,15 @@ describe('daily-agg', () => {
 		expect(t.totalTokens).toBe(21 + 26 + 2 + 147)
 	})
 
-	it('starts from zero per call rather than accumulating across them', () => {
-		expect(sumAgg(ROWS).totalTokens).toBe(sumAgg(ROWS).totalTokens)
-		expect(sumAgg([]).totalTokens).toBe(0)
+	it('starts from zero per call rather than mutating the shared EMPTY_TOTALS', () => {
+		sumTokens(ROWS)
+		expect(EMPTY_TOTALS).toStrictEqual({
+			cacheCreationTokens: 0,
+			cacheReadTokens: 0,
+			inputTokens: 0,
+			outputTokens: 0,
+			totalTokens: 0,
+		})
+		expect(sumTokens([]).totalTokens).toBe(0)
 	})
 })

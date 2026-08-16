@@ -24,6 +24,12 @@ export interface TokenTotals {
 	totalTokens: number
 }
 
+/** The four raw token counts, shared by ingest records, folded rows, daily
+ *  aggregates and totals. Anything summable is summable through this. Note
+ *  "billable" means something narrower here — see billableTokens in fold.ts,
+ *  which excludes cache reads. */
+export type TokenCounts = Pick<TokenTotals, 'inputTokens' | 'outputTokens' | 'cacheCreationTokens' | 'cacheReadTokens'>
+
 export const EMPTY_TOTALS: TokenTotals = {
 	cacheCreationTokens: 0,
 	cacheReadTokens: 0,

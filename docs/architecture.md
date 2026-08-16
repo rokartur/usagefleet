@@ -96,7 +96,13 @@ handlers, and on the `402` path so a parked device still shows as alive.
   commits a file offset after the server acknowledges, and the unique index
   absorbs the replay. Records older than `devices.created_at` are dropped
   (`skipped`): a fresh collector tails the machine's whole log history, and usage
-  from before the token existed is not this device's to report.
+  from before the token existed is not this device's to report. Records dated in
+  the future are *clamped* to arrival time, not dropped — a machine with a fast
+  clock would otherwise inflate month and all-time spend permanently, and
+  rejecting them instead would be silent data loss, since the collector commits
+  its file offsets on any 200 and never reads `skipped`. `os` is also accepted as
+  `other` (freebsd/sunos/…); the column is a display-only enum, so an unlabelled
+  box keeps whatever it had rather than forcing a migration.
 - `POST /api/v1/limits` — the parsed rate-limit headers, plus the optional
   `account` the collector read from `~/.claude.json`. Upserts `claude_account`,
   stamps the device with it, and upserts the peak into `limit_sample`.

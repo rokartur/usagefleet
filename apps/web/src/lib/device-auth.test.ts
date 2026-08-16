@@ -1,19 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as DbModule from '@/db'
+import type * as SchemaModule from '@/db/schema'
 
 // authenticateDevice needs a device lookup; the policy under test is which
 // requests are allowed to reach that lookup, so the row it returns is all the
 // database that matters here.
 const lookup = vi.fn<() => Promise<unknown[]>>()
 
+// The casts are the point, not an oversight: vitest's typed mock form checks the
+// factory against the whole real module, so a stub of the one query builder under
+// test cannot satisfy PostgresJsDatabase. Spelling the substitution out beats
+// widening the stub until it typechecks and stops describing what is mocked.
 vi.mock(import('@/db'), () => ({
 	db: {
 		select: () => ({
 			from: () => ({ where: () => ({ limit: lookup }) }),
 		}),
-	},
+	} as unknown as typeof DbModule.db,
 }))
 vi.mock(import('@/db/schema'), () => ({
-	devices: { id: 'id', tokenHash: 'tokenHash' },
+	devices: { id: 'id', tokenHash: 'tokenHash' } as unknown as typeof SchemaModule.devices,
 }))
 
 const { authenticateDevice } = await import('./device-auth')

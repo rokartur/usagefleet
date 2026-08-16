@@ -12,11 +12,12 @@ double-counts by a large factor.
 
 `foldEvents()` keys by `(messageId, requestId)` — falling back to the row's own
 `uuid` — and keeps the row with the **largest** total, i.e. the terminal segment.
-`sumRecords()` is for already-folded input only.
+`sumTokens()` is for already-folded input only.
 
-SQL aggregates do the same fold in-database (`loadDailyAggregates`,
-`loadWindowAggregates`): `DISTINCT ON (fold key) ... ORDER BY total DESC`. If you
-write a new query over `usage_event`, copy that shape.
+SQL aggregates do the same fold in-database (`loadRecentEvents`,
+`loadDailyAggregates`, `loadWindowAggregates`, `getProjectUsage`):
+`DISTINCT ON (fold key) ... ORDER BY total DESC`. If you write a new query over
+`usage_event`, copy that shape.
 
 ## Token vocabulary
 
@@ -85,6 +86,23 @@ the running peak per `(claude_account, window, window_start)` on every limits po
 groups using the bucketed aggregates — real recorded utilization, not a
 reconstruction from token counts.
 
+These percentages are **account shares, not budget slices**: the card's group
+rows carry `accountPct`, so a group at half the account reads 50% here while the
+live dashboard shows the same group at 100% of its slice. The budget-slice rule
+above applies to the live cards only. Two tables on one page, two meanings, on
+purpose: a closed window is a record of what happened, not a live budget to
+spend against.
+
+## Usage explorer
+
+The explorer (`UsageExplorer.tsx`) is a client-side pivot over the same all-time
+`HistoryRow[]` the history route already loads: pick a period, a metric (cost,
+billable, total, input, output, cache read) and a dimension (group, model,
+device, source), and it buckets by day or by month once the span passes
+`MAX_DAILY_COLUMNS`. It adds no math of its own — token metrics come from
+`billableTokens`/`recordTotal` in `lib/usage/fold.ts`, cost is the per-cell
+`costUsd` the server already priced. Nothing here is limit-shaped either.
+
 ## Projects table
 
 `getProjectUsage()` groups the same in-SQL fold by `(cwd × model)` over a fixed
@@ -97,9 +115,8 @@ table is tokens and estimated cost, per user, across every account.
 ## When you change any of this
 
 `usage.test.ts` and `daily-agg.test.ts` pin the fold and the aggregate sums;
-`data.test.ts` pins the past-window construction and `groupBudgetPct`, i.e. the
-budget-slice rule above. Run `bun run test` in `apps/web`. Keep new math in
-`lib/usage/` as a pure function with a test; routes and components consume it.
-
-`splitByShare` is still uncovered — it needs a `UsageRecord[]` fixture and the
-pricing table, so a test for it is a fixture exercise rather than a one-liner.
+`data.test.ts` pins the past-window construction, `groupBudgetPct` and
+`splitByShare` — i.e. the budget-slice rule above and the cost-weighted split
+that feeds it, including the window bounds, the fold and the zero-cost case. Run
+`bun run test` in `apps/web`. Keep new math in `lib/usage/` as a pure function
+with a test; routes and components consume it.

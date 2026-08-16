@@ -1,4 +1,4 @@
-import { billableTokens, foldEvents, sumRecords } from './fold'
+import { billableTokens, foldEvents, sumTokens } from './fold'
 import type { TokenTotals, UsageRecord } from './types'
 
 /**
@@ -79,7 +79,7 @@ export function modelBreakdown(events: UsageRecord[]): ModelUsage[] {
 	}
 	const out: ModelUsage[] = []
 	for (const [key, { model, evs }] of byModel) {
-		const totals = sumRecords(evs)
+		const totals = sumTokens(evs)
 		// Skip token-less pseudo-models (e.g. "<synthetic>" rows Claude Code emits
 		// for compaction / synthetic messages) — they'd render as empty 0/0/0 rows.
 		if (totals.totalTokens === 0) {

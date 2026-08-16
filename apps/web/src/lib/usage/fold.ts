@@ -1,8 +1,10 @@
 import { EMPTY_TOTALS } from './types'
-import type { TokenTotals, UsageRecord } from './types'
+import type { TokenCounts, TokenTotals, UsageRecord } from './types'
 
-export function recordTotal(e: UsageRecord): number {
-	return e.inputTokens + e.outputTokens + e.cacheCreationTokens + e.cacheReadTokens
+/** Every token the row carries, cache reads included. Takes any TokenCounts so
+ *  raw records, folded rows and daily aggregates all total the same way. */
+export function recordTotal(t: TokenCounts): number {
+	return t.inputTokens + t.outputTokens + t.cacheCreationTokens + t.cacheReadTokens
 }
 
 /**
@@ -27,14 +29,16 @@ export function foldEvents(events: UsageRecord[]): UsageRecord[] {
 	return [...byKey.values()]
 }
 
-/** Sum a list of records WITHOUT folding. Use on already-folded input. */
-export function sumRecords(events: UsageRecord[]): TokenTotals {
+/** Sum anything carrying the four token counts — folded records or pre-bucketed
+ *  daily aggregates — WITHOUT folding. Callers filter first, and pass already-
+ *  folded input: which rows belong in a total is their question, not this one's. */
+export function sumTokens(rows: readonly TokenCounts[]): TokenTotals {
 	const t = { ...EMPTY_TOTALS }
-	for (const e of events) {
-		t.inputTokens += e.inputTokens
-		t.outputTokens += e.outputTokens
-		t.cacheCreationTokens += e.cacheCreationTokens
-		t.cacheReadTokens += e.cacheReadTokens
+	for (const r of rows) {
+		t.inputTokens += r.inputTokens
+		t.outputTokens += r.outputTokens
+		t.cacheCreationTokens += r.cacheCreationTokens
+		t.cacheReadTokens += r.cacheReadTokens
 	}
 	t.totalTokens = t.inputTokens + t.outputTokens + t.cacheCreationTokens + t.cacheReadTokens
 	return t
@@ -43,6 +47,6 @@ export function sumRecords(events: UsageRecord[]): TokenTotals {
 /** "Billable" tokens = input + output + cache_creation (EXCLUDES cache_read,
  *  which is replayed context and ~97% of raw totals — see usage.test.ts).
  *  Display metric only; group splits weigh by estimated cost (pricing.ts). */
-export function billableTokens(t: TokenTotals): number {
+export function billableTokens(t: TokenCounts): number {
 	return t.inputTokens + t.outputTokens + t.cacheCreationTokens
 }

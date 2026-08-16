@@ -1,6 +1,4 @@
 import { utcDay } from './chart'
-import { EMPTY_TOTALS } from './types'
-import type { TokenTotals } from './types'
 
 /**
  * One pre-folded, pre-bucketed usage aggregate: the token sums for a single
@@ -32,16 +30,4 @@ export function monthKey(d: Date): string {
 	return utcDay(d).slice(0, 7)
 }
 
-/** Sum a set of aggregate rows. Callers filter first — which rows belong in a
- *  total is their question, not this one's. */
-export function sumAgg(rows: DailyAggRow[]): TokenTotals {
-	const t: TokenTotals = { ...EMPTY_TOTALS }
-	for (const r of rows) {
-		t.inputTokens += r.inputTokens
-		t.outputTokens += r.outputTokens
-		t.cacheCreationTokens += r.cacheCreationTokens
-		t.cacheReadTokens += r.cacheReadTokens
-		t.totalTokens += r.inputTokens + r.outputTokens + r.cacheCreationTokens + r.cacheReadTokens
-	}
-	return t
-}
+// Summing these is `sumTokens` in fold.ts: a DailyAggRow satisfies TokenCounts.

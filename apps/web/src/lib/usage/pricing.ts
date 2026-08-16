@@ -1,5 +1,5 @@
 import { versionParts } from './models'
-import type { TokenTotals, UsageRecord } from './types'
+import type { TokenCounts, UsageRecord } from './types'
 
 /** USD per 1M tokens. Public Claude API list prices from
  *  https://platform.claude.com/docs/en/about-claude/pricing — used only for the
@@ -62,16 +62,25 @@ const PRICE_SOURCE = 'https://raw.githubusercontent.com/BerriAI/litellm/main/mod
 
 /** model id (lowercase) → list price, populated by refreshPrices(). */
 const fetched = new Map<string, Price>()
-let fetchedAt = 0
+
+const PRICE_TTL_MS = 86_400_000
+/** How long a failed attempt holds the slot. Long enough that a hard outage
+ *  can't turn every dashboard load into an outbound fetch, short enough that a
+ *  single bad boot doesn't pin the fallback tiers for a whole day. */
+const PRICE_RETRY_MS = 60_000
+
+let nextRefreshAt = 0
 
 /** Refresh the fetched price map, at most once a day per process. Never throws:
  *  a failure leaves whatever we already have (or the hardcoded tiers) in place.
  *  Call before pricing anything; the priceFor() callers are all sync. */
 export async function refreshPrices(): Promise<void> {
-	if (Date.now() - fetchedAt < 86_400_000) {
+	if (Date.now() < nextRefreshAt) {
 		return
 	}
-	fetchedAt = Date.now() // claim the slot first so parallel loads don't stampede
+	// Claim a short slot first so parallel loads don't stampede. Only a run that
+	// actually parsed prices extends it to a full day.
+	nextRefreshAt = Date.now() + PRICE_RETRY_MS
 	try {
 		const res = await fetch(PRICE_SOURCE, {
 			signal: AbortSignal.timeout(10_000),
@@ -99,8 +108,9 @@ export async function refreshPrices(): Promise<void> {
 				output: output * 1e6,
 			})
 		}
+		nextRefreshAt = Date.now() + PRICE_TTL_MS
 	} catch {
-		// offline / rate-limited / malformed — keep the previous prices
+		// offline / rate-limited / malformed — keep the previous prices and retry soon
 	}
 }
 
@@ -128,9 +138,6 @@ export function priceFor(model: string | null | undefined): Price {
 	}
 	return SONNET
 }
-
-/** The four billable token counts shared by records, totals and aggregate rows. */
-type TokenCounts = Pick<TokenTotals, 'inputTokens' | 'outputTokens' | 'cacheCreationTokens' | 'cacheReadTokens'>
 
 /** Cache-write TTL the user's tool writes: prices differ (5m = 1.25× input,
  *  1h = 2× input). Claude Code writes 5m caches unless ENABLE_PROMPT_CACHING_1H

@@ -18,8 +18,7 @@ import {
 	pastWindowStarts,
 	PROJECT_DAYS,
 	refreshPrices,
-	sumAgg,
-	sumRecords,
+	sumTokens,
 	weekWindowStart,
 } from '@/lib/usage'
 import type { CacheTtl, DailyAggRow, ModelUsage, TokenTotals, UsageRecord } from '@/lib/usage'
@@ -27,42 +26,114 @@ import type { CacheTtl, DailyAggRow, ModelUsage, TokenTotals, UsageRecord } from
 // The logical-message fold key: (messageId, requestId) when present, else the
 // row's own uuid. Prefixed so a uuid can never collide with a messageId pair.
 const FOLD_KEY = sql`CASE WHEN ${usageEvents.messageId} IS NOT NULL THEN 'm:' || ${usageEvents.messageId} || '::' || coalesce(${usageEvents.requestId}, '') ELSE 'u:' || ${usageEvents.uuid} END`
-const ROW_TOTAL = sql`(${usageEvents.inputTokens} + ${usageEvents.outputTokens} + ${usageEvents.cacheCreationTokens} + ${usageEvents.cacheReadTokens})`
+// The first cast widens the whole addition to bigint. The ingest cap keeps new
+// rows well inside int4, but rows stored under the older, looser cap can still
+// overflow this sum — and it orders every DISTINCT ON, so one bad row would
+// raise `integer out of range` on that user's every dashboard, history and guard
+// query, permanently and with no way to delete it from the app.
+const ROW_TOTAL = sql`(${usageEvents.inputTokens}::bigint + ${usageEvents.outputTokens} + ${usageEvents.cacheCreationTokens} + ${usageEvents.cacheReadTokens})`
 
-/** Lazily create and return the user's settings row. Only the week-reset and
- *  cache-TTL columns are read; `plan` and the two token-limit columns predate
- *  the collector reporting Anthropic's own percentages and are now written by
- *  nothing — see db/schema.ts. */
+/** The columns of `user_settings` anything actually reads. The rest of the table
+ *  is dead weight kept only because dropping columns is one-way (see
+ *  db/schema.ts), and a bare `select()` would ship all of it to the browser on
+ *  every dashboard load — `settings` is returned wholesale by the settings route.
+ *  `freeDeviceLimit` is absent on purpose: billing.ts and the admin panel read it
+ *  with their own narrow selects. */
+const SETTINGS_COLS = {
+	cacheWriteTtl: userSettings.cacheWriteTtl,
+	userId: userSettings.userId,
+	weekResetHourUtc: userSettings.weekResetHourUtc,
+	weekResetWeekday: userSettings.weekResetWeekday,
+}
+
+/** Lazily create and return the user's settings row. */
 export async function ensureSettings(userId: string) {
-	const existing = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1)
+	const existing = await db.select(SETTINGS_COLS).from(userSettings).where(eq(userSettings.userId, userId)).limit(1)
 	if (existing[0]) {
 		return existing[0]
 	}
-	const inserted = await db.insert(userSettings).values({ userId }).onConflictDoNothing().returning()
-	return inserted[0] ?? (await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1))[0]
+	const inserted = await db.insert(userSettings).values({ userId }).onConflictDoNothing().returning(SETTINGS_COLS)
+	return (
+		inserted[0] ??
+		(await db.select(SETTINGS_COLS).from(userSettings).where(eq(userSettings.userId, userId)).limit(1))[0]
+	)
 }
 
-/** Events for a user at or after `cutoff`, joined to their device's group. */
+/**
+ * Folded events for a user at or after `cutoff`, joined to their device's group.
+ *
+ * The fold — collapse streamed segments to the largest row per logical message,
+ * see fold.ts — runs IN SQL, the same DISTINCT ON as `loadDailyAggregates`.
+ * Claude Code writes one row per streamed segment, so a fleet's raw row count is
+ * an order of magnitude above its message count, and this is a per-request path
+ * (the 5s dashboard poll, plus the collector guard on every prompt): folding in
+ * Node meant shipping every segment over the wire to throw most of them away.
+ *
+ * Per-message is as far as this can aggregate. The callers slice these rows by
+ * several different windows (5h, weekly, one per model limit) and weigh them by
+ * per-model cost, so they need the timestamp and model of each message.
+ *
+ * Callers still fold. That is not redundant bookkeeping: `splitByShare` is an
+ * exported pure function with its own tests over unfolded input, and "never SUM
+ * raw rows" is the one invariant that silently produces wrong numbers rather
+ * than an error. `foldEvents` is idempotent and the input here is already small,
+ * so the guarantee costs a Map pass — worth keeping on this path.
+ */
 export async function loadRecentEvents(userId: string, cutoff: Date): Promise<UsageRecord[]> {
-	const rows = await db
-		.select({
-			cacheCreationTokens: usageEvents.cacheCreationTokens,
-			cacheReadTokens: usageEvents.cacheReadTokens,
-			deviceId: usageEvents.deviceId,
-			groupId: devices.groupId,
-			inputTokens: usageEvents.inputTokens,
-			messageId: usageEvents.messageId,
-			model: usageEvents.model,
-			outputTokens: usageEvents.outputTokens,
-			requestId: usageEvents.requestId,
-			source: usageEvents.source,
-			ts: usageEvents.ts,
-			uuid: usageEvents.uuid,
-		})
-		.from(usageEvents)
-		.innerJoin(devices, eq(usageEvents.deviceId, devices.id))
-		.where(and(eq(usageEvents.userId, userId), gte(usageEvents.ts, cutoff)))
-	return rows.map(r => ({ ...r, ts: new Date(r.ts) }))
+	const result = await db.execute(sql`
+    SELECT DISTINCT ON (${FOLD_KEY})
+      ${usageEvents.uuid} AS uuid,
+      ${usageEvents.messageId} AS message_id,
+      ${usageEvents.requestId} AS request_id,
+      ${usageEvents.model} AS model,
+      ${usageEvents.source} AS source,
+      ${usageEvents.ts} AS ts,
+      ${usageEvents.deviceId} AS device_id,
+      d.group_id AS group_id,
+      ${usageEvents.inputTokens} AS input_tokens,
+      ${usageEvents.outputTokens} AS output_tokens,
+      ${usageEvents.cacheCreationTokens} AS cache_creation_tokens,
+      ${usageEvents.cacheReadTokens} AS cache_read_tokens
+    FROM ${usageEvents}
+    JOIN ${devices} d ON d.id = ${usageEvents.deviceId}
+    WHERE ${usageEvents.userId} = ${userId}
+      AND ${usageEvents.ts} >= ${cutoff.toISOString()}::timestamptz
+    ORDER BY ${FOLD_KEY}, ${ROW_TOTAL} DESC, ${usageEvents.ts} ASC
+  `)
+
+	const rows = result as unknown as {
+		uuid: string
+		message_id: string | null
+		request_id: string | null
+		model: string | null
+		source: string | null
+		// A raw db.execute bypasses drizzle's column decoding, so postgres-js hands
+		// timestamptz back as its wire text ('2026-06-18 12:00:00+00') rather than a
+		// Date. Declaring it Date here would typecheck and then blow up at the first
+		// `e.ts.getTime()` in splitByShare, on every dashboard load.
+		ts: string
+		device_id: string | null
+		group_id: string | null
+		input_tokens: number
+		output_tokens: number
+		cache_creation_tokens: number
+		cache_read_tokens: number
+	}[]
+	// int4 really does arrive as a JS number, so only `ts` needs converting.
+	return rows.map(r => ({
+		cacheCreationTokens: r.cache_creation_tokens,
+		cacheReadTokens: r.cache_read_tokens,
+		deviceId: r.device_id,
+		groupId: r.group_id,
+		inputTokens: r.input_tokens,
+		messageId: r.message_id,
+		model: r.model,
+		outputTokens: r.output_tokens,
+		requestId: r.request_id,
+		source: r.source,
+		ts: new Date(r.ts),
+		uuid: r.uuid,
+	}))
 }
 
 /**
@@ -269,19 +340,15 @@ interface ShareEntry {
 	models: ModelUsage[]
 }
 
-function splitByShare(
+export function splitByShare(
 	events: UsageRecord[],
 	windowStart: Date,
 	now: Date,
 	officialPct: number,
 	ttl: CacheTtl,
 ): Map<string | null, ShareEntry> {
-	const inWin = events.filter(e => {
-		const t = e.ts.getTime()
-		return t >= windowStart.getTime() && t <= now.getTime()
-	})
 	const byKey = new Map<string | null, UsageRecord[]>()
-	for (const e of inWin) {
+	for (const e of filterByWindow(events, windowStart, now)) {
 		const k = e.groupId ?? null
 		const arr = byKey.get(k)
 		if (arr) {
@@ -297,12 +364,14 @@ function splitByShare(
 	let totalCost = 0
 	for (const [k, evs] of byKey) {
 		const folded = foldEvents(evs)
-		const totals = sumRecords(folded)
+		const totals = sumTokens(folded)
 		tokensByKey.set(k, billableTokens(totals))
 		totalByKey.set(k, totals.totalTokens)
 		const cost = folded.reduce((s, e) => s + costUsd(e, ttl), 0)
 		costByKey.set(k, cost)
-		modelsByKey.set(k, modelBreakdown(evs))
+		// `folded`, not `evs`: modelBreakdown folds internally anyway, so handing it
+		// the raw list just refolds what the line above already did.
+		modelsByKey.set(k, modelBreakdown(folded))
 		totalCost += cost
 	}
 	const models = (k: string | null) => modelsByKey.get(k) ?? []
@@ -466,6 +535,11 @@ async function loadLiveDashboard(view: AccountView, now: Date): Promise<LiveDash
 	// aggregates is the current month, so the scan is bounded to that month
 	// rather than the whole history. Both sides bucket in UTC, so the bound is
 	// exact.
+	//
+	// refreshPrices rides along because it has to finish BEFORE splitByShare: that
+	// split is cost-weighted, so pricing every event off the fallback tiers would
+	// hand the first dashboard of a cold process a different answer than the next
+	// poll gives. It is a no-op after the first call.
 	const monthStart = new Date(`${monthKey(now)}-01T00:00:00.000Z`)
 	const [allEvents, groupRows, allAggRows, deviceRows] = await Promise.all([
 		loadRecentEvents(userId, earliest),
@@ -475,6 +549,7 @@ async function loadLiveDashboard(view: AccountView, now: Date): Promise<LiveDash
 			.select({ claudeAccountId: devices.claudeAccountId, groupId: devices.groupId, id: devices.id })
 			.from(devices)
 			.where(eq(devices.userId, userId)),
+		refreshPrices(),
 	])
 
 	// Usage belongs to the account its device is signed into *now*, the same way
@@ -547,7 +622,6 @@ async function loadLiveDashboard(view: AccountView, now: Date): Promise<LiveDash
 	// Weekly-window spend: fold once, then price each logical message by its own
 	// model. Monthly spend comes from the pre-folded daily aggregates, priced per
 	// (day × group × model) cell the same way.
-	await refreshPrices()
 	const weeklyFolded = foldEvents(filterByWindow(events, weekStart, now))
 	const monthK = monthKey(now)
 	// Redundant while aggRows is loaded with the matching `since` bound above, and
@@ -556,11 +630,11 @@ async function loadLiveDashboard(view: AccountView, now: Date): Promise<LiveDash
 	const spend: Spend = {
 		month: {
 			costUsd: monthRows.reduce((s, r) => s + costForTokens(r, r.model, ttl), 0),
-			totals: sumAgg(monthRows),
+			totals: sumTokens(monthRows),
 		},
 		week: {
 			costUsd: weeklyFolded.reduce((s, e) => s + costUsd(e, ttl), 0),
-			totals: sumRecords(weeklyFolded),
+			totals: sumTokens(weeklyFolded),
 		},
 	}
 

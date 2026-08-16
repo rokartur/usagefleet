@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { Section } from '@/components/usage-ui'
 import type { HistoryDTO, HistoryRow } from '@/lib/data'
 import { formatTokens, formatUsd } from '@/lib/format'
-import { bucketKeys, bucketLabel, daySpan, modelLabel, utcDay } from '@/lib/usage'
+import { billableTokens, bucketKeys, bucketLabel, daySpan, modelLabel, recordTotal, utcDay } from '@/lib/usage'
 
 const DAY_MS = 864e5
 /** Above this many days the chart switches from daily to monthly columns. */
@@ -87,19 +87,16 @@ function periodBounds(key: PeriodKey, from: string, to: string): [string, string
 	}
 }
 
-const billable = (r: HistoryRow) => r.inputTokens + r.outputTokens + r.cacheCreationTokens
-const total = (r: HistoryRow) => billable(r) + r.cacheReadTokens
-
 function metricValue(r: HistoryRow, m: Metric): number {
 	switch (m) {
 		case 'cost': {
 			return r.costUsd
 		}
 		case 'billable': {
-			return billable(r)
+			return billableTokens(r)
 		}
 		case 'total': {
-			return total(r)
+			return recordTotal(r)
 		}
 		case 'input': {
 			return r.inputTokens
@@ -230,8 +227,8 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 			bucket.set(k, (bucket.get(k) ?? 0) + metricValue(r, metric))
 			parts.set(bk, bucket)
 			const t = totals.get(k) ?? { billable: 0, cost: 0, metric: 0, total: 0 }
-			t.billable += billable(r)
-			t.total += total(r)
+			t.billable += billableTokens(r)
+			t.total += recordTotal(r)
 			t.cost += r.costUsd
 			t.metric += metricValue(r, metric)
 			totals.set(k, t)
