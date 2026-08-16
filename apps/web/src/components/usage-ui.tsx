@@ -1,5 +1,69 @@
+import { useEffect, useRef } from 'react'
+import { animate, useReducedMotion } from 'motion/react'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
+
+/**
+ * A number that counts to its new value instead of jumping, so a background
+ * refresh reads as movement rather than a silent swap. Text is written straight
+ * to the node during the tween: React re-rendering per frame would be a whole
+ * dashboard re-render per frame.
+ *
+ * Renders the formatted value on the server, animates only when it actually
+ * changes, and honours prefers-reduced-motion.
+ */
+export function Num({
+	value,
+	format = String,
+	className,
+}: {
+	value: number
+	format?: (n: number) => string
+	className?: string
+}) {
+	const ref = useRef<HTMLSpanElement>(null)
+	/** Last value asked for, vs. what is actually painted right now: a value that
+	 *  changes mid-tween has to carry on from the visible number, not jump. */
+	const target = useRef(value)
+	const painted = useRef(value)
+	// Held in a ref so an inline formatter's identity can't retrigger the tween
+	// effect and cut a running count short.
+	const formatRef = useRef(format)
+	const reduced = useReducedMotion()
+
+	useEffect(() => {
+		formatRef.current = format
+	})
+
+	useEffect(() => {
+		const el = ref.current
+		if (!el || target.current === value) {
+			return
+		}
+		const from = painted.current
+		target.current = value
+		if (reduced) {
+			painted.current = value
+			el.textContent = formatRef.current(value)
+			return
+		}
+		const controls = animate(from, value, {
+			duration: 0.6,
+			ease: [0.22, 1, 0.36, 1],
+			onUpdate: v => {
+				painted.current = v
+				el.textContent = formatRef.current(v)
+			},
+		})
+		return () => controls.stop()
+	}, [value, reduced])
+
+	return (
+		<span ref={ref} className={cn('tabular-nums', className)}>
+			{format(value)}
+		</span>
+	)
+}
 
 /** A dashboard section: hairline rule, small label, controls on the right. Used
  *  instead of Card so the page reads as one continuous sheet of numbers. */

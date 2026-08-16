@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { UsageBar } from '@/components/usage-ui'
+import { Num, UsageBar } from '@/components/usage-ui'
 import type { LiveGroupUsage } from '@/lib/data'
 import { formatTokens } from '@/lib/format'
 import type { ModelUsage } from '@/lib/usage'
@@ -62,16 +62,19 @@ function ModelCompare({ session, weekly }: { session: ModelUsage[]; weekly: Mode
 	)
 }
 
+const approxPct = (n: number) => `~${Math.round(n)}%`
+
 /** "~42% · 1.2M (3.4M total)" — a group's usage in one window. */
 function WindowCell({ pct, tokens, totalTokens }: { pct: number; tokens: number; totalTokens: number }) {
 	return (
 		<div className='flex min-w-48 items-center gap-3'>
 			<UsageBar pct={pct} className='w-20 shrink-0' />
 			<span className='tabular-nums'>
-				<span className='font-medium'>~{pct}%</span>
+				<Num value={pct} format={approxPct} className='font-medium' />
 				<span className='text-muted-foreground'>
 					{' '}
-					· {formatTokens(tokens)} ({formatTokens(totalTokens)} total)
+					· <Num value={tokens} format={formatTokens} /> (<Num value={totalTokens} format={formatTokens} />{' '}
+					total)
 				</span>
 			</span>
 		</div>

@@ -6,13 +6,17 @@ import type { GroupRow } from '@/components/dashboard/GroupTable'
 import { InstallCommand } from '@/components/InstallCommand'
 import { ResetCountdown } from '@/components/ResetCountdown'
 import { Button } from '@/components/ui/button'
-import { Section, UsageBar } from '@/components/usage-ui'
+import { Num, Section, UsageBar } from '@/components/usage-ui'
 import { useMounted } from '@/hooks/use-mounted'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO, SpendPeriod } from '@/lib/data'
 import { formatRelative, formatTokens, formatUsd } from '@/lib/format'
 import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
 import { billableTokens, LIMITS_STALE_MS } from '@/lib/usage'
 import { cn } from '@/lib/utils'
+
+/** Percentages are Anthropic's own utilization, capped for display: past 100%
+ *  the number stops being informative and the bar is already full. */
+const pctText = (n: number) => `${Math.round(Math.min(100, n))}%`
 
 /** Display label for a limit-window key: "5h" → "5-hour", "7d" → "weekly". */
 function windowLabel(window: string): string {
@@ -49,7 +53,7 @@ function GroupSplit({
 				<span key={g.key} className='flex min-w-0 items-center gap-1.5'>
 					<GroupDot color={g.color} />
 					<span className='truncate'>{g.name}</span>
-					<span className='text-foreground tabular-nums'>{g.pct}%</span>
+					<Num value={g.pct} format={pctText} className='text-foreground' />
 				</span>
 			))}
 		</div>
@@ -93,7 +97,7 @@ function StatusLine({ dash, now, pollDown }: { dash: DashboardDTO; now: number; 
 }
 
 /** One column of the headline strip: label, one big number, detail underneath. */
-function StatCell({ label, value, children }: { label: string; value: string; children?: React.ReactNode }) {
+function StatCell({ label, value, children }: { label: string; value: React.ReactNode; children?: React.ReactNode }) {
 	return (
 		<div className='flex flex-col gap-2 sm:border-l sm:pl-5 sm:first:border-l-0 sm:first:pl-0'>
 			<div className='text-[11px] text-muted-foreground'>{label}</div>
@@ -118,7 +122,7 @@ function LimitCell({
 	groups: { key: string; name: string; color: string; pct: number }[]
 }) {
 	return (
-		<StatCell label={label} value={`${Math.min(100, pct)}%`}>
+		<StatCell label={label} value={<Num value={pct} format={pctText} />}>
 			<UsageBar pct={pct} />
 			<div className='text-[11px] text-muted-foreground'>
 				<ResetCountdown resetsAt={resetsAt} />
@@ -130,9 +134,10 @@ function LimitCell({
 
 function SpendCell({ label, period }: { label: string; period: SpendPeriod }) {
 	return (
-		<StatCell label={label} value={formatUsd(period.costUsd)}>
+		<StatCell label={label} value={<Num value={period.costUsd} format={formatUsd} />}>
 			<div className='text-[11px] text-muted-foreground tabular-nums'>
-				{formatTokens(billableTokens(period.totals))} billable · {formatTokens(period.totals.totalTokens)} total
+				<Num value={billableTokens(period.totals)} format={formatTokens} /> billable ·{' '}
+				<Num value={period.totals.totalTokens} format={formatTokens} /> total
 			</div>
 		</StatCell>
 	)
@@ -144,7 +149,7 @@ function ModelLimitRow({ limit }: { limit: ModelLimitDTO }) {
 		<div className='flex flex-wrap items-center gap-x-3 gap-y-1 border-b py-2 text-sm last:border-b-0'>
 			<span className='font-medium'>{limit.label}</span>
 			<span className='text-[11px] text-muted-foreground'>{windowLabel(limit.window)}</span>
-			<span className='tabular-nums'>{Math.min(100, limit.pct)}%</span>
+			<Num value={limit.pct} format={pctText} />
 			<UsageBar pct={limit.pct} className='w-20 shrink-0' />
 			<span className='text-[11px] text-muted-foreground'>
 				<ResetCountdown resetsAt={limit.resetsAt} />
@@ -288,7 +293,7 @@ function AccountWindow({
 	return (
 		<div className='flex flex-col gap-2'>
 			<div className='flex flex-wrap items-baseline gap-x-2'>
-				<span className='text-lg leading-none tabular-nums'>{Math.min(100, pct)}%</span>
+				<Num value={pct} format={pctText} className='text-lg leading-none' />
 				<span className='text-[11px] text-muted-foreground'>
 					{label} · <ResetCountdown resetsAt={resetsAt} />
 				</span>
@@ -323,11 +328,11 @@ function AccountRow({ dash, now, pollDown }: { dash: DashboardDTO; now: number; 
 			/>
 			<div className='flex flex-col gap-1.5'>
 				<div className='flex flex-wrap items-baseline gap-x-2'>
-					<span className='text-lg leading-none tabular-nums'>{formatUsd(dash.spend.week.costUsd)}</span>
+					<Num value={dash.spend.week.costUsd} format={formatUsd} className='text-lg leading-none' />
 					<span className='text-[11px] text-muted-foreground'>week</span>
 				</div>
 				<span className='text-[11px] text-muted-foreground tabular-nums'>
-					{formatUsd(dash.spend.month.costUsd)} month
+					<Num value={dash.spend.month.costUsd} format={formatUsd} /> month
 				</span>
 			</div>
 		</div>
