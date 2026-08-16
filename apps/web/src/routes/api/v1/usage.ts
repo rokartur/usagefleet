@@ -63,9 +63,14 @@ async function POST(req: Request) {
 	}
 	const batch = body.value
 
+	// A collector tails the machine's whole JSONL history on its first cycle, so a
+	// new device would otherwise backdate the dashboard with months of usage that
+	// predate the token. Counting starts when the token was issued.
+	const records = batch.records.filter(r => new Date(r.timestamp) >= device.createdAt)
+
 	let accepted = 0
-	if (batch.records.length > 0) {
-		const rows = batch.records.map(r => ({
+	if (records.length > 0) {
+		const rows = records.map(r => ({
 			id: randomUUID(),
 			userId: device.userId,
 			deviceId: device.id,
@@ -105,7 +110,10 @@ async function POST(req: Request) {
 
 	return Response.json({
 		accepted,
-		duplicates: batch.records.length - accepted,
+		duplicates: records.length - accepted,
+		// Pre-activation rows are neither stored nor duplicates, so they get their
+		// own count rather than inflating `duplicates` on a new device's first cycle.
+		skipped: batch.records.length - records.length,
 	})
 }
 

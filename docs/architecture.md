@@ -92,9 +92,11 @@ treats as open like any other non-OK. `last_seen_at` is touched by the two POST
 handlers, and on the `402` path so a parked device still shows as alive.
 
 - `POST /api/v1/usage` — `{ records: [...] }`, ≤1000 per batch. Responds with
-  accepted/duplicate counts. At-least-once by design: the collector only commits
-  a file offset after the server acknowledges, and the unique index absorbs the
-  replay.
+  accepted/duplicate/skipped counts. At-least-once by design: the collector only
+  commits a file offset after the server acknowledges, and the unique index
+  absorbs the replay. Records older than `devices.created_at` are dropped
+  (`skipped`): a fresh collector tails the machine's whole log history, and usage
+  from before the token existed is not this device's to report.
 - `POST /api/v1/limits` — the parsed rate-limit headers, plus the optional
   `account` the collector read from `~/.claude.json`. Upserts `claude_account`,
   stamps the device with it, and upserts the peak into `limit_sample`.
