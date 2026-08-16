@@ -12,7 +12,8 @@ export function detectOs(): OsName {
 			return 'linux'
 		}
 		default: {
-			return process.platform
+			// freebsd/sunos/android: still a usable collector, just an unlabelled box.
+			return 'other'
 		}
 	}
 }

@@ -101,6 +101,11 @@ on re-install, and skipped entirely with `USAGEFLEET_HOOK=0`):
 }
 ```
 
+If `USAGEFLEET_CONFIG` was set when you logged in, the installed command carries
+it (`USAGEFLEET_CONFIG=<path> usagefleet guard`, or `set "..." && ...` on
+Windows). That is what binds the hook to the right store, and so to the right
+Anthropic account — see "Two Claude accounts on one machine" below.
+
 `guard` **fails open** everywhere else — no config, server down, timeout (5s),
 old server, 429 — because a tracker problem must never stop you working. Only
 whole prompts are blocked, never tool calls mid-turn, so the current turn always
@@ -149,9 +154,12 @@ CLAUDE_CONFIG_DIR=~/.claude-work \
   usagefleet login uf_...
 ```
 
-Each reports its own account, and the dashboard keeps their limits apart. With a
-relocated config dir the macOS Keychain is skipped on purpose: that item belongs
-to the default login.
+Each reports its own account, and the dashboard keeps their limits apart. The
+prompt guard follows: because `USAGEFLEET_CONFIG` was set for this `login`, the
+hook written into `~/.claude-work/settings.json` carries it, so that account's
+guard reads that account's token and blocks against the right subscription. With
+a relocated config dir the macOS Keychain is skipped on purpose: that item
+belongs to the default login.
 
 ## Background service
 

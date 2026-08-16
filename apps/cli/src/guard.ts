@@ -55,7 +55,7 @@ export async function runGuard(): Promise<number> {
 		return 0 // not configured on this machine — nothing to enforce
 	}
 
-	let view: GuardView
+	let view: GuardView | null
 	try {
 		const res = await fetch(`${ENDPOINT}/api/v1/limits`, {
 			headers: { 'x-api-key': cfg.token },
@@ -64,12 +64,15 @@ export async function runGuard(): Promise<number> {
 		if (!res.ok) {
 			return 0
 		}
-		view = (await res.json()) as GuardView
+		view = (await res.json()) as GuardView | null
 	} catch {
 		return 0 // offline / timeout / bad JSON — fail open
 	}
 
-	const msg = blockMessage(view)
+	// A 200 whose body is literally `null` has to fail open like every other
+	// unexpected shape. Reading `.blocked` off it here would throw past the
+	// try above and out of runGuard, which is the one thing this must never do.
+	const msg = blockMessage(view ?? {})
 	if (!msg) {
 		return 0
 	}

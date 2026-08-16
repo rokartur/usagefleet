@@ -7,14 +7,22 @@ describe(parsePct, () => {
 		expect(parsePct('0')).toBe(0)
 	})
 
-	it('normalizes a fraction', () => {
-		expect(parsePct('0.5')).toBe(50)
+	it('reads a sub-1% header as itself, not as 100%', () => {
+		expect(parsePct('1')).toBe(1)
+		expect(parsePct('0.5')).toBe(1)
+	})
+
+	it('clamps out of range', () => {
+		expect(parsePct('140')).toBe(100)
+		expect(parsePct('-3')).toBe(0)
 	})
 
 	it('returns null for missing/invalid', () => {
 		expect(parsePct(null)).toBeNull()
 		expect(parsePct('')).toBeNull()
 		expect(parsePct('abc')).toBeNull()
+		// Infinity must not clamp to a plausible-looking 100 and block every prompt.
+		expect(parsePct('1e999')).toBeNull()
 	})
 })
 
@@ -69,7 +77,7 @@ describe(parseLimitsHeaders, () => {
 				resetsAt: '2026-07-04T00:59:00.000Z',
 				window: '7d',
 			},
-			{ model: 'opus', pct: 50, resetsAt: null, window: '5h' },
+			{ model: 'opus', pct: 1, resetsAt: null, window: '5h' },
 		])
 	})
 

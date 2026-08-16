@@ -32,13 +32,7 @@ export function parsePct(v: string | null): number | null {
 	if (v == null || v === '') {
 		return null
 	}
-	const n = Number(v)
-	if (!Number.isFinite(n)) {
-		return null
-	}
-	// Header is a percent (e.g. "37"); guard the 0–1 fraction form too.
-	const pct = n > 0 && n <= 1 ? n * 100 : n
-	return Math.min(100, Math.max(0, Math.round(pct)))
+	return clampPct(Number(v))
 }
 
 export function parseReset(v: string | null): string | null {
@@ -115,9 +109,17 @@ async function fetchOauthModelLimits(token: string): Promise<ModelLimit[]> {
 	return parseOauthUsage(body)
 }
 
-/** oauth/usage values are already 0–100 percentages (unlike the 0–1 header
- *  fractions) — clamp without the fraction heuristic so 1% never reads as 100%. */
-function clampPct(n: number): number {
+/** Both sources report 0–100 percentages: the `-utilization` headers ("37") and
+ *  oauth/usage's `utilization`/`percent` fields. Clamping is all they need — a
+ *  0–1 "fraction form" heuristic would read a real 1% as 100%, which reaches the
+ *  headline number, the critical notification and guard's prompt block.
+ *
+ *  Non-finite in, null out: `Infinity` (a JSON `1e999`, or a junk header) would
+ *  otherwise clamp to a perfectly plausible 100 and block every prompt. */
+function clampPct(n: number): number | null {
+	if (!Number.isFinite(n)) {
+		return null
+	}
 	return Math.min(100, Math.max(0, Math.round(n)))
 }
 

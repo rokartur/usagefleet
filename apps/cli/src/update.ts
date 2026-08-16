@@ -25,14 +25,35 @@ function npmCommand(): string {
 	return existsSync(sibling) ? sibling : 'npm'
 }
 
-/** Exit code of a finished child, or null when it could not be started. */
+/** An `npm install` that never returns would hang the watch loop forever, since
+ *  the update check is awaited inline before the next tick is scheduled: the
+ *  daemon would still be "running" while collecting nothing, with an empty log.
+ *  Generous enough for a slow registry on a cold cache. */
+const RUN_TIMEOUT_MS = 10 * 60_000
+
+/** Exit code of a finished child, or null when it could not be started, was
+ *  killed for exceeding RUN_TIMEOUT_MS, or died on a signal. */
 function run(cmd: string, args: string[]): Promise<number | null> {
 	return new Promise(resolve => {
 		// shell on Windows: node refuses to spawn a .cmd directly since the 2024
 		// argument-injection fix. Every argument here is a literal or VERSION-checked.
 		const child = spawn(cmd, args, { shell: process.platform === 'win32', stdio: 'ignore' })
-		child.on('error', () => resolve(null))
-		child.on('close', code => resolve(code))
+		const timer = setTimeout(() => child.kill(), RUN_TIMEOUT_MS)
+		// Node emits 'close' after 'error' for a failed spawn, so both handlers can
+		// run; `settled` makes the first one win. oxlint's promise rule sees the two
+		// registrations and can't see the guard between them.
+		let settled = false
+		const finish = (code: number | null) => {
+			if (settled) {
+				return
+			}
+			settled = true
+			clearTimeout(timer)
+			// oxlint-disable-next-line promise/no-multiple-resolved
+			resolve(code)
+		}
+		child.on('error', () => finish(null))
+		child.on('close', code => finish(code))
 	})
 }
 

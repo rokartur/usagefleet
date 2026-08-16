@@ -1,4 +1,7 @@
-export type OsName = 'mac' | 'linux' | 'windows' | string
+/** Closed on purpose: the server's `RecordSchema` accepts exactly these, so a
+ *  `| string` escape hatch here would let an unsupported platform send an `os`
+ *  that 400s every batch forever. Anything else reports as `other`. */
+export type OsName = 'mac' | 'linux' | 'windows' | 'other'
 
 /** Which app produced a record. `cli` = Claude Code (`~/.claude/projects`);
  *  `desktop` = Claude Desktop agent-mode/Cowork sessions (same JSONL format under

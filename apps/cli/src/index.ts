@@ -356,11 +356,15 @@ async function main(): Promise<void> {
 	// Log-and-continue for the long-running watch daemon: a stray rejection must
 	// not silently kill the background service. One-shot commands still set a
 	// non-zero exit via their own error paths.
+	//
+	// stderr, not `line()`: `usagefleet guard` runs as a UserPromptSubmit hook and
+	// Claude Code injects a hook's stdout into the model's context, so a crash
+	// notice on stdout would end up in the conversation.
 	process.on('unhandledRejection', reason => {
-		line(yellow('!'), `unhandled rejection ${dim(String(reason))}`)
+		console.error(`${yellow('!')} unhandled rejection ${dim(String(reason))}`)
 	})
 	process.on('uncaughtException', err => {
-		line(yellow('!'), `uncaught exception ${dim((err as Error).message)}`)
+		console.error(`${yellow('!')} uncaught exception ${dim((err as Error).message)}`)
 	})
 
 	const cmd = process.argv[2] ?? 'help'

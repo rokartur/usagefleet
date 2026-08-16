@@ -28,9 +28,22 @@ interface ClaudeSettings {
 	[key: string]: unknown
 }
 
-/** `/path/to/usagefleet guard`, quoted for the shell Claude Code runs it in. */
-export function guardCommand(program: string[]): string {
-	return program.map(p => (p.includes(' ') ? `"${p}"` : p)).join(' ')
+/** `/path/to/usagefleet guard`, quoted for the shell Claude Code runs it in.
+ *  Carries USAGEFLEET_CONFIG through when set: the documented two-subscription
+ *  setup (apps/cli/README.md) gives each account its own store *and* its own
+ *  Claude settings.json, so without it both hooks would read the default config
+ *  and block against the wrong account. `platform` is a parameter so the two
+ *  shells can be tested; cmd.exe has no inline `VAR=value cmd` form, and the
+ *  POSIX prefix there would be read as a program name and never launch. */
+export function guardCommand(program: string[], configPath?: string, platform: string = process.platform): string {
+	const quote = (p: string) => (p.includes(' ') ? `"${p}"` : p)
+	const command = program.map(quote).join(' ')
+	if (!configPath) {
+		return command
+	}
+	return platform === 'win32'
+		? `set "USAGEFLEET_CONFIG=${configPath}" && ${command}`
+		: `USAGEFLEET_CONFIG=${quote(configPath)} ${command}`
 }
 
 /** Drop every guard hook we ever installed, leaving the rest of the file alone. */
@@ -118,7 +131,7 @@ export function installPromptHook(program: string[]): void {
 	if (process.env.USAGEFLEET_HOOK === '0') {
 		return
 	}
-	const command = guardCommand(program)
+	const command = guardCommand(program, process.env.USAGEFLEET_CONFIG)
 	editSettings(
 		s => withGuardHook(s, command),
 		path => console.log(step('hook', `prompt guard · ${tilde(path)}`)),

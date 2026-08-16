@@ -12,6 +12,35 @@ describe(guardCommand, () => {
 			'/usr/bin/node /opt/usagefleet/index.js guard',
 		)
 	})
+
+	it('carries USAGEFLEET_CONFIG so a second account blocks against itself', () => {
+		expect(guardCommand(['/opt/usagefleet', 'guard'], '/home/x/.config/usagefleet/work.json', 'linux')).toBe(
+			'USAGEFLEET_CONFIG=/home/x/.config/usagefleet/work.json /opt/usagefleet guard',
+		)
+		expect(guardCommand(['/opt/usagefleet', 'guard'], '/home/x/my configs/work.json', 'linux')).toBe(
+			'USAGEFLEET_CONFIG="/home/x/my configs/work.json" /opt/usagefleet guard',
+		)
+	})
+
+	it('uses cmd.exe syntax on Windows, which has no inline VAR=value form', () => {
+		expect(guardCommand(['C:\\usagefleet.exe', 'guard'], 'C:\\Users\\x\\work.json', 'win32')).toBe(
+			'set "USAGEFLEET_CONFIG=C:\\Users\\x\\work.json" && C:\\usagefleet.exe guard',
+		)
+		// No config: no prefix on either platform, so the plain command is unchanged.
+		expect(guardCommand(['C:\\usagefleet.exe', 'guard'], undefined, 'win32')).toBe('C:\\usagefleet.exe guard')
+	})
+
+	it('still matches the uninstall pattern once prefixed, on both shells', () => {
+		for (const platform of ['linux', 'win32']) {
+			const prefixed = guardCommand(
+				['/opt/usagefleet', 'guard'],
+				'/home/x/.config/usagefleet/work.json',
+				platform,
+			)
+			const settings = withGuardHook({}, prefixed)
+			expect(withoutGuardHook(settings).hooks?.UserPromptSubmit ?? []).toStrictEqual([])
+		}
+	})
 })
 
 describe(withGuardHook, () => {

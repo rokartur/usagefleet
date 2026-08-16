@@ -66,11 +66,14 @@ same host, the undocumented endpoint Claude Code's own `/usage` uses. The
 Messages headers only carry the account-wide 5h/7d windows, so the per-model
 caps ("Fable · 24% used") come from here. It is a separate request and so a
 separate failure point — a non-OK response or an unexpected shape yields no
-model limits while the 5h/7d figures still report normally. Its values are
-already 0–100 percentages, unlike the header fractions.
+model limits while the 5h/7d figures still report normally.
 
-The parsed report goes to `POST /api/v1/limits`. Percentages are clamped to
-0–100 and accept both the `37` and `0.37` header forms.
+The parsed report goes to `POST /api/v1/limits`. Both sources report **0–100
+percentages** — the headers as `37`, oauth/usage as `utilization`/`percent` — so
+parsing is a clamp and nothing else. There is deliberately no "0–1 fraction"
+normalisation: `1` means 1%, and reading it as 100% would drive the headline
+number, the critical desktop notification and `guard`'s prompt block, every time
+a window has just reset.
 
 For a subscription login the report also names **which Anthropic account** it
 describes: `claude-account.ts` reads `oauthAccount` out of Claude Code's own
