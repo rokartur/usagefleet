@@ -85,12 +85,12 @@ export function parseLimitsHeaders(
 const OAUTH_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 
 /**
- * Per-model limits for subscription logins. The Messages ping only returns the
- * account-wide 5h/7d headers; the per-model caps Claude's own UI shows (e.g.
- * "Fable · 24% used") come from the OAuth usage endpoint Claude Code queries
- * for /usage. Undocumented — parse defensively and return [] on any surprise.
+ * The OAuth usage endpoint Claude Code queries for /usage — the source of both
+ * the per-model caps its UI shows ("Fable · 24% used") and the account-wide
+ * numbers we trust over the response headers. Undocumented — parse defensively
+ * and return null on any surprise.
  */
-async function fetchOauthModelLimits(token: string): Promise<ModelLimit[]> {
+async function fetchOauthUsage(token: string): Promise<unknown> {
 	const res = await fetch(OAUTH_USAGE_URL, {
 		headers: {
 			'anthropic-beta': 'oauth-2025-04-20',
@@ -100,13 +100,44 @@ async function fetchOauthModelLimits(token: string): Promise<ModelLimit[]> {
 		signal: AbortSignal.timeout(15_000),
 	})
 	if (!res.ok) {
-		return []
+		return null
 	}
 	const body: unknown = await res.json().catch(() => null)
 	if (process.env.USAGEFLEET_DEBUG_HEADERS) {
 		console.error(`[debug] oauth/usage: ${JSON.stringify(body)}`)
 	}
-	return parseOauthUsage(body)
+	return body
+}
+
+/**
+ * Account-wide 5h/7d numbers from an oauth/usage payload: whole percentages
+ * (`{utilization: 14}`), exactly what Claude's /usage screen shows.
+ *
+ * These beat the `-utilization` response headers, which now carry a 0–1
+ * fraction (`0.13` for 13% used) that rounds to a flat 0 for anything under
+ * half a limit. Missing fields stay null so the header values survive.
+ */
+export function parseOauthAccount(body: unknown): Omit<LimitsReport, 'source' | 'modelLimits'> {
+	const root = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>
+	const window = (key: string) => {
+		const raw = root[key]
+		const entry = (typeof raw === 'object' && raw !== null ? raw : {}) as {
+			utilization?: unknown
+			resets_at?: unknown
+		}
+		return {
+			pct: typeof entry.utilization === 'number' ? clampPct(entry.utilization) : null,
+			resetsAt: typeof entry.resets_at === 'string' ? parseReset(entry.resets_at) : null,
+		}
+	}
+	const five = window('five_hour')
+	const seven = window('seven_day')
+	return {
+		fiveHourPct: five.pct,
+		fiveHourResetsAt: five.resetsAt,
+		sevenDayPct: seven.pct,
+		sevenDayResetsAt: seven.resetsAt,
+	}
 }
 
 /** Both sources report 0–100 percentages: the `-utilization` headers ("37") and
@@ -260,14 +291,27 @@ export async function fetchLimits(creds: ClaudeCreds): Promise<LimitsReport> {
 	if (!res.ok && !gotHeaders) {
 		throw new Error(`limits unavailable: HTTP ${res.status} with no rate-limit headers`)
 	}
-	// Subscription logins: merge in the per-model caps from the OAuth usage
-	// endpoint (the ping headers never include them). Best-effort — keep the
+	// Subscription logins: the OAuth usage endpoint is the better source for the
+	// account-wide percentages (the headers report an unusable 0–1 fraction) and
+	// the only source for the per-model caps. Best-effort — keep the
 	// header-derived report on any failure.
-	if (creds.source === 'sub' && report.modelLimits.length === 0) {
+	if (creds.source === 'sub') {
 		try {
-			report.modelLimits = await fetchOauthModelLimits(creds.token)
+			const body = await fetchOauthUsage(creds.token)
+			const account = parseOauthAccount(body)
+			if (account.fiveHourPct != null) {
+				report.fiveHourPct = account.fiveHourPct
+				report.fiveHourResetsAt = account.fiveHourResetsAt ?? report.fiveHourResetsAt
+			}
+			if (account.sevenDayPct != null) {
+				report.sevenDayPct = account.sevenDayPct
+				report.sevenDayResetsAt = account.sevenDayResetsAt ?? report.sevenDayResetsAt
+			}
+			if (report.modelLimits.length === 0) {
+				report.modelLimits = parseOauthUsage(body)
+			}
 		} catch {
-			/* endpoint unavailable — report account-wide limits only */
+			/* endpoint unavailable — report the header-derived limits only */
 		}
 	}
 	return report

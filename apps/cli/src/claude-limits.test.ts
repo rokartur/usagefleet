@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import { parseLimitsHeaders, parseOauthUsage, parsePct, parseReset } from './claude-limits.js'
+import { parseLimitsHeaders, parseOauthAccount, parseOauthUsage, parsePct, parseReset } from './claude-limits.js'
+
+describe(parseOauthAccount, () => {
+	it('reads the account-wide windows as whole percentages', () => {
+		expect(
+			parseOauthAccount({
+				five_hour: { resets_at: '2026-08-16T19:29:59Z', utilization: 14 },
+				seven_day: { resets_at: '2026-08-21T23:59:59Z', utilization: 23 },
+			}),
+		).toStrictEqual({
+			fiveHourPct: 14,
+			fiveHourResetsAt: '2026-08-16T19:29:59.000Z',
+			sevenDayPct: 23,
+			sevenDayResetsAt: '2026-08-21T23:59:59.000Z',
+		})
+	})
+
+	it('stays null on a missing or junk payload, so header values survive', () => {
+		const empty = { fiveHourPct: null, fiveHourResetsAt: null, sevenDayPct: null, sevenDayResetsAt: null }
+		expect(parseOauthAccount(null)).toStrictEqual(empty)
+		expect(parseOauthAccount({ five_hour: null, seven_day: { utilization: 'lots' } })).toStrictEqual(empty)
+	})
+})
 
 describe(parsePct, () => {
 	it('reads a percent header', () => {

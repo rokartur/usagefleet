@@ -61,19 +61,21 @@ API key — and `claude-limits.ts` sends a **1-token** request to
 `...-7d-fable-utilization`. That is why the limits ping is rate-limited
 separately from the usage scan: every one costs a billable token.
 
-For a subscription login there is a **second** source: `api/oauth/usage` on the
-same host, the undocumented endpoint Claude Code's own `/usage` uses. The
-Messages headers only carry the account-wide 5h/7d windows, so the per-model
-caps ("Fable · 24% used") come from here. It is a separate request and so a
-separate failure point — a non-OK response or an unexpected shape yields no
-model limits while the 5h/7d figures still report normally.
+For a subscription login there is a **second** source, and it wins:
+`api/oauth/usage` on the same host, the undocumented endpoint Claude Code's own
+`/usage` uses. It is the only source of the per-model caps ("Fable · 24% used"),
+and also of the account-wide 5h/7d percentages, because the Messages headers
+now report those as a **0–1 fraction** (`0.13` for 13% used) that rounds to a
+flat 0. Header values only survive where oauth/usage has nothing to say, so a
+non-OK response or an unexpected shape degrades to the old header numbers
+rather than failing the report.
 
-The parsed report goes to `POST /api/v1/limits`. Both sources report **0–100
-percentages** — the headers as `37`, oauth/usage as `utilization`/`percent` — so
-parsing is a clamp and nothing else. There is deliberately no "0–1 fraction"
-normalisation: `1` means 1%, and reading it as 100% would drive the headline
-number, the critical desktop notification and `guard`'s prompt block, every time
-a window has just reset.
+The parsed report goes to `POST /api/v1/limits`. oauth/usage reports **0–100
+percentages** (`utilization`/`percent`), so parsing is a clamp and nothing else.
+There is deliberately no "0–1 fraction" normalisation on the header path: `1`
+would mean 1%, and reading it as 100% would drive the headline number, the
+critical desktop notification and `guard`'s prompt block, every time a window
+has just reset.
 
 For a subscription login the report also names **which Anthropic account** it
 describes: `claude-account.ts` reads `oauthAccount` out of Claude Code's own

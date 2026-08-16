@@ -64,8 +64,8 @@ shell once. `uninstall` removes both again, and self-update keeps them current.
 - **Your real limit %** — the collector uses the Claude login already on the
   machine (subscription OAuth from `claude`: macOS login Keychain, elsewhere
   `<config dir>/.credentials.json`; falling back to `ANTHROPIC_API_KEY`), sends a
-  1-token ping to the Messages API, and reads Anthropic's
-  `anthropic-ratelimit-unified-5h/7d-utilization` headers. Credentials never
+  1-token ping to the Messages API and reads the same 5h/weekly percentages
+  Claude's own `/usage` screen shows. Credentials never
   leave the machine — only the percentages do. `usagefleet status` shows which
   login was found.
 
