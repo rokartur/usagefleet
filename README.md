@@ -75,9 +75,17 @@ time; the free plan keeps working.
 - **Guard** — `usagefleet guard` is a Claude Code hook that refuses new prompts
   once a group is over a window it blocks on. Fails open on any problem.
 - **Spend** — cost estimate per window, group and model, from published pricing.
-- **History** — past 5-hour blocks and weeks, plus a per-project usage explorer.
+- **History** — past 5-hour blocks and weeks.
+
+## Usage over time
 
 <img src=".github/usage-over-time.png" alt="Usage over time, split by group, with the per-group token and cost ledger" width="100%">
+
+Pick a period, a metric (billable, total, input, output, cache-read or cost) and
+what to split the bars by — group, model, device or source. **+ Filter** narrows
+by any of the same four, so "Opus on the two work desktops, last 90 days" is a
+few clicks; with nothing filtered the controls stay out of the way. The ledger
+under the chart totals the same slice.
 
 ## Development
 
