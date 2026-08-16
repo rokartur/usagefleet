@@ -14,19 +14,28 @@ const ROWS = 12
 
 /** Split an absolute cwd into the directory name and the path leading to it,
  *  with the home directory folded to "~". Two checkouts can share a basename,
- *  so the parent is what tells them apart. */
-function splitPath(path: string | null): { name: string; parent: string } {
+ *  so the parent is what tells them apart. Windows cwds arrive verbatim from the
+ *  logs ("C:\\Users\\me\\src"), so both separators split and the display keeps
+ *  the one the machine used. */
+export function splitPath(path: string | null): { name: string; parent: string } {
 	if (!path) {
 		// Not a project: Claude Desktop and pi log no working directory, so their
 		// whole usage lands in this one bucket.
 		return { name: 'No project', parent: 'logged without a working directory' }
 	}
-	const parts = path.split('/').filter(Boolean)
+	const sep = path.includes('\\') ? '\\' : '/'
+	const parts = path.split(/[/\\]/).filter(Boolean)
 	const name = parts.at(-1) ?? path
-	const parent = parts.slice(0, -1)
-	// /Users/artur/Developer and /home/artur/Developer both read as ~/Developer.
-	const home = parent[0] === 'Users' || parent[0] === 'home'
-	return { name, parent: home ? ['~', ...parent.slice(2)].join('/') : `/${parent.join('/')}` }
+	// A leading "C:" is a drive, not a directory — peeling it off leaves a path
+	// shaped like the posix ones, so one home check covers every OS.
+	const drive = /^[a-z]:$/i.test(parts[0] ?? '') ? parts[0] : null
+	const parent = parts.slice(drive ? 1 : 0, -1)
+	// /Users/artur/Developer, /home/artur/Developer and C:\Users\artur\Developer
+	// all read as ~/Developer.
+	if (parent[0] === 'Users' || parent[0] === 'home') {
+		return { name, parent: ['~', ...parent.slice(2)].join(sep) }
+	}
+	return { name, parent: drive ? [drive, ...parent].join(sep) : `/${parent.join('/')}` }
 }
 
 /** What the filter box searches: the path as displayed *and* as stored, so both
