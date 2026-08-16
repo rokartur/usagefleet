@@ -22,8 +22,13 @@ bun run format   # oxfmt: tabs, single quotes, no semicolons, 120 cols
 bun run lint     # oxlint
 bun run test     # usage math + collector unit tests
 
-cd apps/cli && bunx tsc --noEmit   # release.yml gates every npm publish on this
+cd apps/web && bunx tsc --noEmit   # ci.yml gates every PR on both workspaces
+cd apps/cli && bunx tsc --noEmit   # release.yml also gates every npm publish on this
 ```
+
+`apps/web`'s typecheck needs `src/routeTree.gen.ts`, which is gitignored and
+written by the vite plugin, so run `bun run dev` or `bun run build` there once
+after a fresh clone.
 
 Commits are Conventional Commits: `type(scope): imperative subject`, where type
 is one of feat, fix, refactor, perf, test, docs, chore, build, ci. One commit =

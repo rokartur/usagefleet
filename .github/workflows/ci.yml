@@ -1,0 +1,66 @@
+name: ci
+
+# The check that runs BEFORE main. release.yml lints and tests too, but it only
+# runs on a push to main — and by then it has already published to npm, so its
+# checks gate nothing that a user has not already installed. This one gates the
+# pull request.
+#
+# Deliberately not part of release.yml: that workflow holds `id-token: write`
+# (the npm trusted-publishing credential) and must not be reachable from a pull
+# request. This job has read-only permissions and never touches the registry.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Matches release.yml: oxlint strips types off oxlint.config.ts natively
+      # and needs >=22.18.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Test
+        run: bun run test
+
+      # Must precede the web typecheck: src/routeTree.gen.ts is gitignored and
+      # written by the tanstackStart vite plugin, so on a clean checkout tsc has
+      # no route tree to resolve and every route file fails. Gates the build
+      # itself too, which nothing else did. Needs no DATABASE_URL — db/index.ts
+      # only throws when it is actually imported at runtime.
+      - name: Build web
+        working-directory: apps/web
+        run: bun run build
+
+      # apps/cli is gated on publish by its own prepublishOnly, but apps/web was
+      # typechecked by nothing: its errors only ever surfaced in an editor.
+      - name: Typecheck web
+        working-directory: apps/web
+        run: bunx tsc --noEmit
+
+      - name: Typecheck cli
+        working-directory: apps/cli
+        run: bunx tsc --noEmit
