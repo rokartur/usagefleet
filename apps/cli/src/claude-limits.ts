@@ -3,8 +3,9 @@ import type { ClaudeCreds } from './claude-creds.js'
 
 const MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
 
-/** One per-model limit (e.g. the Fable/Opus weekly cap) read from headers like
- *  `anthropic-ratelimit-unified-7d-fable-utilization`. */
+/** One per-model limit (e.g. the Fable/Opus weekly cap), from oauth/usage's
+ *  `limits[]` on subscription logins or headers like
+ *  `anthropic-ratelimit-unified-7d-fable-utilization` on API keys. */
 export interface ModelLimit {
 	/** Model family key from the header name, e.g. "fable" or "opus". */
 	model: string
@@ -53,11 +54,9 @@ export function parseReset(v: string | null): string | null {
  *  (the account-wide headers have no `<model>` segment and don't match). */
 const MODEL_UTIL_RE = /^anthropic-ratelimit-unified-(\d+[hdwm])-([a-z0-9][a-z0-9_.-]*)-utilization$/
 
-export function parseLimitsHeaders(
-	source: 'sub' | 'api',
-	get: (name: string) => string | null,
-	names: Iterable<string> = [],
-): LimitsReport {
+// Always reports source 'api': subscription logins never touch the header
+// path (see fetchLimits), so headers can only come from an API-key ping.
+export function parseLimitsHeaders(get: (name: string) => string | null, names: Iterable<string> = []): LimitsReport {
 	const modelLimits: ModelLimit[] = []
 	for (const raw of names) {
 		const m = raw.toLowerCase().match(MODEL_UTIL_RE)
@@ -78,7 +77,7 @@ export function parseLimitsHeaders(
 		modelLimits,
 		sevenDayPct: parsePct(get('anthropic-ratelimit-unified-7d-utilization')),
 		sevenDayResetsAt: parseReset(get('anthropic-ratelimit-unified-7d-reset')),
-		source,
+		source: 'api',
 	}
 }
 
@@ -87,8 +86,10 @@ const OAUTH_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 /**
  * The OAuth usage endpoint Claude Code queries for /usage — the source of both
  * the per-model caps its UI shows ("Fable · 24% used") and the account-wide
- * numbers we trust over the response headers. Undocumented — parse defensively
- * and return null on any surprise.
+ * numbers, the ONLY limits source for subscription logins. Undocumented —
+ * parse defensively, but keep failure causes apart: an HTTP error names its
+ * status (401/403 reads as "token expired, open Claude Code to refresh",
+ * anything else as an outage to wait out), junk JSON returns null.
  */
 async function fetchOauthUsage(token: string): Promise<unknown> {
 	const res = await fetch(OAUTH_USAGE_URL, {
@@ -100,7 +101,11 @@ async function fetchOauthUsage(token: string): Promise<unknown> {
 		signal: AbortSignal.timeout(15_000),
 	})
 	if (!res.ok) {
-		return null
+		const hint =
+			res.status === 401 || res.status === 403
+				? 'Claude OAuth token expired or revoked · open Claude Code to refresh it'
+				: 'transient? retrying next cycle'
+		throw new Error(`oauth/usage HTTP ${res.status} · ${hint}`)
 	}
 	const body: unknown = await res.json().catch(() => null)
 	if (process.env.USAGEFLEET_DEBUG_HEADERS) {
@@ -111,11 +116,10 @@ async function fetchOauthUsage(token: string): Promise<unknown> {
 
 /**
  * Account-wide 5h/7d numbers from an oauth/usage payload: percentages
- * (`{utilization: 14}`), exactly what Claude's /usage screen shows.
- *
- * These beat the `-utilization` response headers, which now carry a 0–1
- * fraction (`0.13` for 13% used). Missing fields stay null so the header
- * values survive.
+ * (`{utilization: 14}`), exactly what Claude's /usage screen shows — unlike
+ * the `-utilization` response headers, which now carry a 0–1 fraction on sub
+ * accounts. Missing fields stay null so `oauthLimitsReport` can tell an empty
+ * payload from a real one and skip the cycle.
  */
 export function parseOauthAccount(body: unknown): Omit<LimitsReport, 'source' | 'modelLimits'> {
 	const root = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>
@@ -170,7 +174,7 @@ function modelKeyOf(name: string): string {
  * `{kind: "weekly_scoped", group: "weekly", percent, resets_at,
  * scope: {model: {display_name: "Fable"}}}`) are exactly the per-model bars
  * Claude's own UI renders. Account-wide entries have `scope: null` and are
- * skipped (the header ping covers them).
+ * skipped (`parseOauthAccount` reads those from `five_hour`/`seven_day`).
  *
  * Fallback: legacy top-level `seven_day_<model>` objects with a `utilization`
  * number (all null on current accounts, but cheap to keep).
@@ -208,7 +212,7 @@ export function parseOauthUsage(body: unknown): ModelLimit[] {
 			if (!name || typeof l.percent !== 'number') {
 				continue
 			}
-			const window = l.group === 'session' ? '5h' : l.group === 'weekly' ? '7d' : '7d'
+			const window = l.group === 'session' ? '5h' : '7d'
 			const key = modelKeyOf(name)
 			out.push({
 				model: key,
@@ -245,7 +249,7 @@ export function parseOauthUsage(body: unknown): ModelLimit[] {
 
 /** Assemble a full LimitsReport from an oauth/usage payload, or null when the
  *  payload carries no account-wide percentage (endpoint down, shape changed) —
- *  the caller then falls back to the header ping. */
+ *  the caller then skips this cycle rather than report degraded numbers. */
 export function oauthLimitsReport(body: unknown): LimitsReport | null {
 	const account = parseOauthAccount(body)
 	if (account.fiveHourPct == null && account.sevenDayPct == null) {
@@ -257,34 +261,26 @@ export function oauthLimitsReport(body: unknown): LimitsReport | null {
 /**
  * Read the account's real rate-limit utilization.
  *
- * Subscription logins ask the free OAuth usage endpoint first — it returns the
- * exact numbers Claude's own /usage screen shows (account-wide AND per-model)
- * and costs no tokens, so it can be polled often. Only when it yields nothing
- * (or for API keys, which can't call it) does this fall back to a 1-token ping
- * to the Messages API, whose response headers carry the unified utilization
- * (same approach as Claude-Usage-Tracker's OAuth path).
+ * Subscription logins use the free OAuth usage endpoint, and ONLY it — the
+ * exact numbers Claude's own /usage screen shows (account-wide AND per-model),
+ * no tokens spent. When it yields nothing, this throws instead of falling back
+ * to the Messages-API ping: on sub accounts those `-utilization` headers now
+ * carry a 0–1 fraction that parsePct reads 100× low, and one such POST would
+ * overwrite the server's last-good percentages for the whole account. Skipping
+ * the cycle keeps last-good everywhere (the guard has its own staleness rule).
+ *
+ * API keys can't call oauth/usage; their headers still read 0–100, so they
+ * keep the 1-token header ping (same approach as Claude-Usage-Tracker).
  */
 export async function fetchLimits(creds: ClaudeCreds): Promise<LimitsReport> {
 	if (creds.source === 'sub') {
-		try {
-			const report = oauthLimitsReport(await fetchOauthUsage(creds.token))
-			if (report) {
-				return report
-			}
-		} catch {
-			/* fall through to the header ping */
+		// fetchOauthUsage already threw on an HTTP error with its status; reaching
+		// here with no report means a 200 whose body carried no percentages.
+		const report = oauthLimitsReport(await fetchOauthUsage(creds.token))
+		if (!report) {
+			throw new Error('oauth/usage answered without percentages · shape changed? keeping last-good')
 		}
-	}
-	const headers: Record<string, string> = {
-		'anthropic-version': '2023-06-01',
-		'content-type': 'application/json',
-	}
-	if (creds.source === 'sub') {
-		headers['authorization'] = `Bearer ${creds.token}`
-		headers['anthropic-beta'] = 'oauth-2025-04-20'
-		headers['user-agent'] = 'claude-code/2.1.5 (usagefleet)'
-	} else {
-		headers['x-api-key'] = creds.token
+		return report
 	}
 
 	const res = await fetch(MESSAGES_URL, {
@@ -293,13 +289,17 @@ export async function fetchLimits(creds: ClaudeCreds): Promise<LimitsReport> {
 			messages: [{ role: 'user', content: 'hi' }],
 			model: 'claude-haiku-4-5-20251001',
 		}),
-		headers,
+		headers: {
+			'anthropic-version': '2023-06-01',
+			'content-type': 'application/json',
+			'x-api-key': creds.token,
+		},
 		method: 'POST',
 		signal: AbortSignal.timeout(15_000),
 	})
 	// The unified rate-limit headers are (historically) present on success AND
-	// error responses — this OAuth/header-scraping path against the public
-	// Messages endpoint is undocumented and may break without notice. If a
+	// error responses — this header-scraping path against the public Messages
+	// endpoint is undocumented and may break without notice. If a
 	// rejected response ALSO lacks the headers, the feature is unavailable; throw
 	// so the caller logs it instead of POSTing an all-null report silently.
 	// Diagnostic: dump every rate-limit header so unrecognized per-model names
@@ -311,7 +311,7 @@ export async function fetchLimits(creds: ClaudeCreds): Promise<LimitsReport> {
 			}
 		}
 	}
-	const report = parseLimitsHeaders(creds.source, n => res.headers.get(n), res.headers.keys())
+	const report = parseLimitsHeaders(n => res.headers.get(n), res.headers.keys())
 	const gotHeaders =
 		report.fiveHourPct != null ||
 		report.sevenDayPct != null ||

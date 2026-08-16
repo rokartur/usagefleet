@@ -23,7 +23,7 @@ describe(parseOauthAccount, () => {
 		})
 	})
 
-	it('stays null on a missing or junk payload, so header values survive', () => {
+	it('stays null on a missing or junk payload, so the cycle is skipped', () => {
 		const empty = { fiveHourPct: null, fiveHourResetsAt: null, sevenDayPct: null, sevenDayResetsAt: null }
 		expect(parseOauthAccount(null)).toStrictEqual(empty)
 		expect(parseOauthAccount({ five_hour: null, seven_day: { utilization: 'lots' } })).toStrictEqual(empty)
@@ -82,14 +82,14 @@ describe(parseLimitsHeaders, () => {
 			'anthropic-ratelimit-unified-7d-reset': '2026-06-22T00:00:00Z',
 			'anthropic-ratelimit-unified-7d-utilization': '73',
 		}
-		const r = parseLimitsHeaders('sub', n => headers[n] ?? null, Object.keys(headers))
+		const r = parseLimitsHeaders(n => headers[n] ?? null, Object.keys(headers))
 		expect(r).toStrictEqual({
 			fiveHourPct: 42,
 			fiveHourResetsAt: '2026-06-18T04:00:00.000Z',
 			modelLimits: [],
 			sevenDayPct: 73,
 			sevenDayResetsAt: '2026-06-22T00:00:00.000Z',
-			source: 'sub',
+			source: 'api',
 		})
 	})
 
@@ -103,7 +103,7 @@ describe(parseLimitsHeaders, () => {
 			// requests-per-minute style headers must NOT match the model pattern
 			'anthropic-ratelimit-requests-limit': '50',
 		}
-		const r = parseLimitsHeaders('sub', n => headers[n] ?? null, Object.keys(headers))
+		const r = parseLimitsHeaders(n => headers[n] ?? null, Object.keys(headers))
 		expect(r.modelLimits).toStrictEqual([
 			{
 				model: 'fable',
@@ -116,7 +116,7 @@ describe(parseLimitsHeaders, () => {
 	})
 
 	it('keeps working without a names iterable (no model limits)', () => {
-		const r = parseLimitsHeaders('api', () => null)
+		const r = parseLimitsHeaders(() => null)
 		expect(r.modelLimits).toStrictEqual([])
 	})
 })
@@ -147,7 +147,7 @@ describe(oauthLimitsReport, () => {
 		})
 	})
 
-	it('returns null when no account-wide percentage came back, so the header ping runs', () => {
+	it('returns null when no account-wide percentage came back, so the cycle is skipped', () => {
 		expect(oauthLimitsReport(null)).toBeNull()
 		expect(oauthLimitsReport({ limits: [] })).toBeNull()
 	})

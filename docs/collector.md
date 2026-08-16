@@ -57,21 +57,25 @@ and 300s for API keys (each reading costs a billable token).
 
 `claude-creds.ts` finds the local Claude login — subscription OAuth (macOS
 Keychain or `<config dir>/.credentials.json`, refreshing an expired token) or an
-API key. For a subscription login `claude-limits.ts` asks `api/oauth/usage`
-first — the undocumented endpoint Claude Code's own `/usage` screen uses. It is
+API key. For a subscription login `claude-limits.ts` asks `api/oauth/usage` —
+the undocumented endpoint Claude Code's own `/usage` screen uses. It is
 free (no billable ping), returns the exact account-wide 5h/7d percentages that
 screen shows, and is the source of the per-model caps ("Fable · 24% used").
 When it answers, that IS the report and nothing else is sent to Anthropic.
 
-The fallback — always used for API keys, and for subscriptions only when
-oauth/usage yields nothing — is a **1-token** request to
+When oauth/usage yields nothing (down, or a changed shape), the collector
+**skips the cycle** rather than report degraded numbers: the server keeps its
+last-good percentages and `guard` has its own staleness rule. There is no
+header fallback for subscriptions — on sub accounts the `-utilization`
+response headers now carry a 0–1 fraction that would read 100× low, and one
+such post would overwrite the account's last-good reading.
+
+API keys can't call oauth/usage; they use a **1-token** request to
 `api.anthropic.com/v1/messages` purely to read the response headers:
 `anthropic-ratelimit-unified-{5h,7d}-*` plus per-model variants like
-`...-7d-fable-utilization`. That is why the limits leg is rate-limited
-separately from the usage scan: on the fallback path every reading costs a
-billable token. (On subscription logins those headers now carry a 0–1 fraction,
-so the fallback is genuinely degraded there — tiny percentages — but it beats
-reporting nothing.)
+`...-7d-fable-utilization` (on API keys these still read 0–100). That is why
+the limits leg is rate-limited separately from the usage scan: on the header
+path every reading costs a billable token.
 
 The parsed report goes to `POST /api/v1/limits`. oauth/usage reports **0–100
 percentages** (`utilization`/`percent`), so parsing is a clamp keeping one

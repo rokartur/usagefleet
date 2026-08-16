@@ -260,9 +260,10 @@ function planWall(): string {
 }
 
 /**
- * Auto-detect the local Claude login, read the real 5h/weekly utilization from
- * Anthropic's rate-limit headers, and report it to the server. Best-effort —
- * returns null (and logs) when no login is found or the request fails.
+ * Auto-detect the local Claude login, read the real 5h/weekly utilization
+ * (oauth/usage for subscription logins, rate-limit headers for API keys), and
+ * report it to the server. Best-effort — returns null (and logs) when no login
+ * is found or the request fails.
  */
 export async function reportLimitsOnce(
 	cfg: Config,
