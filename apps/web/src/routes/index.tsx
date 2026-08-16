@@ -51,7 +51,7 @@ const FAQ = [
 
 // Under 60 characters so Google shows it whole, and leading with the words a
 // search for this product actually contains rather than with the brand alone.
-const TITLE = `${SITE_NAME} — Claude Code usage tracker for your whole fleet`
+const TITLE = `Coding agent usage tracker for your whole fleet — ${SITE_NAME}`
 
 export const Route = createFileRoute('/')({
 	loader: () => landing(),
