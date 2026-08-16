@@ -44,8 +44,11 @@ apportioning a percentage.
   instant. There is no local block-boundary reconstruction from event
   timestamps — an earlier ccusage-style implementation was deleted once the
   collector began reporting the real numbers.
-- **Weekly window** (`window.ts`): most recent `weekday`@`hourUtc` at or before
-  now, from `user_settings` (default Monday 00:00 UTC).
+- **Weekly window**: Anthropic's too — anchored on the reported `resets_at`
+  minus 7 days, clamped to at most 7 days ending now so a stale reset can't
+  widen the split window. The `user_settings` weekday/hour survive only as the
+  past-windows grid fallback (`weekWindowStart` in `window.ts`) for an account
+  that has never reported a weekly reset.
 - **Past windows** (`windowSpans`): the recorded utilization samples ARE the
   boundaries — each sample's `window_start` is a real reset instant minus the
   window length. Anthropic's windows are not on a fixed grid (after idle the

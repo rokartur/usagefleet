@@ -71,9 +71,10 @@ export const claudeAccounts = pgTable(
 		sevenDayPct: real('seven_day_pct'),
 		fiveHourResetsAt: timestamp('five_hour_resets_at', { withTimezone: true }),
 		sevenDayResetsAt: timestamp('seven_day_resets_at', { withTimezone: true }),
-		// Per-model limits (e.g. the Fable/Opus weekly cap) as reported from
-		// Anthropic's per-model rate-limit headers. Small array and the set of models
-		// is dynamic, so jsonb instead of dedicated columns.
+		// Per-model limits (e.g. the Fable/Opus weekly cap), from oauth/usage's
+		// `limits[]` on subscriptions or the per-model rate-limit headers on API
+		// keys. Small array and the set of models is dynamic, so jsonb instead of
+		// dedicated columns.
 		modelLimits: jsonb('model_limits').$type<StoredModelLimit[]>(),
 		limitsReportedAt: timestamp('limits_reported_at', { withTimezone: true }),
 		createdAt: timestamp('created_at').defaultNow().notNull(),

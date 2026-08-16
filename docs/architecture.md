@@ -33,14 +33,17 @@ TanStack Start (SSR + server functions), React 19, Tailwind v4, shadcn, Drizzle
 
 Routing is file-based under `src/routes`:
 
-- `_dash.tsx` — authenticated layout; `beforeLoad` redirects to `/login`, so no
-  child route repeats the auth check.
+- `_dash.tsx` — authenticated layout; its loader's server fn calls
+  `requireUser()` (redirecting to `/login`) to guard the shell. Every child
+  route's own server fns still call `requireUser()` themselves — loaders run
+  independently, so the layout guard is UX, not the security boundary.
 - `_dash/{dashboard,devices,groups,settings,billing,admin}.tsx` — the app.
   `admin.tsx` re-checks `requireAdmin()` server-side.
 - `api/v1/{usage,limits}.ts` — the collector's ingest API (device-token auth).
 - `api/dashboard.ts` — the browser's live poll; returns `toDashboardDTO(...)`.
 - `api/auth/$.ts` — better-auth handler. `index.tsx`, `login.tsx`,
-  `reset-password.tsx`, `robots[.]txt.ts`, `sitemap[.]xml.ts` — public surface.
+  `reset-password.tsx`, `privacy.tsx`, `terms.tsx`, `robots[.]txt.ts`,
+  `sitemap[.]xml.ts` — public surface.
 
 Data access is layered so pages stay thin:
 
@@ -75,9 +78,11 @@ Data access is layered so pages stay thin:
   is per account and not per user.
 - `usage_event` — one raw JSONL segment. Unique on `(user_id, uuid)`; indexed on
   `(user_id, ts)` and `(device_id, ts)`. Never aggregate without folding.
-- `user_settings` — plan preset, token limits, week reset weekday/hour, cache TTL,
-  admin free-device grant. Its `*_pct` / `model_limits` columns are dead as of
-  migration 0017, which moved them to `claude_account`.
+- `user_settings` — plan preset, token limits, week reset weekday/hour (a grid
+  fallback for the past-windows card only — the live weekly window anchors on
+  Anthropic's reported reset), cache TTL, admin free-device grant. Its `*_pct` /
+  `model_limits` columns are dead as of migration 0017, which moved them to
+  `claude_account`.
 - `limit_sample` — peak utilization per `(claude_account, window, window_start)`.
   Claude only reports the *open* window, so this is the only record of how full a
   closed one got; the past-windows card reads it instead of guessing.

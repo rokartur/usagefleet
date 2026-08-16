@@ -16,9 +16,10 @@ usagefleet login uf_xxx
 ```
 
 Same two commands on macOS, Linux and Windows (in PowerShell chain them with
-`;` — 5.1 has no `&&`). `login` pairs the device, sets the collector to start
-with your session and writes `~/.config/usagefleet/config.json` (mode `600`).
-The dashboard fills in within a minute.
+`;` — 5.1 has no `&&`). `login` stores the token (the server checks it on the
+first report, not at login), sets the collector to start with your session and
+writes `~/.config/usagefleet/config.json` (mode `600`). The dashboard fills in
+within a minute.
 
 `login` takes the token and nothing else. The collector reports to
 `usagefleet.com` and there is no way to redirect it: the request carries your
