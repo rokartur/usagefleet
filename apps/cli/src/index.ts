@@ -1,13 +1,7 @@
 #!/usr/bin/env node
 import { detectClaudeCreds } from './claude-creds.js'
 import { reportLimitsOnce, runOnce } from './collector.js'
-import {
-	commands,
-	completionScript,
-	installCompletions,
-	removeCompletions,
-	shells,
-} from './completion.js'
+import { commands, completionScript, installCompletions, removeCompletions, shells } from './completion.js'
 import type { Shell } from './completion.js'
 import { loadConfig } from './config.js'
 import { runGuard } from './guard.js'
