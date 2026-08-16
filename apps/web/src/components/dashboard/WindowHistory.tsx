@@ -58,10 +58,12 @@ function columnsOf(windows: PastWindow[]) {
 
 /**
  * Past limit windows, group by group — the "how did last session/week go"
- * counterpart to the live card. Percentages are shares of the whole account
- * limit: the utilization Claude reported for that window, split across groups
- * by cost, so the group cells sum to the window total. Windows that closed
- * before the collector recorded a utilization sample show tokens only.
+ * counterpart to the live card. Every percentage is a share of the whole
+ * account limit: the utilization Claude reported for that window, split across
+ * groups by cost, so the group cells sum to the account column. Only that
+ * column carries a bar, since group shares are already measured against it.
+ * Windows that closed before the collector recorded a utilization sample have
+ * no percentage anywhere and fall back to tokens.
  *
  * `account` names the subscription the windows belong to, and is passed only
  * when the fleet reports on more than one.
@@ -111,9 +113,10 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 					<TableHeader>
 						<TableRow>
 							<TableHead>Window (UTC)</TableHead>
-							<TableHead>Total</TableHead>
+							<TableHead>Account limit</TableHead>
+							<TableHead className='text-right'>Tokens</TableHead>
 							{columns.map(c => (
-								<TableHead key={c.key}>
+								<TableHead key={c.key} className='text-right'>
 									<span className='inline-flex items-center gap-2'>
 										<span
 											className='size-2.5 shrink-0 rounded-full'
@@ -130,30 +133,27 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 						{windows.map(w => (
 							<TableRow key={w.start}>
 								<TableCell className='font-medium whitespace-nowrap'>{windowLabel(w, kind)}</TableCell>
-								<TableCell className='text-muted-foreground tabular-nums'>
-									{formatTokens(w.tokens)}
-									{w.accountPct !== null && <> · {w.accountPct}%</>}
+								<TableCell>
+									{w.accountPct === null ? (
+										<span className='text-muted-foreground'>no limit sample</span>
+									) : (
+										<span className='flex min-w-36 items-center gap-3'>
+											<UsageBar pct={w.accountPct} className='w-24 shrink-0' />
+											<span className='font-medium tabular-nums'>{w.accountPct}%</span>
+										</span>
+									)}
 								</TableCell>
+								<TableCell className='text-right tabular-nums'>{formatTokens(w.tokens)}</TableCell>
 								{columns.map(c => {
 									const g = w.groups.find(x => columnKey(x.groupId) === c.key)
 									return (
-										<TableCell key={c.key}>
-											{g ? (
-												<div className='flex min-w-36 items-center gap-3'>
-													{g.accountPct !== null && (
-														<UsageBar pct={g.accountPct} className='w-16 shrink-0' />
-													)}
-													<span className='tabular-nums'>
-														{g.accountPct !== null && (
-															<span className='font-medium'>{g.accountPct}% · </span>
-														)}
-														<span className='text-muted-foreground'>
-															{formatTokens(g.tokens)}
-														</span>
-													</span>
-												</div>
+										<TableCell key={c.key} className='text-right tabular-nums'>
+											{g && g.accountPct !== null ? (
+												<span className='font-medium'>{g.accountPct}%</span>
 											) : (
-												<span className='text-muted-foreground'>—</span>
+												<span className='text-muted-foreground'>
+													{g ? formatTokens(g.tokens) : '—'}
+												</span>
 											)}
 										</TableCell>
 									)
