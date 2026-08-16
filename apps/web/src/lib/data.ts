@@ -357,9 +357,26 @@ function accountFilterSql(view: AccountView): SQL {
  *
  * The unidentified bucket sorts first, which makes `[0]` the account that
  * absorbs unstamped devices — the guard relies on that.
+ *
+ * Only accounts a live device is on get a view. A row nothing points at is a
+ * leftover — the device that made it moved to an identified account, or was
+ * revoked — and it would otherwise keep drawing a card with stale percentages
+ * and no groups under it.
  */
 export async function listAccountViews(userId: string): Promise<AccountView[]> {
-	return accountViews(await db.select().from(claudeAccounts).where(eq(claudeAccounts.userId, userId)), userId)
+	const [rows, deviceAccounts] = await Promise.all([
+		db.select().from(claudeAccounts).where(eq(claudeAccounts.userId, userId)),
+		db
+			.selectDistinct({ accountId: devices.claudeAccountId })
+			.from(devices)
+			.where(and(eq(devices.userId, userId), eq(devices.revoked, false))),
+	])
+	const liveOn = new Set(deviceAccounts.map(d => d.accountId))
+	return accountViews(
+		// The bucket also answers for devices that never reported a login.
+		rows.filter(a => liveOn.has(a.id) || (a.extId === null && liveOn.has(null))),
+		userId,
+	)
 }
 
 /** {@link listAccountViews} minus the query. */
