@@ -71,6 +71,13 @@ already 0–100 percentages, unlike the header fractions.
 The parsed report goes to `POST /api/v1/limits`. Percentages are clamped to
 0–100 and accept both the `37` and `0.37` header forms.
 
+For a subscription login the report also names **which Anthropic account** it
+describes: `claude-account.ts` reads `oauthAccount` out of Claude Code's own
+`~/.claude.json` (a local file read, no network, no credentials). The server
+keeps one set of percentages per account, so two machines on two different
+subscriptions stop overwriting each other. An API-key login has no account
+identity and reports none; the server buckets those together.
+
 `notifier.ts` compares each window's utilization against ascending thresholds
 (`USAGEFLEET_NOTIFY_THRESHOLDS`, default 80/95) and fires one desktop
 notification per threshold per window via `notify.ts` (osascript / notify-send /

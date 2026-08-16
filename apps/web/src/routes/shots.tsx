@@ -94,6 +94,8 @@ const liveGroups: LiveGroupUsage[] = [
 const spendPeriod = (billable: number, costUsd: number) => ({ costUsd, totals: totals(billable) })
 
 const dashboard: DashboardDTO = {
+	accountId: 'shots-account',
+	accountLabel: null,
 	connected: true,
 	fiveHourPct: 41,
 	fiveHourResetsAt: new Date(NOW + 2 * HOUR + 14 * MIN).toISOString(),
@@ -219,7 +221,7 @@ function ShotsPage() {
 	useEffect(() => {
 		const real = window.fetch
 		window.fetch = async (input, init) =>
-			String(input).includes('/api/dashboard') ? Response.json(dashboard) : real(input, init)
+			String(input).includes('/api/dashboard') ? Response.json([dashboard]) : real(input, init)
 		return () => {
 			window.fetch = real
 		}

@@ -1,3 +1,4 @@
+import type { ClaudeAccount } from './claude-account.js'
 import type { ClaudeCreds } from './claude-creds.js'
 
 const MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
@@ -15,6 +16,10 @@ export interface ModelLimit {
 
 export interface LimitsReport {
 	source: 'sub' | 'api'
+	/** Which Anthropic account these percentages belong to. Only set for
+	 *  subscription logins (an API key has no local account identity) and absent
+	 *  on machines that never signed into Claude Code. */
+	account?: ClaudeAccount | null
 	fiveHourPct: number | null
 	sevenDayPct: number | null
 	fiveHourResetsAt: string | null

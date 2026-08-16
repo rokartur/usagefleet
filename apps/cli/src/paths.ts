@@ -51,3 +51,11 @@ export function defaultPiSessionsDirs(): string[] {
 export function claudeSettingsPath(): string {
 	return join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json')
 }
+
+/** Claude Code's global state file (`~/.claude.json`), which records which
+ *  Anthropic account this machine is logged into. Unlike settings.json it sits
+ *  next to the config dir, not inside it. */
+export function claudeStatePath(): string {
+	const dir = process.env.CLAUDE_CONFIG_DIR
+	return dir ? join(dir, '.claude.json') : join(homedir(), '.claude.json')
+}

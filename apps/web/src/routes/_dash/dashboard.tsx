@@ -4,21 +4,39 @@ import { AutoRefresh } from '@/components/AutoRefresh'
 import { UsageExplorer } from '@/components/dashboard/UsageExplorer'
 import { WindowHistory } from '@/components/dashboard/WindowHistory'
 import { LiveDashboard } from '@/components/LiveDashboard'
-import { getHistory, getLiveDashboard, getWindowHistory, listDevices, toDashboardDTO } from '@/lib/data'
+import {
+	getHistory,
+	getLiveDashboards,
+	getWindowHistory,
+	listAccountViews,
+	listDevices,
+	toDashboardDTO,
+} from '@/lib/data'
 import { requireUser } from '@/lib/session'
 
 const dashboardData = createServerFn().handler(async () => {
 	const user = await requireUser()
 	const now = new Date()
-	const [initial, history, windows] = await Promise.all([
-		getLiveDashboard(user.id).then(toDashboardDTO),
+	// One card set per Anthropic account the fleet reports on: the percentages are
+	// Anthropic's and Anthropic meters each subscription separately.
+	const [dashboards, history, views] = await Promise.all([
+		getLiveDashboards(user.id),
 		getHistory(user.id),
-		getWindowHistory(user.id, now),
+		listAccountViews(user.id),
 	])
-	// Only the never-reported account sees the setup rail, so this extra query
-	// costs nothing once data is flowing.
-	const setup = initial.connected ? null : await setupState(user.id)
-	return { initial, history, windows, setup }
+	const accounts = await Promise.all(
+		dashboards.map(async dash => ({
+			dash: toDashboardDTO(dash),
+			windows: await getWindowHistory(
+				views.find(v => (v.account?.id ?? null) === dash.accountId) ?? views[0],
+				now,
+			),
+		})),
+	)
+	// Only a never-reported account sees the setup rail, so this extra query costs
+	// nothing once data is flowing.
+	const setup = accounts.some(a => a.dash.connected) ? null : await setupState(user.id)
+	return { accounts, history, setup }
 })
 
 /** Newest active device (the one just added, usually) and whether any device
@@ -37,15 +55,23 @@ export const Route = createFileRoute('/_dash/dashboard')({
 })
 
 function DashboardPage() {
-	const { initial, history, windows, setup } = Route.useLoaderData()
+	const { accounts, history, setup } = Route.useLoaderData()
+	const multi = accounts.length > 1
 	return (
 		<>
 			{/* The live cards poll on their own; this keeps the history chart fresh. */}
 			<AutoRefresh intervalMs={60_000} />
-			<LiveDashboard initial={initial} setup={setup} />
-			{/* Both of these show up once there is something in them; an account with
-          no reports yet gets the setup rail alone. */}
-			{(windows.sessions.length > 0 || windows.weeks.length > 0) && <WindowHistory history={windows} />}
+			{accounts.map(({ dash, windows }) => (
+				<div key={dash.accountId ?? 'unidentified'}>
+					{multi && (
+						<div className='mb-2 text-sm text-white'>{dash.accountLabel ?? 'Unidentified account'}</div>
+					)}
+					<LiveDashboard initial={dash} setup={setup} />
+					{/* Both of these show up once there is something in them; an account
+              with no reports yet gets the setup rail alone. */}
+					{(windows.sessions.length > 0 || windows.weeks.length > 0) && <WindowHistory history={windows} />}
+				</div>
+			))}
 			{history.rows.length > 0 && <UsageExplorer history={history} />}
 		</>
 	)

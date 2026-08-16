@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { sep } from 'node:path'
+import { detectClaudeAccount } from './claude-account.js'
 import { detectClaudeCreds, macKeychainDenied } from './claude-creds.js'
 import { fetchLimits } from './claude-limits.js'
 import type { LimitsReport } from './claude-limits.js'
@@ -297,7 +298,11 @@ export async function reportLimitsOnce(
 	// Same vocabulary as the usage leg: a rejection the operator can act on has to
 	// say which one it is, since this runs every cycle and an anonymous failure
 	// would repeat forever without ever naming the fix.
-	const outcome = await postLimits(report, cfg)
+	// Tag the reading with the Claude account it came from, so a fleet split over
+	// two subscriptions gets two independent budgets instead of one row both
+	// machines overwrite. Subscription logins only — an API key has no account.
+	const account = report.source === 'sub' ? detectClaudeAccount() : null
+	const outcome = await postLimits({ ...report, account }, cfg)
 	if (outcome === 'plan') {
 		log('warn', planWall(cfg.endpoint))
 	} else if (outcome === 'auth') {

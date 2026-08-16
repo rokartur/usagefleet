@@ -283,15 +283,20 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO; setup
 				return
 			}
 			if (res.ok) {
-				setDash((await res.json()) as DashboardDTO)
-				setLastOk(Date.now())
+				// One payload per Anthropic account; keep the one this card renders.
+				const all = (await res.json()) as DashboardDTO[]
+				const mine = all.find(d => d.accountId === initial.accountId)
+				if (mine) {
+					setDash(mine)
+					setLastOk(Date.now())
+				}
 			}
 		} catch {
 			/* transient network/abort — keep last good data; staleness shows below */
 		} finally {
 			inFlightRef.current = false
 		}
-	}, [])
+	}, [initial.accountId])
 
 	useEffect(() => {
 		const id = setInterval(refresh, POLL_MS)

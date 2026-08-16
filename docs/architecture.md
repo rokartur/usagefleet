@@ -13,14 +13,18 @@ Claude Code / Desktop / Pi
                  └─ usage_event rows      deduped on (userId, uuid)
        └─ cli: claude-limits              1-token ping to api.anthropic.com
             └─ POST /api/v1/limits        Anthropic's OWN utilization headers
-                 └─ user_settings + limit_sample
-  dashboard: fold rows → cost share per group → split the official pct
+                 └─ claude_account + limit_sample   keyed by the local login
+  dashboard: per account: fold rows → cost share per group → split the official pct
 ```
 
 Two independent legs. The usage leg is ours (tokens, models, cost estimates);
 the limits leg is Anthropic's own truth about how full the account is. The
 dashboard's headline numbers come from the limits leg — the usage leg only
 decides *whose* usage filled it.
+
+Everything downstream of the limits leg is per Anthropic account: a fleet split
+over two Claude subscriptions gets two independent budgets, and each device
+counts against whichever one it is signed into.
 
 ## Web app (`apps/web`)
 
@@ -59,15 +63,24 @@ Data access is layered so pages stay thin:
 - `groups` — a named bucket of devices, owned by a user, with the two
   `block_on_*_limit` toggles the prompt guard enforces.
 - `devices` — one collector install. `token_hash` (SHA-256, unique) + a display
-  prefix, `revoked`, `last_seen_at`, `collector_version`, optional `group_id`.
+  prefix, `revoked`, `last_seen_at`, `collector_version`, optional `group_id`,
+  and `claude_account_id` (stamped from its limits posts, null until the first).
+- `claude_account` — one Anthropic subscription the fleet draws on, keyed
+  `(user_id, ext_id)` with `ext_id` = the `oauthAccount.accountUuid` the
+  collector reads locally. `ext_id IS NULL` is the bucket for devices whose
+  login can't be identified (API-key setups, collectors older than
+  multi-account); `NULLS NOT DISTINCT` keeps it to one per user. Holds the
+  latest reported utilization (`five_hour_pct`, `seven_day_pct`, resets,
+  `model_limits` jsonb) — Anthropic meters each subscription separately, so this
+  is per account and not per user.
 - `usage_event` — one raw JSONL segment. Unique on `(user_id, uuid)`; indexed on
   `(user_id, ts)` and `(device_id, ts)`. Never aggregate without folding.
 - `user_settings` — plan preset, token limits, week reset weekday/hour, cache TTL,
-  admin free-device grant, and the latest collector-reported utilization
-  (`five_hour_pct`, `seven_day_pct`, resets, `model_limits` jsonb).
-- `limit_sample` — peak utilization per `(user, window, window_start)`. Claude
-  only reports the *open* window, so this is the only record of how full a closed
-  one got; the past-windows card reads it instead of guessing.
+  admin free-device grant. Its `*_pct` / `model_limits` columns are dead as of
+  migration 0017, which moved them to `claude_account`.
+- `limit_sample` — peak utilization per `(claude_account, window, window_start)`.
+  Claude only reports the *open* window, so this is the only record of how full a
+  closed one got; the past-windows card reads it instead of guessing.
 
 ## Ingest API contract
 
@@ -82,8 +95,9 @@ handlers, and on the `402` path so a parked device still shows as alive.
   accepted/duplicate counts. At-least-once by design: the collector only commits
   a file offset after the server acknowledges, and the unique index absorbs the
   replay.
-- `POST /api/v1/limits` — the parsed rate-limit headers. Writes `user_settings`
-  and upserts the peak into `limit_sample`.
+- `POST /api/v1/limits` — the parsed rate-limit headers, plus the optional
+  `account` the collector read from `~/.claude.json`. Upserts `claude_account`,
+  stamps the device with it, and upserts the peak into `limit_sample`.
 - `GET /api/v1/limits` — what `usagefleet guard` asks before a prompt. Returns
   `{ group, sessionPct, weeklyPct, blocked, blockedWindow, blockedUntil,
   reportedAt }`; the guard reads `blocked` to decide and `blockedWindow` /

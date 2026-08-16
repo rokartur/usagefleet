@@ -33,8 +33,13 @@ Break one of these and the product silently reports wrong numbers or leaks acces
 - **The headline 5h/weekly percentages are Anthropic's, not ours.** The collector
   reads them from response headers; the server only *splits* them per group, by
   each group's share of estimated cost. Token counts are display-only.
-- **A group's percentage is its budget slice**, i.e. share × group count: with two
-  groups, one at half the account reads 100%. Uncapped past 100% on purpose.
+- **Everything limit-shaped is per Anthropic account, not per user.** Anthropic
+  meters each subscription separately, so percentages live on `claude_account`
+  (keyed by the `accountUuid` the collector reads from `~/.claude.json`) and a
+  device counts against the account it is signed into. One user can hold several.
+- **A group's percentage is its budget slice**, i.e. share × the number of groups
+  with a device on that account: with two such groups, one at half the account
+  reads 100%. Uncapped past 100% on purpose.
 - **Device tokens are stored as SHA-256 only** (`lib/device-token.ts`), shown once
   at creation. Every collector endpoint re-checks the plan
   (`deviceWithinPlan` → 402) because a downgrade parks devices without revoking.

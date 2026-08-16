@@ -1,10 +1,11 @@
+import { randomUUID } from 'node:crypto'
 import { createFileRoute } from '@tanstack/react-router'
 import { type } from 'arktype'
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/db'
-import { devices, groups, userSettings } from '@/db/schema'
+import { claudeAccounts, devices, groups } from '@/db/schema'
 import { deviceWithinPlan, overPlanLimit } from '@/lib/billing'
-import { getLiveDashboard, recordLimitSample } from '@/lib/data'
+import { dashboardForDevice, getLiveDashboards, recordLimitSample } from '@/lib/data'
 import { authenticateDevice } from '@/lib/device-auth'
 import { readJsonCapped } from '@/lib/rate-limit'
 import { LIMITS_STALE_MS } from '@/lib/usage/limits'
@@ -13,6 +14,14 @@ const PCT = '0 <= number.integer <= 100 | null'
 
 const LimitsSchema = type({
 	source: "'sub' | 'api'",
+	// Which Anthropic account the reading came from, read by the collector from
+	// the local Claude Code login. Absent from pre-multi-account collectors and
+	// from API-key setups, which land in the unidentified bucket instead.
+	'account?': type({
+		extId: '0 < string <= 100',
+		'email?': 'string <= 200 | null',
+		'org?': 'string <= 200 | null',
+	}).or('null'),
 	'fiveHourPct?': PCT,
 	'sevenDayPct?': PCT,
 	'fiveHourResetsAt?': 'string | null',
@@ -63,8 +72,8 @@ async function GET(req: Request) {
 
 	// Owner-scoped so a stray cross-tenant groupId can never read another
 	// account's switches.
-	const [dash, group] = await Promise.all([
-		getLiveDashboard(device.userId),
+	const [dashboards, group] = await Promise.all([
+		getLiveDashboards(device.userId),
 		device.groupId
 			? db
 					.select({
@@ -77,6 +86,8 @@ async function GET(req: Request) {
 					.then(r => r[0])
 			: undefined,
 	])
+	// A device is measured against the subscription it is signed into.
+	const dash = dashboardForDevice(dashboards, device.claudeAccountId)
 	const usage = dash.groups.find(g => g.groupId === device.groupId)
 	const sessionPct = usage?.sessionBudgetPct ?? 0
 	const weeklyPct = usage?.weeklyBudgetPct ?? 0
@@ -154,19 +165,42 @@ async function POST(req: Request) {
 				})),
 			}),
 	}
-	await db
-		.insert(userSettings)
-		.values({ userId: device.userId, ...set })
-		.onConflictDoUpdate({ target: userSettings.userId, set })
+	// Percentages are Anthropic's and Anthropic reports them per subscription, so
+	// they are stored per account. A device that can't name its login (API key, or
+	// a collector older than this) keeps writing to the ext_id = NULL bucket,
+	// which is exactly where its history already lives.
+	const identity = b.account ?? null
+	const [account] = await db
+		.insert(claudeAccounts)
+		.values({
+			id: randomUUID(),
+			userId: device.userId,
+			extId: identity?.extId ?? null,
+			email: identity?.email ?? null,
+			orgName: identity?.org ?? null,
+			...set,
+		})
+		.onConflictDoUpdate({
+			target: [claudeAccounts.userId, claudeAccounts.extId],
+			// Display names are only refreshed when the collector sent them, so a
+			// report from an older client can't blank out a known label.
+			set: {
+				...set,
+				...(identity?.email ? { email: identity.email } : {}),
+				...(identity?.org ? { orgName: identity.org } : {}),
+			},
+		})
+		.returning({ id: claudeAccounts.id, userId: claudeAccounts.userId })
 
 	await Promise.all([
 		// Keep a per-window record of the reported utilization: Claude only reports
 		// the open window, so this is the past-windows card's only ground truth
 		// once a window closes.
-		recordLimitSample(device.userId, '5h', b.fiveHourPct, set.fiveHourResetsAt),
-		recordLimitSample(device.userId, '7d', b.sevenDayPct, set.sevenDayResetsAt),
-		// Touch the device so the Devices list shows an accurate last-seen time.
-		db.update(devices).set({ lastSeenAt: now }).where(eq(devices.id, device.id)),
+		recordLimitSample(account, '5h', b.fiveHourPct, set.fiveHourResetsAt),
+		recordLimitSample(account, '7d', b.sevenDayPct, set.sevenDayResetsAt),
+		// Touch the device so the Devices list shows an accurate last-seen time, and
+		// bind it to the account whose usage it is now producing.
+		db.update(devices).set({ claudeAccountId: account.id, lastSeenAt: now }).where(eq(devices.id, device.id)),
 	])
 
 	return Response.json({ ok: true })

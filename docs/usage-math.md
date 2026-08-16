@@ -50,8 +50,14 @@ apportioning a percentage.
 
 The headline 5h and weekly numbers are Anthropic's own utilization, read by the
 collector from `anthropic-ratelimit-unified-*` headers and stored on
-`user_settings`. Until the collector reports once, the dashboard shows
+`claude_account` — one row per Anthropic subscription, since Anthropic meters
+each one separately. Until a collector reports once, that account shows
 `connected: false`.
+
+Everything below happens per account. A device counts against the account it is
+signed into (`devices.claude_account_id`, stamped from its limits posts), the
+same way its usage already follows it between groups. Devices that never report
+a login fold into the unidentified bucket, or into the only account there is.
 
 `splitByShare()` (`lib/data.ts`) apportions one official percentage across groups:
 
@@ -60,8 +66,10 @@ collector from `anthropic-ratelimit-unified-*` headers and stored on
 3. `exactPct = officialPct × (bucketCost / totalCost)` — kept unrounded.
 
 `groupBudgetPct()` then scales a share into what the UI shows:
-`round(exactPct × groupCount)`. Every group is budgeted an equal slice of the
-account, so **with two groups, a group sitting at half the account reads 100%**.
+`round(exactPct × groupCount)`, where `groupCount` counts the groups holding a
+device on *this* account — a group that never touches a subscription cannot eat
+its budget. Every such group is budgeted an equal slice of the account, so
+**with two groups, a group sitting at half the account reads 100%**.
 Deliberately uncapped: past 100% that group is eating another's slice, which is
 the thing worth seeing. Rounding happens once, at the end — rounding the share
 first would multiply the error by the group count.
@@ -72,7 +80,7 @@ window length parsed from the header key (`5h`, `7d`, …).
 ## Past windows card
 
 Claude reports only the currently open window, so `recordLimitSample()` upserts
-the running peak per `(user, window, window_start)` on every limits post.
+the running peak per `(claude_account, window, window_start)` on every limits post.
 `getWindowHistory()` reads those peaks and splits each closed window across
 groups using the bucketed aggregates — real recorded utilization, not a
 reconstruction from token counts.

@@ -10,6 +10,7 @@ import {
 	index,
 	jsonb,
 	primaryKey,
+	unique,
 	uniqueIndex,
 } from 'drizzle-orm/pg-core'
 import { user } from './auth-schema'
@@ -41,11 +42,55 @@ export const groups = pgTable(
 	t => [index('groups_owner_idx').on(t.ownerId)],
 )
 
+// One Anthropic account a user's fleet draws on. A user with two Claude
+// subscriptions has two rows, each with its own rate-limit percentages and its
+// own group split: the percentages Anthropic reports are per account, so
+// keeping one set per user let two logged-in machines overwrite each other.
+// Rows are created by the collector's limits post, never by hand.
+export const claudeAccounts = pgTable(
+	'claude_account',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		// `oauthAccount.accountUuid` from the device's Claude Code login. NULL is the
+		// fallback bucket for devices whose account we can't identify (API-key
+		// logins, collectors older than multi-account) — one per user, hence
+		// NULLS NOT DISTINCT on the unique index.
+		extId: text('ext_id'),
+		email: text('email'),
+		orgName: text('org_name'),
+		// Latest REAL utilization reported by a collector on this account
+		// ('sub' = subscription OAuth, 'api' = API key).
+		limitSource: text('limit_source'),
+		fiveHourPct: integer('five_hour_pct'),
+		sevenDayPct: integer('seven_day_pct'),
+		fiveHourResetsAt: timestamp('five_hour_resets_at', { withTimezone: true }),
+		sevenDayResetsAt: timestamp('seven_day_resets_at', { withTimezone: true }),
+		// Per-model limits (e.g. the Fable/Opus weekly cap) as reported from
+		// Anthropic's per-model rate-limit headers. Small array and the set of models
+		// is dynamic, so jsonb instead of dedicated columns.
+		modelLimits: jsonb('model_limits').$type<StoredModelLimit[]>(),
+		limitsReportedAt: timestamp('limits_reported_at', { withTimezone: true }),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	t => [unique('claude_account_user_ext_uq').on(t.userId, t.extId).nullsNotDistinct()],
+)
+
 // A desktop install of the collector. Authenticates to the ingest API with a
 // long-lived bearer token; only the SHA-256 hash is stored.
 export const devices = pgTable(
 	'devices',
 	{
+		// Which Anthropic account this machine is logged into, stamped from its
+		// limits posts. NULL until the first one lands. Usage is attributed to the
+		// account the device is on *now*, exactly like groupId — moving a machine
+		// rewrites its history.
+		claudeAccountId: text('claude_account_id').references(() => claudeAccounts.id, {
+			onDelete: 'set null',
+		}),
 		collectorVersion: text('collector_version'),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		groupId: text('group_id').references(() => groups.id, {
@@ -63,7 +108,11 @@ export const devices = pgTable(
 			.notNull()
 			.references(() => user.id, { onDelete: 'cascade' }),
 	},
-	t => [index('devices_user_idx').on(t.userId), index('devices_group_idx').on(t.groupId)],
+	t => [
+		index('devices_user_idx').on(t.userId),
+		index('devices_group_idx').on(t.groupId),
+		index('devices_claude_account_idx').on(t.claudeAccountId),
+	],
 )
 
 // One raw JSONL assistant-message segment, deduped server-side on `uuid`.
@@ -118,8 +167,10 @@ export interface StoredModelLimit {
 }
 
 // Per-user dashboard configuration. `weekResetWeekday`/`weekResetHourUtc` and
-// the cache-TTL column are live. `plan`, `sessionLimitTokens` and
-// `weeklyLimitTokens` are not: they backed a local estimate of Anthropic's
+// the cache-TTL column are live. The `limit_*`/`*_pct`/`model_limits` columns
+// are not: limits moved to `claude_account` when one user gained the ability to
+// hold several Anthropic subscriptions. `plan`, `sessionLimitTokens` and
+// `weeklyLimitTokens` are not either: they backed a local estimate of Anthropic's
 // opaque limits, which the collector's reported percentages replaced. Nothing
 // reads or writes them, and no UI edits them. Left in place because dropping
 // columns is a one-way migration, not because they mean anything.
@@ -146,16 +197,13 @@ export const userSettings = pgTable('user_settings', {
 	// Kept as nullable no-op columns to avoid a destructive migration.
 	claudeSessionKey: text('claude_session_key'),
 	claudeOrgId: text('claude_org_id'),
-	// Latest REAL utilization reported by the collector (read from the local
-	// Claude Code login on a device — `sub` = subscription OAuth, `api` = API key).
+	// Deprecated: moved to `claude_account` (one set of percentages per Anthropic
+	// account). Migration 0017 copied the last values across. Nothing reads these.
 	limitSource: text('limit_source'), // 'sub' | 'api'
 	fiveHourPct: integer('five_hour_pct'),
 	sevenDayPct: integer('seven_day_pct'),
 	fiveHourResetsAt: timestamp('five_hour_resets_at', { withTimezone: true }),
 	sevenDayResetsAt: timestamp('seven_day_resets_at', { withTimezone: true }),
-	// Per-model limits (e.g. the Fable/Opus weekly cap) as reported by the
-	// collector from Anthropic's per-model rate-limit headers. Small array; the
-	// set of models is dynamic, so jsonb instead of dedicated columns.
 	modelLimits: jsonb('model_limits').$type<StoredModelLimit[]>(),
 	limitsReportedAt: timestamp('limits_reported_at', { withTimezone: true }),
 	updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -168,10 +216,14 @@ export type LimitWindow = '5h' | '7d'
 // collector's /api/v1/limits posts (one row per window, kept at its maximum).
 // Claude only reports the window that is currently open, so once a window
 // closes this is the only record of how full it actually got — the past-windows
-// card reads it instead of guessing a token limit.
+// card reads it instead of guessing a token limit. Keyed per Anthropic account:
+// two subscriptions fill their windows independently.
 export const limitSamples = pgTable(
 	'limit_sample',
 	{
+		claudeAccountId: text('claude_account_id')
+			.notNull()
+			.references(() => claudeAccounts.id, { onDelete: 'cascade' }),
 		peakPct: integer('peak_pct').notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 		userId: text('user_id')
@@ -182,8 +234,8 @@ export const limitSamples = pgTable(
 		windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
 	},
 	t => [
-		primaryKey({ columns: [t.userId, t.window, t.windowStart] }),
-		index('limit_sample_user_start_idx').on(t.userId, t.windowStart),
+		primaryKey({ columns: [t.claudeAccountId, t.window, t.windowStart] }),
+		index('limit_sample_account_start_idx').on(t.claudeAccountId, t.windowStart),
 	],
 )
 
@@ -193,6 +245,7 @@ export const groupsRelations = relations(groups, ({ many, one }) => ({
 }))
 
 export const devicesRelations = relations(devices, ({ one, many }) => ({
+	claudeAccount: one(claudeAccounts, { fields: [devices.claudeAccountId], references: [claudeAccounts.id] }),
 	events: many(usageEvents),
 	group: one(groups, { fields: [devices.groupId], references: [groups.id] }),
 	user: one(user, { fields: [devices.userId], references: [user.id] }),
@@ -210,3 +263,4 @@ export type Group = typeof groups.$inferSelect
 export type UsageEvent = typeof usageEvents.$inferSelect
 export type UserSettings = typeof userSettings.$inferSelect
 export type LimitSample = typeof limitSamples.$inferSelect
+export type ClaudeAccount = typeof claudeAccounts.$inferSelect

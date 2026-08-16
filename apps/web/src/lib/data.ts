@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { and, asc, desc, eq, gte, isNull, sql } from 'drizzle-orm'
+import type { SQL } from 'drizzle-orm'
 import { db } from '@/db'
-import { devices, groups, limitSamples, usageEvents, userSettings } from '@/db/schema'
-import type { LimitWindow, StoredModelLimit } from '@/db/schema'
+import { claudeAccounts, devices, groups, limitSamples, usageEvents, userSettings } from '@/db/schema'
+import type { ClaudeAccount as ClaudeAccountRow, LimitWindow, StoredModelLimit } from '@/db/schema'
 import { createPromiseCache } from '@/lib/promise-cache'
 import {
 	billableTokens,
@@ -205,6 +206,12 @@ export interface LiveModelLimit {
 }
 
 export interface LiveDashboard {
+	/** The Anthropic account these figures belong to. Null only before any
+	 *  collector has reported a login, i.e. the setup state. */
+	accountId: string | null
+	/** Email of the Claude login, falling back to the org name. Null for the
+	 *  bucket holding devices whose login we can't identify. */
+	accountLabel: string | null
 	/** True once the collector has reported real utilization at least once. */
 	connected: boolean
 	source: 'sub' | 'api' | null
@@ -312,23 +319,84 @@ function splitByShare(
 	return out
 }
 
-/**
- * Real per-account utilization as last reported by the collector (which reads
- * it from the local Claude Code login), with a local token-share split per
- * group. `connected: false` until the collector has reported once.
- */
-async function loadLiveDashboard(userId: string, now: Date): Promise<LiveDashboard> {
-	const settings = await ensureSettings(userId)
-	const hasLimits = settings.fiveHourPct !== null || settings.sevenDayPct !== null
+/** One Anthropic account's slice of a user's fleet: the account row plus the
+ *  rule for which of the user's devices count against it. */
+export interface AccountView {
+	/** Null only for a user no collector has reported for yet. */
+	account: ClaudeAccountRow | null
+	userId: string
+	/** A device is stamped with an account on its first limits post. Rows from
+	 *  never-stamped devices (API-key logins, fresh installs, collectors older
+	 *  than multi-account) fold into the unidentified bucket — or into the only
+	 *  account there is, so a single-account fleet always adds up. */
+	absorbsUnstamped: boolean
+}
 
-	const clampPct = (v: number | null) => Math.min(100, Math.max(0, v ?? 0))
+/** Does a device belong to this account's view? */
+export function inAccount(view: AccountView, deviceAccountId: string | null): boolean {
+	return deviceAccountId === (view.account?.id ?? null) || (deviceAccountId === null && view.absorbsUnstamped)
+}
+
+/** {@link inAccount} as a predicate over a joined `devices d`, for the raw
+ *  aggregate queries that fold in SQL and so can't filter afterwards. */
+function accountFilterSql(view: AccountView): SQL {
+	const id = view.account?.id ?? null
+	if (id === null) {
+		return sql`d.claude_account_id IS NULL`
+	}
+	return view.absorbsUnstamped
+		? sql`(d.claude_account_id = ${id} OR d.claude_account_id IS NULL)`
+		: sql`d.claude_account_id = ${id}`
+}
+
+/**
+ * Every Anthropic account this user's fleet reports on. Always at least one
+ * entry: a user whose collectors have never reported gets a placeholder view so
+ * the dashboard still renders its setup state.
+ *
+ * The unidentified bucket sorts first, which makes `[0]` the account that
+ * absorbs unstamped devices — the guard relies on that.
+ */
+export async function listAccountViews(userId: string): Promise<AccountView[]> {
+	return accountViews(await db.select().from(claudeAccounts).where(eq(claudeAccounts.userId, userId)), userId)
+}
+
+/** {@link listAccountViews} minus the query. */
+export function accountViews(rows: ClaudeAccountRow[], userId: string): AccountView[] {
+	if (rows.length === 0) {
+		return [{ absorbsUnstamped: true, account: null, userId }]
+	}
+	const sorted = rows.toSorted((a, b) => {
+		if ((a.extId === null) !== (b.extId === null)) {
+			return a.extId === null ? -1 : 1
+		}
+		return a.createdAt.getTime() - b.createdAt.getTime()
+	})
+	const only = sorted.length === 1
+	return sorted.map(account => ({ absorbsUnstamped: only || account.extId === null, account, userId }))
+}
+
+/**
+ * Real utilization of ONE Anthropic account as last reported by a collector
+ * (which reads it from the local Claude Code login), with a local token-share
+ * split per group. `connected: false` until a collector has reported once.
+ */
+async function loadLiveDashboard(view: AccountView, now: Date): Promise<LiveDashboard> {
+	const { userId } = view
+	const acct = view.account
+	const settings = await ensureSettings(userId)
+	const hasLimits = acct != null && (acct.fiveHourPct !== null || acct.sevenDayPct !== null)
+
+	const clampPct = (v: number | null | undefined) => Math.min(100, Math.max(0, v ?? 0))
 	const base = {
-		fiveHourPct: clampPct(settings.fiveHourPct),
-		fiveHourResetsAt: settings.fiveHourResetsAt ? new Date(settings.fiveHourResetsAt) : null,
-		reportedAt: settings.limitsReportedAt ? new Date(settings.limitsReportedAt) : null,
-		sevenDayPct: clampPct(settings.sevenDayPct),
-		sevenDayResetsAt: settings.sevenDayResetsAt ? new Date(settings.sevenDayResetsAt) : null,
-		source: (settings.limitSource as 'sub' | 'api' | null) ?? null,
+		accountId: acct?.id ?? null,
+		accountLabel: acct?.email ?? acct?.orgName ?? null,
+		fiveHourPct: clampPct(acct?.fiveHourPct),
+		fiveHourResetsAt: acct?.fiveHourResetsAt ? new Date(acct.fiveHourResetsAt) : null,
+		reportedAt: acct?.limitsReportedAt ? new Date(acct.limitsReportedAt) : null,
+		sevenDayPct: clampPct(acct?.sevenDayPct),
+		sevenDayResetsAt: acct?.sevenDayResetsAt ? new Date(acct.sevenDayResetsAt) : null,
+		source: (acct?.limitSource as 'sub' | 'api' | null) ?? null,
 	}
 
 	if (!hasLimits) {
@@ -358,7 +426,7 @@ async function loadLiveDashboard(userId: string, now: Date): Promise<LiveDashboa
 
 	// Per-model limit windows (e.g. Fable weekly), clamped the same way. Entries
 	// with no reported pct can't be split — drop them up front.
-	const modelWindows = (settings.modelLimits ?? [])
+	const modelWindows = (acct.modelLimits ?? [])
 		.filter((m): m is StoredModelLimit & { pct: number } => m.pct != null)
 		.map(m => {
 			const dur = windowDurationMs(m.window) ?? SEVEN_D_MS
@@ -381,17 +449,31 @@ async function loadLiveDashboard(userId: string, now: Date): Promise<LiveDashboa
 	// rather than the whole history. Both sides bucket in UTC, so the bound is
 	// exact.
 	const monthStart = new Date(`${monthKey(now)}-01T00:00:00.000Z`)
-	const [events, groupRows, aggRows] = await Promise.all([
+	const [allEvents, groupRows, allAggRows, deviceRows] = await Promise.all([
 		loadRecentEvents(userId, earliest),
 		db.select().from(groups).where(eq(groups.ownerId, userId)),
 		loadDailyAggregates(userId, monthStart),
+		db
+			.select({ claudeAccountId: devices.claudeAccountId, groupId: devices.groupId, id: devices.id })
+			.from(devices)
+			.where(eq(devices.userId, userId)),
 	])
 
-	// Every group that exists claims an equal slice of the account limit. The
-	// "Ungrouped" row is divided by that same count without being counted in it,
-	// so when loose devices exist the displayed slices deliberately over-allocate
-	// rather than shrink every real group to make room for them.
-	const budgetShares = Math.max(1, groupRows.length)
+	// Usage belongs to the account its device is signed into *now*, the same way
+	// it already follows a device between groups.
+	const myDevices = deviceRows.filter(d => inAccount(view, d.claudeAccountId))
+	const mine = new Set(myDevices.map(d => d.id))
+	// Both loaders inner-join devices, so a null deviceId here is only a typing
+	// artifact of the join.
+	const events = allEvents.filter(e => e.deviceId != null && mine.has(e.deviceId))
+	const aggRows = allAggRows.filter(r => r.deviceId !== null && mine.has(r.deviceId))
+
+	// Every group with a device on this account claims an equal slice of that
+	// account's limit — a group that never touches this subscription can't spend
+	// its budget. The "Ungrouped" row is divided by that same count without being
+	// counted in it, so when loose devices exist the displayed slices deliberately
+	// over-allocate rather than shrink every real group to make room for them.
+	const budgetShares = Math.max(1, new Set(myDevices.map(d => d.groupId).filter(g => g !== null)).size)
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, ttl)
 	const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct, ttl)
@@ -484,7 +566,18 @@ async function loadLiveDashboard(userId: string, now: Date): Promise<LiveDashboa
  * That is far inside the collector's own reporting interval, and the client
  * re-renders elapsed time from a local ticker rather than from this timestamp.
  */
-export const getLiveDashboard = createPromiseCache(5000, (userId: string) => loadLiveDashboard(userId, new Date()))
+export const getLiveDashboards = createPromiseCache(5000, async (userId: string) => {
+	const now = new Date()
+	const views = await listAccountViews(userId)
+	return Promise.all(views.map(view => loadLiveDashboard(view, now)))
+})
+
+/** The account a device's own prompts count against. Devices that have never
+ *  reported a login fall back to the first dashboard, which {@link listAccountViews}
+ *  guarantees is the account absorbing them. */
+export function dashboardForDevice(dashboards: LiveDashboard[], claudeAccountId: string | null): LiveDashboard {
+	return dashboards.find(d => d.accountId === claudeAccountId) ?? dashboards[0]
+}
 
 /** How many completed windows back the past-windows card looks. */
 const PAST_WINDOWS = 8
@@ -503,12 +596,13 @@ export interface WindowAggRow {
 /** Same logical-message fold as {@link loadDailyAggregates}, but bucketed into
  *  rolling `strideMs` windows aligned to `origin` and grouped per group+model. */
 async function loadWindowAggregates(
-	userId: string,
+	view: AccountView,
 	strideMs: number,
 	origin: Date,
 	since: Date,
 	until: Date,
 ): Promise<WindowAggRow[]> {
+	const { userId } = view
 	const bucket = sql`date_bin(make_interval(secs => ${strideMs / 1000}::float8), folded.ts, ${origin.toISOString()}::timestamptz)`
 	const result = await db.execute(sql`
     WITH folded AS (
@@ -536,6 +630,7 @@ async function loadWindowAggregates(
       sum(folded.cache_read_tokens)::bigint AS cache_read
     FROM folded
     JOIN ${devices} d ON d.id = folded.device_id
+    WHERE ${accountFilterSql(view)}
     GROUP BY 1, 2, 3
     HAVING (
       sum(folded.input_tokens) + sum(folded.output_tokens) +
@@ -610,7 +705,7 @@ const binStartOf = (t: number, origin: number, strideMs: number) =>
  *  a window closes is not necessarily the highest. No-ops without a pct or a
  *  reset instant — the reset is what dates the sample. */
 export async function recordLimitSample(
-	userId: string,
+	account: { id: string; userId: string },
 	window: LimitWindow,
 	pct: number | null | undefined,
 	resetsAt: Date | null,
@@ -621,13 +716,13 @@ export async function recordLimitSample(
 	const windowStart = new Date(resetsAt.getTime() - (window === '5h' ? FIVE_H_MS : SEVEN_D_MS))
 	await db
 		.insert(limitSamples)
-		.values({ peakPct: pct, userId, window, windowStart })
+		.values({ claudeAccountId: account.id, peakPct: pct, userId: account.userId, window, windowStart })
 		.onConflictDoUpdate({
 			set: {
 				peakPct: sql`greatest(${limitSamples.peakPct}, ${pct})`,
 				updatedAt: new Date(),
 			},
-			target: [limitSamples.userId, limitSamples.window, limitSamples.windowStart],
+			target: [limitSamples.claudeAccountId, limitSamples.window, limitSamples.windowStart],
 		})
 }
 
@@ -636,12 +731,16 @@ export async function recordLimitSample(
  *  whose real boundaries drifted from the current reset phase lands in the
  *  bucket its start falls into, and the highest sample there wins. */
 async function loadWindowPeaks(
-	userId: string,
+	accountId: string | null,
 	window: LimitWindow,
 	strideMs: number,
 	origin: Date,
 	since: Date,
 ): Promise<Map<number, number>> {
+	// No account row yet means nothing has ever been sampled.
+	if (accountId === null) {
+		return new Map()
+	}
 	const rows = await db
 		.select({
 			peakPct: limitSamples.peakPct,
@@ -649,7 +748,11 @@ async function loadWindowPeaks(
 		})
 		.from(limitSamples)
 		.where(
-			and(eq(limitSamples.userId, userId), eq(limitSamples.window, window), gte(limitSamples.windowStart, since)),
+			and(
+				eq(limitSamples.claudeAccountId, accountId),
+				eq(limitSamples.window, window),
+				gte(limitSamples.windowStart, since),
+			),
 		)
 	const byBin = new Map<number, number>()
 	for (const r of rows) {
@@ -719,13 +822,14 @@ export function buildPastWindows(
 
 /** The last {@link PAST_WINDOWS} completed 5h and weekly windows, split per
  *  group — the "how did we do last session/week" counterpart to the live card. */
-export async function getWindowHistory(userId: string, now: Date): Promise<WindowHistoryDTO> {
+export async function getWindowHistory(view: AccountView, now: Date): Promise<WindowHistoryDTO> {
+	const { userId } = view
 	const settings = await ensureSettings(userId)
 	// Anchor the buckets on the reported reset instants so they match the real
 	// windows; without a report, fall back to "now" / the configured week start.
-	const fiveOrigin = settings.fiveHourResetsAt ? new Date(settings.fiveHourResetsAt) : now
-	const weekOrigin = settings.sevenDayResetsAt
-		? new Date(settings.sevenDayResetsAt)
+	const fiveOrigin = view.account?.fiveHourResetsAt ? new Date(view.account.fiveHourResetsAt) : now
+	const weekOrigin = view.account?.sevenDayResetsAt
+		? new Date(view.account.sevenDayResetsAt)
 		: weekWindowStart(now, settings.weekResetWeekday, settings.weekResetHourUtc)
 	const sessionStarts = pastWindowStarts(fiveOrigin, FIVE_H_MS, now, PAST_WINDOWS)
 	const weekStarts = pastWindowStarts(weekOrigin, SEVEN_D_MS, now, PAST_WINDOWS)
@@ -741,10 +845,10 @@ export async function getWindowHistory(userId: string, now: Date): Promise<Windo
 	await refreshPrices()
 	const [groupRows, sessionRows, weekRows, sessionPeaks, weekPeaks] = await Promise.all([
 		db.select().from(groups).where(eq(groups.ownerId, userId)),
-		loadWindowAggregates(userId, FIVE_H_MS, fiveOrigin, sessionSpan.since, sessionSpan.until),
-		loadWindowAggregates(userId, SEVEN_D_MS, weekOrigin, weekSpan.since, weekSpan.until),
-		loadWindowPeaks(userId, '5h', FIVE_H_MS, fiveOrigin, sessionSpan.since),
-		loadWindowPeaks(userId, '7d', SEVEN_D_MS, weekOrigin, weekSpan.since),
+		loadWindowAggregates(view, FIVE_H_MS, fiveOrigin, sessionSpan.since, sessionSpan.until),
+		loadWindowAggregates(view, SEVEN_D_MS, weekOrigin, weekSpan.since, weekSpan.until),
+		loadWindowPeaks(view.account?.id ?? null, '5h', FIVE_H_MS, fiveOrigin, sessionSpan.since),
+		loadWindowPeaks(view.account?.id ?? null, '7d', SEVEN_D_MS, weekOrigin, weekSpan.since),
 	])
 	const label = (id: string | null) => {
 		const g = id === null ? undefined : groupRows.find(x => x.id === id)
@@ -815,6 +919,8 @@ export interface ModelLimitDTO extends Omit<LiveModelLimit, 'resetsAt'> {
 
 /** JSON-serializable form of LiveDashboard (Dates → ISO) for the client poll. */
 export interface DashboardDTO {
+	accountId: string | null
+	accountLabel: string | null
 	connected: boolean
 	source: 'sub' | 'api' | null
 	reportedAt: string | null
@@ -829,6 +935,8 @@ export interface DashboardDTO {
 
 export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
 	return {
+		accountId: d.accountId,
+		accountLabel: d.accountLabel,
 		connected: d.connected,
 		fiveHourPct: d.fiveHourPct,
 		fiveHourResetsAt: d.fiveHourResetsAt?.toISOString() ?? null,
