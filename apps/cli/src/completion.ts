@@ -27,6 +27,42 @@ export const commands: readonly { name: string; args?: string; meaning: string }
 export const shells = ['zsh', 'fish'] as const
 export type Shell = (typeof shells)[number]
 
+/** Everything `main` dispatches, advertised or not — the pool a mistyped command
+ *  is matched against. Kept next to `commands` so a new case in the switch has
+ *  one obvious place to be listed. */
+const dispatchable = [...commands.map(c => c.name), 'watch', 'install', 'init', 'help']
+
+/** The command a typo probably meant, or undefined when nothing is close enough
+ *  to guess: `statu` → `status`, `frobnicate` → nothing. */
+export function suggest(input: string): string | undefined {
+	const typed = input.toLowerCase().replace(/^-+/, '')
+	// Scales with the input so short words don't match everything: at most two
+	// edits for a normal command, more only for the long ones.
+	const cutoff = Math.max(2, Math.floor(typed.length / 3))
+	let best: { name: string; d: number } | undefined
+	for (const name of dispatchable) {
+		const d = distance(typed, name)
+		if (d <= cutoff && (!best || d < best.d)) {
+			best = { name, d }
+		}
+	}
+	return best?.name
+}
+
+/** Plain Levenshtein, two rows at a time. Ten commands of ten characters: not
+ *  worth a dependency. */
+function distance(a: string, b: string): number {
+	let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+	for (let i = 1; i <= a.length; i++) {
+		const row = [i]
+		for (let j = 1; j <= b.length; j++) {
+			row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+		}
+		prev = row
+	}
+	return prev[b.length]
+}
+
 /** A completion script for `shell`, on stdout. `install` writes these to the
  *  right place automatically; this command stays for piping one somewhere else. */
 export function completionScript(shell: Shell): string {

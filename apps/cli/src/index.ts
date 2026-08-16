@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { detectClaudeCreds } from './claude-creds.js'
 import { reportLimitsOnce, runOnce } from './collector.js'
-import { commands, completionScript, installCompletions, removeCompletions, shells } from './completion.js'
+import { commands, completionScript, installCompletions, removeCompletions, shells, suggest } from './completion.js'
 import type { Shell } from './completion.js'
 import { ENDPOINT, loadConfig } from './config.js'
 import { runGuard } from './guard.js'
@@ -419,8 +419,19 @@ async function main(): Promise<void> {
 			removeCompletions()
 			return
 		}
-		default: {
+		case 'help':
+		case '--help':
+		case '-h': {
 			return help()
+		}
+		// Anything else is a mistake, not a request for help: say so, guess what was
+		// meant, and exit non-zero so a script notices the typo instead of reading a
+		// help screen as success.
+		default: {
+			const near = suggest(cmd)
+			console.error(fail('unknown', `${cmd}${near ? ` · did you mean \`${near}\`?` : ''}`))
+			console.error(hint('`usagefleet help` lists every command'))
+			process.exitCode = 1
 		}
 	}
 }

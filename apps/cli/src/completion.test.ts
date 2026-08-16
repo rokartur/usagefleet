@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { commands, installCompletions, removeCompletions } from './completion.js'
+import { commands, installCompletions, removeCompletions, suggest } from './completion.js'
 
 // The module resolves homedir() per call, so pointing it at a temp dir is enough
 // to keep every write inside the sandbox.
@@ -65,6 +65,20 @@ describe(removeCompletions, () => {
 	it('is safe to run when install never did', () => {
 		expect(() => removeCompletions()).not.toThrow()
 		expect(rc()).toBe('export EDITOR=vim\nautoload -Uz compinit && compinit\n')
+	})
+})
+
+describe(suggest, () => {
+	it('names the command a typo meant, including the unadvertised ones', () => {
+		expect(suggest('statu')).toBe('status')
+		expect(suggest('--STATUS')).toBe('status')
+		expect(suggest('notifytest')).toBe('notify-test')
+		expect(suggest('instal')).toBe('install')
+	})
+
+	it('guesses nothing when nothing is close', () => {
+		expect(suggest('frobnicate')).toBeUndefined()
+		expect(suggest('xyz')).toBeUndefined()
 	})
 })
 
