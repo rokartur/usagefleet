@@ -1,13 +1,17 @@
 name: ci
 
-# The check that runs BEFORE main. release.yml lints and tests too, but it only
-# runs on a push to main — and by then it has already published to npm, so its
-# checks gate nothing that a user has not already installed. This one gates the
-# pull request.
+# The check that runs BEFORE main. release.yml does lint and test, and those do
+# gate the publish (they are steps ahead of it in the same job) — but it only
+# triggers on a push to main, so nothing checks a pull request at all.
 #
-# Deliberately not part of release.yml: that workflow holds `id-token: write`
-# (the npm trusted-publishing credential) and must not be reachable from a pull
-# request. This job has read-only permissions and never touches the registry.
+# Deliberately a second workflow rather than a trigger on release.yml: that one
+# holds `id-token: write`, the npm trusted-publishing credential, and must not
+# be reachable from a fork's pull request. This job is read-only and never
+# touches the registry.
+#
+# Scope, so it is not mistaken for more than it is: PRs only. A direct push to
+# main still reaches release.yml without `Build web` or either typecheck, and
+# `vite build` strips types rather than checking them.
 on:
   pull_request:
   workflow_dispatch:

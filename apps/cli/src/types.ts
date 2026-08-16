@@ -1,4 +1,4 @@
-/** Closed on purpose: the server's `RecordSchema` accepts exactly these, so a
+/** Closed on purpose: the server's `BatchSchema` accepts exactly these, so a
  *  `| string` escape hatch here would let an unsupported platform send an `os`
  *  that 400s every batch forever. Anything else reports as `other`. */
 export type OsName = 'mac' | 'linux' | 'windows' | 'other'

@@ -88,7 +88,15 @@ reports the second subscription. With that variable set the macOS Keychain is
 deliberately not consulted: its item is global and belongs to the default login,
 so falling back to it would report one account's limits under the other's uuid.
 `service.ts` bakes the variable into the launchd/systemd unit for the same
-reason.
+reason, and `hook.ts` bakes `USAGEFLEET_CONFIG` into the prompt-guard command so
+the guard resolves the same store the collector writes (`guardCommand` emits the
+POSIX `VAR=value cmd` prefix, or `set "VAR=value" && cmd` on win32, since cmd.exe
+has no inline form).
+
+The unit *name* is not per-config, though: the launchd label, systemd unit and
+Scheduled Task name are constants, so only one collector can be installed as a
+service. A second `login` rewrites the first one's definition; the second
+account has to be run by hand.
 
 `notifier.ts` compares each window's utilization against ascending thresholds
 (`USAGEFLEET_NOTIFY_THRESHOLDS`, default 80/95) and fires one desktop

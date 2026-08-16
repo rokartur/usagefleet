@@ -28,8 +28,10 @@ Break one of these and the product silently reports wrong numbers or leaks acces
 
 - **Never SUM raw `usage_event` rows.** Claude Code writes one row per streamed
   segment. Fold by `(messageId, requestId)` keeping the largest total first —
-  `lib/usage/fold.ts`. Ingest dedups on `(userId, uuid)`, scoped per user so no
-  account can poison another's rows.
+  `lib/usage/fold.ts`, mirrored in SQL by `FOLD_KEY`/`ROW_TOTAL` in `lib/data.ts`,
+  which every hot query folds through. A new query over `usage_event` copies that
+  shape rather than inventing a tie-break. Ingest dedups on `(userId, uuid)`,
+  scoped per user so no account can poison another's rows.
 - **The headline 5h/weekly percentages are Anthropic's, not ours.** The collector
   reads them from response headers; the server only *splits* them per group, by
   each group's share of estimated cost. Token counts are display-only.

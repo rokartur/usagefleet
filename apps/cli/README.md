@@ -161,6 +161,12 @@ guard reads that account's token and blocks against the right subscription. With
 a relocated config dir the macOS Keychain is skipped on purpose: that item
 belongs to the default login.
 
+**Only one of them can run as the background service.** The launchd label,
+systemd unit and Scheduled Task name are fixed, so the second `login` rewrites
+the first one's service definition rather than adding a second. Run the extra
+collector yourself with the same env — `... usagefleet watch`, under your own
+unit or terminal — and keep `login` for the account you want supervised.
+
 ## Background service
 
 `login` is idempotent and reload-safe: re-running it rewrites the service
