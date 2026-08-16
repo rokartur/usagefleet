@@ -109,9 +109,10 @@ export const note = dim('·')
  *  result — and a caller that only wants the text can ignore it. */
 export type Log = (level: 'ok' | 'warn', msg: string) => void
 
-/** Percentage as a fixed-width string, so successive log lines line up. */
+/** Percentage as a fixed-width string, so successive log lines line up.
+ *  Readings can carry a decimal; display rounds to whole. */
 export function pct(value: number | null): string {
-	return `${value ?? '?'}%`.padStart(4)
+	return `${value === null ? '?' : Math.round(value)}%`.padStart(4)
 }
 
 /** Usage bar, coloured by how close the window is to its limit.

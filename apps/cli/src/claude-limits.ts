@@ -110,12 +110,12 @@ async function fetchOauthUsage(token: string): Promise<unknown> {
 }
 
 /**
- * Account-wide 5h/7d numbers from an oauth/usage payload: whole percentages
+ * Account-wide 5h/7d numbers from an oauth/usage payload: percentages
  * (`{utilization: 14}`), exactly what Claude's /usage screen shows.
  *
  * These beat the `-utilization` response headers, which now carry a 0–1
- * fraction (`0.13` for 13% used) that rounds to a flat 0 for anything under
- * half a limit. Missing fields stay null so the header values survive.
+ * fraction (`0.13` for 13% used). Missing fields stay null so the header
+ * values survive.
  */
 export function parseOauthAccount(body: unknown): Omit<LimitsReport, 'source' | 'modelLimits'> {
 	const root = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>
@@ -145,13 +145,17 @@ export function parseOauthAccount(body: unknown): Omit<LimitsReport, 'source' | 
  *  0–1 "fraction form" heuristic would read a real 1% as 100%, which reaches the
  *  headline number, the critical notification and guard's prompt block.
  *
+ *  One decimal is kept (not rounded to whole): the server multiplies the group
+ *  split by the group count, so integer quantization would amplify to whole
+ *  points on the dashboard.
+ *
  *  Non-finite in, null out: `Infinity` (a JSON `1e999`, or a junk header) would
  *  otherwise clamp to a perfectly plausible 100 and block every prompt. */
 function clampPct(n: number): number | null {
 	if (!Number.isFinite(n)) {
 		return null
 	}
-	return Math.min(100, Math.max(0, Math.round(n)))
+	return Math.min(100, Math.max(0, Math.round(n * 10) / 10))
 }
 
 /** Normalize a scope's model name to a header-safe key ("Fable" → "fable"). */
@@ -239,12 +243,38 @@ export function parseOauthUsage(body: unknown): ModelLimit[] {
 	return out
 }
 
+/** Assemble a full LimitsReport from an oauth/usage payload, or null when the
+ *  payload carries no account-wide percentage (endpoint down, shape changed) —
+ *  the caller then falls back to the header ping. */
+export function oauthLimitsReport(body: unknown): LimitsReport | null {
+	const account = parseOauthAccount(body)
+	if (account.fiveHourPct == null && account.sevenDayPct == null) {
+		return null
+	}
+	return { ...account, modelLimits: parseOauthUsage(body), source: 'sub' }
+}
+
 /**
- * Read the account's real rate-limit utilization. Sends a 1-token ping to the
- * Messages API; Anthropic returns the unified 5h/7d utilization in response
- * headers (same approach as Claude-Usage-Tracker's OAuth path).
+ * Read the account's real rate-limit utilization.
+ *
+ * Subscription logins ask the free OAuth usage endpoint first — it returns the
+ * exact numbers Claude's own /usage screen shows (account-wide AND per-model)
+ * and costs no tokens, so it can be polled often. Only when it yields nothing
+ * (or for API keys, which can't call it) does this fall back to a 1-token ping
+ * to the Messages API, whose response headers carry the unified utilization
+ * (same approach as Claude-Usage-Tracker's OAuth path).
  */
 export async function fetchLimits(creds: ClaudeCreds): Promise<LimitsReport> {
+	if (creds.source === 'sub') {
+		try {
+			const report = oauthLimitsReport(await fetchOauthUsage(creds.token))
+			if (report) {
+				return report
+			}
+		} catch {
+			/* fall through to the header ping */
+		}
+	}
 	const headers: Record<string, string> = {
 		'anthropic-version': '2023-06-01',
 		'content-type': 'application/json',
@@ -290,29 +320,6 @@ export async function fetchLimits(creds: ClaudeCreds): Promise<LimitsReport> {
 		report.modelLimits.length > 0
 	if (!res.ok && !gotHeaders) {
 		throw new Error(`limits unavailable: HTTP ${res.status} with no rate-limit headers`)
-	}
-	// Subscription logins: the OAuth usage endpoint is the better source for the
-	// account-wide percentages (the headers report an unusable 0–1 fraction) and
-	// the only source for the per-model caps. Best-effort — keep the
-	// header-derived report on any failure.
-	if (creds.source === 'sub') {
-		try {
-			const body = await fetchOauthUsage(creds.token)
-			const account = parseOauthAccount(body)
-			if (account.fiveHourPct != null) {
-				report.fiveHourPct = account.fiveHourPct
-				report.fiveHourResetsAt = account.fiveHourResetsAt ?? report.fiveHourResetsAt
-			}
-			if (account.sevenDayPct != null) {
-				report.sevenDayPct = account.sevenDayPct
-				report.sevenDayResetsAt = account.sevenDayResetsAt ?? report.sevenDayResetsAt
-			}
-			if (report.modelLimits.length === 0) {
-				report.modelLimits = parseOauthUsage(body)
-			}
-		} catch {
-			/* endpoint unavailable — report the header-derived limits only */
-		}
 	}
 	return report
 }

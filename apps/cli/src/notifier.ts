@@ -120,21 +120,24 @@ export function maybeNotify(
 		const five = evaluateWindow(state.fiveHour, report.fiveHourPct, report.fiveHourResetsAt, cfg.thresholds)
 		const seven = evaluateWindow(state.sevenDay, report.sevenDayPct, report.sevenDayResetsAt, cfg.thresholds)
 
+		// Readings can carry a decimal; notification copy rounds to whole.
+		const fivePct = Math.round(report.fiveHourPct ?? 0)
+		const sevenPct = Math.round(report.sevenDayPct ?? 0)
 		if (five.fire != null) {
 			sendNotification(
 				'Claude usage · 5-hour limit',
-				`${report.fiveHourPct}% of your 5-hour limit used${resetSuffix(report.fiveHourResetsAt)}.`,
+				`${fivePct}% of your 5-hour limit used${resetSuffix(report.fiveHourResetsAt)}.`,
 				{ urgency: urgencyFor(five.fire) },
 			)
-			log('ok', `notified · 5h at ${report.fiveHourPct}% · crossed ${five.fire}%`)
+			log('ok', `notified · 5h at ${fivePct}% · crossed ${five.fire}%`)
 		}
 		if (seven.fire != null) {
 			sendNotification(
 				'Claude usage · weekly limit',
-				`${report.sevenDayPct}% of your weekly limit used${resetSuffix(report.sevenDayResetsAt)}.`,
+				`${sevenPct}% of your weekly limit used${resetSuffix(report.sevenDayResetsAt)}.`,
 				{ urgency: urgencyFor(seven.fire) },
 			)
-			log('ok', `notified · weekly at ${report.sevenDayPct}% · crossed ${seven.fire}%`)
+			log('ok', `notified · weekly at ${sevenPct}% · crossed ${seven.fire}%`)
 		}
 
 		updateStore(path, store => {

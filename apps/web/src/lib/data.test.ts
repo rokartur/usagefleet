@@ -11,6 +11,8 @@ const cell = (groupId: string | null, model: string, billable: number): WindowAg
 	groupId,
 	model,
 	totals: {
+		cacheCreation1hTokens: 0,
+		cacheCreation5mTokens: 0,
 		cacheCreationTokens: 0,
 		cacheReadTokens: 0,
 		inputTokens: billable,
@@ -23,16 +25,13 @@ const label = (id: string | null) => ({
 	color: '#fff',
 	name: id ?? 'Ungrouped',
 })
-const build = (rows: WindowAggRow[], peaks: Map<number, number>) =>
-	buildPastWindows(rows, [START], STRIDE, peaks, '1h', label)
+const build = (rows: WindowAggRow[], pct: number | null) =>
+	buildPastWindows(rows, [{ end: START.getTime() + STRIDE, pct, start: START.getTime() }], '1h', label)
 
 describe(buildPastWindows, () => {
 	it("splits the window's reported utilization across groups by cost share", () => {
 		// Same token count, but opus costs 5x sonnet — so it eats 5/6 of the 60%.
-		const [w] = build(
-			[cell('a', 'claude-opus-4', 1_000_000), cell('b', 'claude-sonnet-4', 1_000_000)],
-			new Map([[START.getTime(), 60]]),
-		)
+		const [w] = build([cell('a', 'claude-opus-4', 1_000_000), cell('b', 'claude-sonnet-4', 1_000_000)], 60)
 		expect(w.accountPct).toBe(60)
 		expect(w.groups).toStrictEqual([
 			{
@@ -53,13 +52,13 @@ describe(buildPastWindows, () => {
 	})
 
 	it('reports tokens without a percentage when no sample covers the window', () => {
-		const [w] = build([cell('a', 'claude-sonnet-4', 500_000)], new Map())
+		const [w] = build([cell('a', 'claude-sonnet-4', 500_000)], null)
 		expect(w.accountPct).toBeNull()
 		expect(w.groups[0]).toMatchObject({ accountPct: null, tokens: 500_000 })
 	})
 
 	it('drops windows with no activity', () => {
-		expect(build([], new Map([[START.getTime(), 40]]))).toStrictEqual([])
+		expect(build([], 40)).toStrictEqual([])
 	})
 })
 

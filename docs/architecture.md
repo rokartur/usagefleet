@@ -11,8 +11,8 @@ Claude Code / Desktop / Pi
        └─ cli: scanner → tailer → parser  read from stored byte offset
             └─ POST /api/v1/usage         bearer device token, ≤1000 records
                  └─ usage_event rows      deduped on (userId, uuid)
-       └─ cli: claude-limits              1-token ping to api.anthropic.com
-            └─ POST /api/v1/limits        Anthropic's OWN utilization headers
+       └─ cli: claude-limits              oauth/usage (sub, free) or 1-token ping (api)
+            └─ POST /api/v1/limits        Anthropic's OWN utilization numbers
                  └─ claude_account + limit_sample   keyed by the local login
   dashboard: per account: fold rows → cost share per group → split the official pct
 ```

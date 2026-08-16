@@ -6,6 +6,8 @@ import { EMPTY_TOTALS } from './types'
 
 function row(p: Partial<DailyAggRow> & { day: string }): DailyAggRow {
 	return {
+		cacheCreation1hTokens: 0,
+		cacheCreation5mTokens: 0,
 		cacheCreationTokens: 0,
 		cacheReadTokens: 0,
 		deviceId: 'dev1',

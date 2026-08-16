@@ -63,11 +63,11 @@ shell once. `uninstall` removes both again, and self-update keeps them current.
   is at-least-once — the server dedups on `uuid`.
 - **Your real limit %** — the collector uses the Claude login already on the
   machine (subscription OAuth from `claude`: macOS login Keychain, elsewhere
-  `<config dir>/.credentials.json`; falling back to `ANTHROPIC_API_KEY`), sends a
-  1-token ping to the Messages API and reads the same 5h/weekly percentages
-  Claude's own `/usage` screen shows. Credentials never
-  leave the machine — only the percentages do. `usagefleet status` shows which
-  login was found.
+  `<config dir>/.credentials.json`; falling back to `ANTHROPIC_API_KEY`) and
+  reads the same 5h/weekly percentages Claude's own `/usage` screen shows —
+  from the free OAuth usage endpoint for subscriptions, or a 1-token Messages
+  ping for API keys. Credentials never leave the machine — only the percentages
+  do. `usagefleet status` shows which login was found.
 
 Uploaded per record: token counts, model, session id, hostname, working
 directory, git branch. Prompts, responses and file contents are never read.
@@ -127,7 +127,7 @@ Env vars override the file:
 | `USAGEFLEET_DESKTOP` | override the Claude Desktop sessions dir; `off` to skip it |
 | `USAGEFLEET_PI` | override the pi sessions dirs, comma-separated; `off` to skip |
 | `USAGEFLEET_INTERVAL` | watch poll seconds (default 15) |
-| `USAGEFLEET_LIMITS_INTERVAL` | seconds between limit pings (default 300, so the 1-token ping isn't every cycle) |
+| `USAGEFLEET_LIMITS_INTERVAL` | seconds between limit reports (default 60; 300 on API keys, where each report costs a 1-token ping) |
 | `USAGEFLEET_NOTIFY` | desktop notifications, on by default |
 | `USAGEFLEET_NOTIFY_THRESHOLDS` | utilization % that trigger an alert (default `80,95`) |
 | `USAGEFLEET_BATCH` | records per upload (default 100, server caps at 1000) |

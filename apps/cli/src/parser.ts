@@ -25,15 +25,16 @@ function validTimestamp(v: unknown): string {
 	return new Date().toISOString()
 }
 
-function cacheCreation(u: RawUsage): number {
-	if (typeof u.cache_creation_input_tokens === 'number') {
-		return u.cache_creation_input_tokens
-	}
+/** Cache-write tokens, with the per-TTL breakdown when the log carries it.
+ *  5m and 1h writes are priced differently (1.25× vs 2× input), so the server
+ *  wants the split — null means "the log predates the breakdown", not zero. */
+function cacheCreation(u: RawUsage): { total: number; five: number | null; oneHour: number | null } {
 	const c = u.cache_creation
-	if (c) {
-		return (c.ephemeral_5m_input_tokens ?? 0) + (c.ephemeral_1h_input_tokens ?? 0)
-	}
-	return 0
+	const five = typeof c?.ephemeral_5m_input_tokens === 'number' ? c.ephemeral_5m_input_tokens : null
+	const oneHour = typeof c?.ephemeral_1h_input_tokens === 'number' ? c.ephemeral_1h_input_tokens : null
+	const total =
+		typeof u.cache_creation_input_tokens === 'number' ? u.cache_creation_input_tokens : (five ?? 0) + (oneHour ?? 0)
+	return { five, oneHour, total }
 }
 
 /** pi agent session line: `{type:"message", id, timestamp, message:{role:"assistant",
@@ -77,6 +78,10 @@ function parsePiLine(o: Record<string, unknown>, sessionCwd: string | null): Usa
 		return null
 	}
 	return {
+		// pi's usage line does not say which TTL the cache write used — leave the
+		// breakdown unknown so the server prices it by the user's TTL setting.
+		cacheCreation1h: null,
+		cacheCreation5m: null,
 		cacheCreationTokens: u.cacheWrite ?? 0,
 		cacheReadTokens: u.cacheRead ?? 0,
 		cwd: sessionCwd,
@@ -144,8 +149,11 @@ export function parseLine(
 	}
 
 	const u = message.usage
+	const cache = cacheCreation(u)
 	return {
-		cacheCreationTokens: cacheCreation(u),
+		cacheCreation1h: cache.oneHour,
+		cacheCreation5m: cache.five,
+		cacheCreationTokens: cache.total,
 		cacheReadTokens: u.cache_read_input_tokens ?? 0,
 		cwd: str(o.cwd),
 		gitBranch: str(o.gitBranch),

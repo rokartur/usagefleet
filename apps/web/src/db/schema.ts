@@ -10,6 +10,7 @@ import {
 	index,
 	jsonb,
 	primaryKey,
+	real,
 	unique,
 	uniqueIndex,
 } from 'drizzle-orm/pg-core'
@@ -62,10 +63,12 @@ export const claudeAccounts = pgTable(
 		email: text('email'),
 		orgName: text('org_name'),
 		// Latest REAL utilization reported by a collector on this account
-		// ('sub' = subscription OAuth, 'api' = API key).
+		// ('sub' = subscription OAuth, 'api' = API key). Real, not integer: the
+		// group split multiplies these by the group count, so whole-point
+		// quantization would amplify on the dashboard.
 		limitSource: text('limit_source'),
-		fiveHourPct: integer('five_hour_pct'),
-		sevenDayPct: integer('seven_day_pct'),
+		fiveHourPct: real('five_hour_pct'),
+		sevenDayPct: real('seven_day_pct'),
 		fiveHourResetsAt: timestamp('five_hour_resets_at', { withTimezone: true }),
 		sevenDayResetsAt: timestamp('seven_day_resets_at', { withTimezone: true }),
 		// Per-model limits (e.g. the Fable/Opus weekly cap) as reported from
@@ -136,6 +139,12 @@ export const usageEvents = pgTable(
 		inputTokens: integer('input_tokens').notNull().default(0),
 		outputTokens: integer('output_tokens').notNull().default(0),
 		cacheCreationTokens: integer('cache_creation_tokens').notNull().default(0),
+		// Per-TTL split of cacheCreationTokens: 5m writes cost 1.25× input, 1h
+		// writes 2×, and the cost-weighted group split cares. NULL means the
+		// collector (or the log line) predates the breakdown — pricing then falls
+		// back to the user's cacheWriteTtl setting. Distinct from a real 0.
+		cacheCreation5mTokens: integer('cache_creation_5m_tokens'),
+		cacheCreation1hTokens: integer('cache_creation_1h_tokens'),
 		cacheReadTokens: integer('cache_read_tokens').notNull().default(0),
 		serviceTier: text('service_tier'),
 		cwd: text('cwd'),
@@ -224,7 +233,7 @@ export const limitSamples = pgTable(
 		claudeAccountId: text('claude_account_id')
 			.notNull()
 			.references(() => claudeAccounts.id, { onDelete: 'cascade' }),
-		peakPct: integer('peak_pct').notNull(),
+		peakPct: real('peak_pct').notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 		userId: text('user_id')
 			.notNull()

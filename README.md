@@ -20,9 +20,10 @@ Free for one device.
 <img src=".github/dashboard.png" alt="Dashboard: 5-hour and weekly utilization, spend, and the per-group split" width="100%">
 
 The percentages are Anthropic's, not an estimate: a small collector on each
-machine reads them from the `anthropic-ratelimit-unified-5h/7d-utilization`
-response headers using the Claude login you already have there. UsageFleet only
-*splits* them, by each group's share of estimated cost.
+machine reads them from Anthropic's own usage endpoint (the one Claude's
+`/usage` screen uses) with the Claude login you already have there, falling
+back to the `anthropic-ratelimit-unified-*` response headers for API keys.
+UsageFleet only *splits* them, by each group's share of estimated cost.
 
 A group's number is measured against **its own slice** of the account (1/N with
 N groups), so "62%" means that group used 62% of its budget — not 62% of yours.
@@ -53,7 +54,7 @@ only).
 
 Uploaded: token counts, model, session id, hostname, working directory, git
 branch. Never uploaded: prompts, responses, file contents, or your Claude
-credentials — the 1-token limits ping is signed locally and only the resulting
+credentials — the limits reading is signed locally and only the resulting
 percentages leave the machine.
 
 ## Plans

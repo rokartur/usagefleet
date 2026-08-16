@@ -10,7 +10,9 @@ import { authenticateDevice } from '@/lib/device-auth'
 import { readJsonCapped } from '@/lib/rate-limit'
 import { LIMITS_STALE_MS } from '@/lib/usage/limits'
 
-const PCT = '0 <= number.integer <= 100 | null'
+// Decimals allowed: collectors keep one decimal of Anthropic's utilization so
+// the group split (which multiplies by group count) doesn't amplify rounding.
+const PCT = '0 <= number <= 100 | null'
 
 const LimitsSchema = type({
 	source: "'sub' | 'api'",

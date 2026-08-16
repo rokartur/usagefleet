@@ -182,6 +182,8 @@ function historyRows(): HistoryRow[] {
 				}
 				const t = totals(billable)
 				rows.push({
+					cacheCreation1hTokens: 0,
+					cacheCreation5mTokens: t.cacheCreationTokens,
 					cacheCreationTokens: t.cacheCreationTokens,
 					cacheReadTokens: t.cacheReadTokens,
 					costUsd: +(billable / 1_000_000) * (j === 0 ? 21 : j === 1 ? 4.2 : 1.1),

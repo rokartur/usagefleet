@@ -15,13 +15,13 @@ import {
 	modelBreakdown,
 	modelLabel,
 	monthKey,
-	pastWindowStarts,
 	PROJECT_DAYS,
 	refreshPrices,
 	sumTokens,
 	weekWindowStart,
+	windowSpans,
 } from '@/lib/usage'
-import type { CacheTtl, DailyAggRow, ModelUsage, TokenTotals, UsageRecord } from '@/lib/usage'
+import type { CacheTtl, DailyAggRow, ModelUsage, TokenTotals, UsageRecord, WindowSpan } from '@/lib/usage'
 
 // The logical-message fold key: (messageId, requestId) when present, else the
 // row's own uuid. Prefixed so a uuid can never collide with a messageId pair.
@@ -89,6 +89,8 @@ export async function loadRecentEvents(userId: string, cutoff: Date): Promise<Us
       ${usageEvents.inputTokens} AS input_tokens,
       ${usageEvents.outputTokens} AS output_tokens,
       ${usageEvents.cacheCreationTokens} AS cache_creation_tokens,
+      ${usageEvents.cacheCreation5mTokens} AS cache_creation_5m,
+      ${usageEvents.cacheCreation1hTokens} AS cache_creation_1h,
       ${usageEvents.cacheReadTokens} AS cache_read_tokens
     FROM ${usageEvents}
     JOIN ${devices} d ON d.id = ${usageEvents.deviceId}
@@ -117,9 +119,15 @@ export async function loadRecentEvents(userId: string, cutoff: Date): Promise<Us
 		input_tokens: number
 		output_tokens: number
 		cache_creation_tokens: number
+		cache_creation_5m: number | null
+		cache_creation_1h: number | null
 		cache_read_tokens: number
 	}[]
+	// Null TTL breakdown → 0: pricing treats the untagged remainder (total minus
+	// tagged) as "price by the user's TTL setting", so 0 means exactly "legacy row".
 	return rows.map(r => ({
+		cacheCreation1hTokens: r.cache_creation_1h ?? 0,
+		cacheCreation5mTokens: r.cache_creation_5m ?? 0,
 		cacheCreationTokens: r.cache_creation_tokens,
 		cacheReadTokens: r.cache_read_tokens,
 		deviceId: r.device_id,
@@ -162,6 +170,8 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
         ${usageEvents.inputTokens} AS input_tokens,
         ${usageEvents.outputTokens} AS output_tokens,
         ${usageEvents.cacheCreationTokens} AS cache_creation_tokens,
+        ${usageEvents.cacheCreation5mTokens} AS cache_creation_5m,
+        ${usageEvents.cacheCreation1hTokens} AS cache_creation_1h,
         ${usageEvents.cacheReadTokens} AS cache_read_tokens
       FROM ${usageEvents}
       WHERE ${usageEvents.userId} = ${userId}
@@ -177,6 +187,8 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
       sum(folded.input_tokens)::bigint AS input,
       sum(folded.output_tokens)::bigint AS output,
       sum(folded.cache_creation_tokens)::bigint AS cache_creation,
+      sum(coalesce(folded.cache_creation_5m, 0))::bigint AS cache_creation_5m,
+      sum(coalesce(folded.cache_creation_1h, 0))::bigint AS cache_creation_1h,
       sum(folded.cache_read_tokens)::bigint AS cache_read
     FROM folded
     JOIN ${devices} d ON d.id = folded.device_id
@@ -196,9 +208,13 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
 		input: string
 		output: string
 		cache_creation: string
+		cache_creation_5m: string
+		cache_creation_1h: string
 		cache_read: string
 	}[]
 	return rows.map(r => ({
+		cacheCreation1hTokens: Number(r.cache_creation_1h),
+		cacheCreation5mTokens: Number(r.cache_creation_5m),
 		cacheCreationTokens: Number(r.cache_creation),
 		cacheReadTokens: Number(r.cache_read),
 		day: r.day,
@@ -549,7 +565,12 @@ async function loadLiveDashboard(view: AccountView, now: Date): Promise<LiveDash
 		db.select().from(groups).where(eq(groups.ownerId, userId)),
 		loadDailyAggregates(userId, monthStart),
 		db
-			.select({ claudeAccountId: devices.claudeAccountId, groupId: devices.groupId, id: devices.id })
+			.select({
+				claudeAccountId: devices.claudeAccountId,
+				groupId: devices.groupId,
+				id: devices.id,
+				revoked: devices.revoked,
+			})
 			.from(devices)
 			.where(eq(devices.userId, userId)),
 		refreshPrices(),
@@ -564,12 +585,17 @@ async function loadLiveDashboard(view: AccountView, now: Date): Promise<LiveDash
 	const events = allEvents.filter(e => e.deviceId != null && mine.has(e.deviceId))
 	const aggRows = allAggRows.filter(r => r.deviceId !== null && mine.has(r.deviceId))
 
-	// Every group with a device on this account claims an equal slice of that
-	// account's limit — a group that never touches this subscription can't spend
-	// its budget. The "Ungrouped" row is divided by that same count without being
-	// counted in it, so when loose devices exist the displayed slices deliberately
-	// over-allocate rather than shrink every real group to make room for them.
-	const budgetShares = Math.max(1, new Set(myDevices.map(d => d.groupId).filter(g => g !== null)).size)
+	// Every group with a LIVE device on this account claims an equal slice of
+	// that account's limit — a group that never touches this subscription can't
+	// spend its budget, and a group whose only device was revoked stops claiming
+	// one (its historical events still count in the split above). The "Ungrouped"
+	// row is divided by that same count without being counted in it, so when
+	// loose devices exist the displayed slices deliberately over-allocate rather
+	// than shrink every real group to make room for them.
+	const budgetShares = Math.max(
+		1,
+		new Set(myDevices.filter(d => !d.revoked && d.groupId !== null).map(d => d.groupId)).size,
+	)
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, ttl)
 	const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct, ttl)
@@ -677,28 +703,34 @@ export function dashboardForDevice(dashboards: LiveDashboard[], claudeAccountId:
 /** How many completed windows back the past-windows card looks. */
 const PAST_WINDOWS = 8
 
-/** Folded token totals for one (window bucket × group × model) cell. Model is
+/** Folded token totals for one (window span × group × model) cell. Model is
  *  carried because a window's official utilization is split across groups by
  *  cost share, and cost is per model. */
 export interface WindowAggRow {
-	/** Bucket start, epoch ms, aligned to the limit's own reset boundary. */
+	/** Start of the {@link WindowSpan} the cell belongs to, epoch ms. */
 	binStart: number
 	groupId: string | null
 	model: string | null
-	totals: TokenTotals
+	totals: TokenTotals & { cacheCreation5mTokens: number; cacheCreation1hTokens: number }
 }
 
 /** Same logical-message fold as {@link loadDailyAggregates}, but bucketed into
- *  rolling `strideMs` windows aligned to `origin` and grouped per group+model. */
-async function loadWindowAggregates(
-	view: AccountView,
-	strideMs: number,
-	origin: Date,
-	since: Date,
-	until: Date,
-): Promise<WindowAggRow[]> {
+ *  the given window spans (real recorded windows plus grid fillers — see
+ *  {@link windowSpans}) and grouped per group+model. Spans don't overlap, so
+ *  the join assigns each message to at most one span. */
+async function loadWindowAggregates(view: AccountView, spans: WindowSpan[]): Promise<WindowAggRow[]> {
+	if (spans.length === 0) {
+		return []
+	}
 	const { userId } = view
-	const bucket = sql`date_bin(make_interval(secs => ${strideMs / 1000}::float8), folded.ts, ${origin.toISOString()}::timestamptz)`
+	const since = new Date(Math.min(...spans.map(s => s.start)))
+	const until = new Date(Math.max(...spans.map(s => s.end)))
+	const spanValues = sql.join(
+		spans.map(
+			s => sql`(${new Date(s.start).toISOString()}::timestamptz, ${new Date(s.end).toISOString()}::timestamptz)`,
+		),
+		sql`, `,
+	)
 	const result = await db.execute(sql`
     WITH folded AS (
       SELECT DISTINCT ON (${FOLD_KEY})
@@ -708,6 +740,8 @@ async function loadWindowAggregates(
         ${usageEvents.inputTokens} AS input_tokens,
         ${usageEvents.outputTokens} AS output_tokens,
         ${usageEvents.cacheCreationTokens} AS cache_creation_tokens,
+        ${usageEvents.cacheCreation5mTokens} AS cache_creation_5m,
+        ${usageEvents.cacheCreation1hTokens} AS cache_creation_1h,
         ${usageEvents.cacheReadTokens} AS cache_read_tokens
       FROM ${usageEvents}
       WHERE ${usageEvents.userId} = ${userId}
@@ -716,15 +750,19 @@ async function loadWindowAggregates(
       ORDER BY ${FOLD_KEY}, ${ROW_TOTAL} DESC, ${usageEvents.ts} ASC
     )
     SELECT
-      extract(epoch from ${bucket})::bigint AS bin,
+      extract(epoch from win.win_start)::bigint AS bin,
       d.group_id AS group_id,
       folded.model AS model,
       sum(folded.input_tokens)::bigint AS input,
       sum(folded.output_tokens)::bigint AS output,
       sum(folded.cache_creation_tokens)::bigint AS cache_creation,
+      sum(coalesce(folded.cache_creation_5m, 0))::bigint AS cache_creation_5m,
+      sum(coalesce(folded.cache_creation_1h, 0))::bigint AS cache_creation_1h,
       sum(folded.cache_read_tokens)::bigint AS cache_read
     FROM folded
     JOIN ${devices} d ON d.id = folded.device_id
+    JOIN (VALUES ${spanValues}) AS win(win_start, win_end)
+      ON folded.ts >= win.win_start AND folded.ts < win.win_end
     WHERE ${accountFilterSql(view)}
     GROUP BY 1, 2, 3
     HAVING (
@@ -740,16 +778,20 @@ async function loadWindowAggregates(
 		input: string
 		output: string
 		cache_creation: string
+		cache_creation_5m: string
+		cache_creation_1h: string
 		cache_read: string
 	}[]
 	return rows.map(r => {
 		const totals = {
+			cacheCreation1hTokens: Number(r.cache_creation_1h),
+			cacheCreation5mTokens: Number(r.cache_creation_5m),
 			cacheCreationTokens: Number(r.cache_creation),
 			cacheReadTokens: Number(r.cache_read),
 			inputTokens: Number(r.input),
 			outputTokens: Number(r.output),
 			totalTokens: Number(r.input) + Number(r.output) + Number(r.cache_creation) + Number(r.cache_read),
-		} satisfies TokenTotals
+		}
 		return {
 			binStart: Number(r.bin) * 1000,
 			groupId: r.group_id,
@@ -789,12 +831,6 @@ export interface WindowHistoryDTO {
 	weeks: PastWindow[]
 }
 
-/** Start of the `strideMs` bucket holding `t`, aligned to `origin` — the JS
- *  twin of the SQL `date_bin` the window aggregates are bucketed with, so a
- *  utilization sample lands in the same bucket as the tokens it measured. */
-const binStartOf = (t: number, origin: number, strideMs: number) =>
-	origin + Math.floor((t - origin) / strideMs) * strideMs
-
 /** Record the utilization Claude reports for the window that is open right now.
  *  Kept at its maximum per window: reports are sampled, so the last one before
  *  a window closes is not necessarily the highest. No-ops without a pct or a
@@ -821,20 +857,16 @@ export async function recordLimitSample(
 		})
 }
 
-/** Recorded peak utilization per window bucket, for windows starting at or
- *  after `since`. Samples are bucketed like the token aggregates; a window
- *  whose real boundaries drifted from the current reset phase lands in the
- *  bucket its start falls into, and the highest sample there wins. */
-async function loadWindowPeaks(
+/** Every recorded utilization sample for one account+window at or after
+ *  `since`, raw — {@link windowSpans} turns them into real window boundaries. */
+async function loadWindowSamples(
 	accountId: string | null,
 	window: LimitWindow,
-	strideMs: number,
-	origin: Date,
 	since: Date,
-): Promise<Map<number, number>> {
+): Promise<{ start: number; pct: number }[]> {
 	// No account row yet means nothing has ever been sampled.
 	if (accountId === null) {
-		return new Map()
+		return []
 	}
 	const rows = await db
 		.select({
@@ -849,24 +881,17 @@ async function loadWindowPeaks(
 				gte(limitSamples.windowStart, since),
 			),
 		)
-	const byBin = new Map<number, number>()
-	for (const r of rows) {
-		const bin = binStartOf(new Date(r.windowStart).getTime(), origin.getTime(), strideMs)
-		byBin.set(bin, Math.max(byBin.get(bin) ?? 0, r.peakPct))
-	}
-	return byBin
+	return rows.map(r => ({ pct: r.peakPct, start: new Date(r.windowStart).getTime() }))
 }
 
-/** Fold bucketed rows into per-window group splits, newest window first. The
- *  window's recorded utilization is split across groups by cost share, so the
- *  group cells sum to the window's account-wide percentage. Windows with no
+/** Fold span-bucketed rows into per-window group splits, newest window first.
+ *  The window's recorded utilization is split across groups by cost share, so
+ *  the group cells sum to the window's account-wide percentage. Windows with no
  *  activity are dropped; windows with activity but no recorded utilization show
  *  tokens only (accountPct null). */
 export function buildPastWindows(
 	rows: WindowAggRow[],
-	starts: Date[],
-	strideMs: number,
-	peakPctByBin: Map<number, number>,
+	spans: WindowSpan[],
 	ttl: CacheTtl,
 	label: (id: string | null) => { name: string; color: string },
 ): PastWindow[] {
@@ -880,10 +905,10 @@ export function buildPastWindows(
 		}
 	}
 
-	return starts
-		.map(start => {
-			const cells = byBin.get(start.getTime()) ?? []
-			const accountPct = peakPctByBin.get(start.getTime()) ?? null
+	return spans
+		.map(spanOf => {
+			const cells = byBin.get(spanOf.start) ?? []
+			const accountPct = spanOf.pct
 			const byGroup = new Map<string | null, { tokens: number; cost: number }>()
 			let totalCost = 0
 			for (const c of cells) {
@@ -895,8 +920,9 @@ export function buildPastWindows(
 				byGroup.set(c.groupId, cur)
 			}
 			return {
-				accountPct,
-				end: new Date(start.getTime() + strideMs).toISOString(),
+				// Samples carry decimals; display rounds once, here at the end.
+				accountPct: accountPct === null ? null : Math.round(accountPct),
+				end: new Date(spanOf.end).toISOString(),
 				groups: [...byGroup.entries()]
 					.map(([groupId, g]) => ({
 						groupId,
@@ -908,7 +934,7 @@ export function buildPastWindows(
 						tokens: g.tokens,
 					}))
 					.toSorted((a, b) => b.tokens - a.tokens),
-				start: start.toISOString(),
+				start: new Date(spanOf.start).toISOString(),
 				tokens: [...byGroup.values()].reduce((sum, g) => sum + g.tokens, 0),
 			}
 		})
@@ -916,34 +942,37 @@ export function buildPastWindows(
 }
 
 /** The last {@link PAST_WINDOWS} completed 5h and weekly windows, split per
- *  group — the "how did we do last session/week" counterpart to the live card. */
+ *  group — the "how did we do last session/week" counterpart to the live card.
+ *  Window boundaries come from the recorded utilization samples (Anthropic's
+ *  windows are not on a fixed grid — see {@link windowSpans}); only time no
+ *  sample covers falls back to a grid guess. */
 export async function getWindowHistory(view: AccountView, now: Date): Promise<WindowHistoryDTO> {
 	const { userId } = view
 	const settings = await ensureSettings(userId)
-	// Anchor the buckets on the reported reset instants so they match the real
-	// windows; without a report, fall back to "now" / the configured week start.
+	// Grid fillers are anchored on the reported reset instants so they match the
+	// current reset phase; without a report, fall back to "now" / the configured
+	// week start.
 	const fiveOrigin = view.account?.fiveHourResetsAt ? new Date(view.account.fiveHourResetsAt) : now
 	const weekOrigin = view.account?.sevenDayResetsAt
 		? new Date(view.account.sevenDayResetsAt)
 		: weekWindowStart(now, settings.weekResetWeekday, settings.weekResetHourUtc)
-	const sessionStarts = pastWindowStarts(fiveOrigin, FIVE_H_MS, now, PAST_WINDOWS)
-	const weekStarts = pastWindowStarts(weekOrigin, SEVEN_D_MS, now, PAST_WINDOWS)
-	// Only completed windows are shown, so nothing past the newest one's end is
-	// needed.
-	const span = (starts: Date[], strideMs: number) => ({
-		since: starts.at(-1) ?? now,
-		until: new Date((starts[0]?.getTime() ?? now.getTime()) + strideMs),
-	})
-	const sessionSpan = span(sessionStarts, FIVE_H_MS)
-	const weekSpan = span(weekStarts, SEVEN_D_MS)
+	// Reach a little past the shown count: sampled windows can sit sparser than
+	// the grid stride when the account idled between sessions.
+	const sessionSince = new Date(now.getTime() - (PAST_WINDOWS + 2) * FIVE_H_MS)
+	const weekSince = new Date(now.getTime() - (PAST_WINDOWS + 2) * SEVEN_D_MS)
+
+	const [sessionSamples, weekSamples] = await Promise.all([
+		loadWindowSamples(view.account?.id ?? null, '5h', sessionSince),
+		loadWindowSamples(view.account?.id ?? null, '7d', weekSince),
+	])
+	const sessionSpans = windowSpans(sessionSamples, FIVE_H_MS, fiveOrigin, now, PAST_WINDOWS)
+	const weekSpans = windowSpans(weekSamples, SEVEN_D_MS, weekOrigin, now, PAST_WINDOWS)
 
 	await refreshPrices()
-	const [groupRows, sessionRows, weekRows, sessionPeaks, weekPeaks] = await Promise.all([
+	const [groupRows, sessionRows, weekRows] = await Promise.all([
 		db.select().from(groups).where(eq(groups.ownerId, userId)),
-		loadWindowAggregates(view, FIVE_H_MS, fiveOrigin, sessionSpan.since, sessionSpan.until),
-		loadWindowAggregates(view, SEVEN_D_MS, weekOrigin, weekSpan.since, weekSpan.until),
-		loadWindowPeaks(view.account?.id ?? null, '5h', FIVE_H_MS, fiveOrigin, sessionSpan.since),
-		loadWindowPeaks(view.account?.id ?? null, '7d', SEVEN_D_MS, weekOrigin, weekSpan.since),
+		loadWindowAggregates(view, sessionSpans),
+		loadWindowAggregates(view, weekSpans),
 	])
 	const label = (id: string | null) => {
 		const g = id === null ? undefined : groupRows.find(x => x.id === id)
@@ -955,8 +984,8 @@ export async function getWindowHistory(view: AccountView, now: Date): Promise<Wi
 
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	return {
-		sessions: buildPastWindows(sessionRows, sessionStarts, FIVE_H_MS, sessionPeaks, ttl, label),
-		weeks: buildPastWindows(weekRows, weekStarts, SEVEN_D_MS, weekPeaks, ttl, label),
+		sessions: buildPastWindows(sessionRows, sessionSpans, ttl, label),
+		weeks: buildPastWindows(weekRows, weekSpans, ttl, label),
 	}
 }
 
@@ -1041,6 +1070,8 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
         ${usageEvents.inputTokens} AS input_tokens,
         ${usageEvents.outputTokens} AS output_tokens,
         ${usageEvents.cacheCreationTokens} AS cache_creation_tokens,
+        ${usageEvents.cacheCreation5mTokens} AS cache_creation_5m,
+        ${usageEvents.cacheCreation1hTokens} AS cache_creation_1h,
         ${usageEvents.cacheReadTokens} AS cache_read_tokens
       FROM ${usageEvents}
       WHERE ${usageEvents.userId} = ${userId}
@@ -1054,6 +1085,8 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
       sum(folded.input_tokens)::bigint AS input,
       sum(folded.output_tokens)::bigint AS output,
       sum(folded.cache_creation_tokens)::bigint AS cache_creation,
+      sum(coalesce(folded.cache_creation_5m, 0))::bigint AS cache_creation_5m,
+      sum(coalesce(folded.cache_creation_1h, 0))::bigint AS cache_creation_1h,
       sum(folded.cache_read_tokens)::bigint AS cache_read
     FROM folded
     GROUP BY 1, 2
@@ -1070,18 +1103,22 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
 		input: string
 		output: string
 		cache_creation: string
+		cache_creation_5m: string
+		cache_creation_1h: string
 		cache_read: string
 	}[]
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	const byPath = new Map<string, ProjectUsage>()
 	for (const r of rows) {
 		const totals = {
+			cacheCreation1hTokens: Number(r.cache_creation_1h),
+			cacheCreation5mTokens: Number(r.cache_creation_5m),
 			cacheCreationTokens: Number(r.cache_creation),
 			cacheReadTokens: Number(r.cache_read),
 			inputTokens: Number(r.input),
 			outputTokens: Number(r.output),
 			totalTokens: Number(r.input) + Number(r.output) + Number(r.cache_creation) + Number(r.cache_read),
-		} satisfies TokenTotals
+		}
 		const lastActive = new Date(r.last_ts).toISOString()
 		const cur = byPath.get(r.cwd ?? '')
 		if (cur) {

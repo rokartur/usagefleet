@@ -26,6 +26,10 @@ export interface UsageRecord {
 	inputTokens: number
 	outputTokens: number
 	cacheCreationTokens: number
+	/** Per-TTL split of cacheCreationTokens (5m vs 1h writes price differently).
+	 *  Null when the log line predates the `cache_creation` breakdown. */
+	cacheCreation5m: number | null
+	cacheCreation1h: number | null
 	cacheReadTokens: number
 	serviceTier: string | null
 	source: UsageSource

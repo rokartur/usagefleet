@@ -27,8 +27,11 @@ SQL aggregates do the same fold in-database (`loadRecentEvents`,
 - **cost** (`pricing.ts`) is what the group split actually weighs: public API list
   prices per model, output 5×, cache write 1.25× (5m) or 2× (1h), cache read
   0.1×. Prices refresh from LiteLLM's map once a day per process, falling back to
-  hardcoded tiers offline. `cacheWriteTtl` in `user_settings` picks the write
-  rate — Claude Code writes 5m caches unless `ENABLE_PROMPT_CACHING_1H=1`.
+  hardcoded tiers offline. Cache writes are priced by the per-TTL breakdown the
+  log carried (`cache_creation_5m/1h_tokens`, reported by the collector) where
+  present; only the untagged remainder (legacy rows, pi rows) falls back to
+  `cacheWriteTtl` in `user_settings` — Claude Code writes 5m caches unless
+  `ENABLE_PROMPT_CACHING_1H=1`.
 
 Cost is an estimate for a subscription account. It exists because Anthropic's
 limits are cost-shaped, not token-shaped, so it is the least wrong weight for
@@ -43,17 +46,23 @@ apportioning a percentage.
   collector began reporting the real numbers.
 - **Weekly window** (`window.ts`): most recent `weekday`@`hourUtc` at or before
   now, from `user_settings` (default Monday 00:00 UTC).
-- **Past windows** (`pastWindowStarts`): strided backwards from Claude's reported
-  `resets_at` — a *future* instant — so buckets line up with the real reset
-  schedule rather than "now minus 5h". The window containing `now` is excluded.
+- **Past windows** (`windowSpans`): the recorded utilization samples ARE the
+  boundaries — each sample's `window_start` is a real reset instant minus the
+  window length. Anthropic's windows are not on a fixed grid (after idle the
+  next one starts at the first prompt), so only time no sample covers is filled
+  with `pastWindowStarts` grid guesses strided from the *current* `resets_at`,
+  clipped where they overlap a real window. The window containing `now` is
+  excluded.
 
 ## The percentages
 
 The headline 5h and weekly numbers are Anthropic's own utilization, read by the
-collector from `anthropic-ratelimit-unified-*` headers and stored on
-`claude_account` — one row per Anthropic subscription, since Anthropic meters
-each one separately. Until a collector reports once, that account shows
-`connected: false`.
+collector (oauth/usage for subscriptions, rate-limit headers for API keys) and
+stored on `claude_account` — one row per Anthropic subscription, since
+Anthropic meters each one separately. Stored with one decimal (`real` columns):
+the budget scale multiplies by the group count, so integer storage would
+amplify quantization. Display rounds once, at the end. Until a collector
+reports once, that account shows `connected: false`.
 
 Everything below happens per account. A device counts against the account it is
 signed into (`devices.claude_account_id`, stamped from its limits posts), the
@@ -68,8 +77,9 @@ a login fold into the unidentified bucket, or into the only account there is.
 
 `groupBudgetPct()` then scales a share into what the UI shows:
 `round(exactPct × groupCount)`, where `groupCount` counts the groups holding a
-device on *this* account — a group that never touches a subscription cannot eat
-its budget. Every such group is budgeted an equal slice of the account, so
+live (non-revoked) device on *this* account — a group that never touches a
+subscription cannot eat its budget, and a group whose only device was revoked
+stops claiming a slice (its historical events still weigh in the split). Every such group is budgeted an equal slice of the account, so
 **with two groups, a group sitting at half the account reads 100%**.
 Deliberately uncapped: past 100% that group is eating another's slice, which is
 the thing worth seeing. Rounding happens once, at the end — rounding the share
@@ -82,9 +92,11 @@ window length parsed from the header key (`5h`, `7d`, …).
 
 Claude reports only the currently open window, so `recordLimitSample()` upserts
 the running peak per `(claude_account, window, window_start)` on every limits post.
-`getWindowHistory()` reads those peaks and splits each closed window across
-groups using the bucketed aggregates — real recorded utilization, not a
-reconstruction from token counts.
+`getWindowHistory()` turns those samples into real window boundaries
+(`windowSpans`, see above), aggregates tokens between them in SQL, and splits
+each closed window across groups — real recorded utilization on real
+boundaries, not a reconstruction from token counts. Windows nobody sampled
+show tokens only, on grid-guessed (possibly clipped) spans.
 
 These percentages are **account shares, not budget slices**: the card's group
 rows carry `accountPct`, so a group at half the account reads 50% here while the

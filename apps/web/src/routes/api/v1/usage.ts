@@ -21,6 +21,9 @@ const LABEL = 512
 // the constraint: `sum()` widens to bigint, and `ROW_TOTAL` in lib/data.ts casts
 // its first operand (keep that cast — rows predating this cap are still out there).
 const TOKENS = `0 <= number.integer <= 500000000 = 0` as const
+// Same bound without the `= 0` default: for the cache-TTL breakdown, absent
+// means "unknown, price by the user's TTL setting", not zero.
+const TOKENS_OPT = `0 <= number.integer <= 500000000 | null` as const
 
 const RecordSchema = type({
 	uuid: `1 <= string <= ${ID}`,
@@ -35,6 +38,10 @@ const RecordSchema = type({
 	inputTokens: TOKENS,
 	outputTokens: TOKENS,
 	cacheCreationTokens: TOKENS,
+	// Per-TTL split of cacheCreationTokens (5m vs 1h writes price differently).
+	// Omitted by collectors/logs that predate the breakdown.
+	'cacheCreation5m?': TOKENS_OPT,
+	'cacheCreation1h?': TOKENS_OPT,
 	cacheReadTokens: TOKENS,
 	'serviceTier?': `string <= ${ID} | null`,
 	// Which app produced the record. Older collectors omit it → 'cli'.
@@ -92,6 +99,8 @@ async function POST(req: Request) {
 			inputTokens: r.inputTokens,
 			outputTokens: r.outputTokens,
 			cacheCreationTokens: r.cacheCreationTokens,
+			cacheCreation5mTokens: r.cacheCreation5m ?? null,
+			cacheCreation1hTokens: r.cacheCreation1h ?? null,
 			cacheReadTokens: r.cacheReadTokens,
 			serviceTier: r.serviceTier ?? null,
 			cwd: r.cwd ?? null,

@@ -3,7 +3,7 @@ import { foldEvents, recordTotal } from './fold'
 import { modelBreakdown, modelLabel } from './models'
 import { costForTokens, costUsd, priceFor } from './pricing'
 import type { TokenTotals, UsageRecord } from './types'
-import { pastWindowStarts, weekWindowStart } from './window'
+import { pastWindowStarts, weekWindowStart, windowSpans } from './window'
 
 // `ts` is omitted before the intersection: Partial<UsageRecord> contributes
 // `ts?: Date`, and intersecting that with `ts: string` yields `Date & string`,
@@ -121,6 +121,63 @@ describe('past windows', () => {
 	})
 })
 
+describe(windowSpans, () => {
+	const FIVE_H = 5 * 60 * 60 * 1000
+	const t = (iso: string) => new Date(iso).getTime()
+	// Same grid as the pastWindowStarts tests: open window 10:00–15:00, completed
+	// grid windows 05:00, 00:00, 19:00… walking back.
+	const ORIGIN = new Date('2026-06-18T15:00:00Z')
+
+	it('uses recorded windows verbatim, even off the grid', () => {
+		// A real window that started 06:12 — no grid boundary matches it.
+		const spans = windowSpans([{ pct: 42.5, start: t('2026-06-18T06:12:00Z') }], FIVE_H, ORIGIN, NOW, 2)
+		expect(spans[0]).toStrictEqual({ end: t('2026-06-18T11:12:00Z'), pct: 42.5, start: t('2026-06-18T06:12:00Z') })
+	})
+
+	it('excludes the still-open window but lets it mask grid fillers', () => {
+		// Open window started 10:30 (resets 15:30, after NOW) — not emitted, and the
+		// 05:00–10:00 grid filler survives untouched beside it.
+		const spans = windowSpans([{ pct: 10, start: t('2026-06-18T10:30:00Z') }], FIVE_H, ORIGIN, NOW, 2)
+		expect(spans.map(s => s.pct)).toStrictEqual([null, null])
+		expect(spans[0]).toMatchObject({ end: t('2026-06-18T10:00:00Z'), start: t('2026-06-18T05:00:00Z') })
+	})
+
+	it('clips grid fillers around a recorded window instead of double-counting', () => {
+		// Real window 03:00–08:00 straddles the 00:00 and 05:00 grid windows: the
+		// fillers shrink to 00:00–03:00 and 08:00–10:00 — every minute is covered
+		// exactly once.
+		const spans = windowSpans([{ pct: 60, start: t('2026-06-18T03:00:00Z') }], FIVE_H, ORIGIN, NOW, 3)
+		expect(spans).toStrictEqual([
+			{ end: t('2026-06-18T10:00:00Z'), pct: null, start: t('2026-06-18T08:00:00Z') },
+			{ end: t('2026-06-18T08:00:00Z'), pct: 60, start: t('2026-06-18T03:00:00Z') },
+			{ end: t('2026-06-18T03:00:00Z'), pct: null, start: t('2026-06-18T00:00:00Z') },
+		])
+	})
+
+	it('merges jittered duplicates of one real window, keeping the peak', () => {
+		const spans = windowSpans(
+			[
+				{ pct: 40, start: t('2026-06-18T03:00:00Z') },
+				{ pct: 55, start: t('2026-06-18T03:00:30Z') }, // same window, resets_at jitter
+			],
+			FIVE_H,
+			ORIGIN,
+			NOW,
+			2, // newest span is the clipped 08:00:30–10:00 filler; the merged window follows
+		)
+		expect(spans.filter(s => s.pct !== null)).toStrictEqual([
+			{ end: t('2026-06-18T08:00:30Z'), pct: 55, start: t('2026-06-18T03:00:30Z') },
+		])
+	})
+
+	it('falls back to the pure grid when nothing was ever sampled', () => {
+		expect(windowSpans([], FIVE_H, ORIGIN, NOW, 2)).toStrictEqual([
+			{ end: t('2026-06-18T10:00:00Z'), pct: null, start: t('2026-06-18T05:00:00Z') },
+			{ end: t('2026-06-18T05:00:00Z'), pct: null, start: t('2026-06-18T00:00:00Z') },
+		])
+	})
+})
+
 describe('pricing', () => {
 	it('prices per million tokens by model family and version', () => {
 		const mtok = (over: Partial<TokenTotals>): TokenTotals => ({
@@ -147,6 +204,23 @@ describe('pricing', () => {
 		expect(costForTokens(mtok({ cacheCreationTokens: 1_000_000 }), 'claude-sonnet-4-6')).toBeCloseTo(3.75)
 		expect(costForTokens(mtok({ cacheCreationTokens: 1_000_000 }), 'claude-sonnet-4-6', '1h')).toBeCloseTo(6)
 		expect(costForTokens(mtok({ cacheReadTokens: 1_000_000 }), 'claude-sonnet-4-6')).toBeCloseTo(0.3)
+	})
+
+	it('prices cache writes by their per-TTL breakdown when the row carries it', () => {
+		// 1M tagged 5m + 1M tagged 1h: 3.75 + 6 — the ttl setting is ignored.
+		const tagged = {
+			cacheCreation1hTokens: 1_000_000,
+			cacheCreation5mTokens: 1_000_000,
+			cacheCreationTokens: 2_000_000,
+			cacheReadTokens: 0,
+			inputTokens: 0,
+			outputTokens: 0,
+		}
+		expect(costForTokens(tagged, 'claude-sonnet-4-6', '5m')).toBeCloseTo(9.75)
+		expect(costForTokens(tagged, 'claude-sonnet-4-6', '1h')).toBeCloseTo(9.75)
+		// Mixed: 1M tagged 1h + 1M untagged remainder priced by the ttl setting.
+		const mixed = { ...tagged, cacheCreation5mTokens: 0 }
+		expect(costForTokens(mixed, 'claude-sonnet-4-6', '5m')).toBeCloseTo(6 + 3.75)
 	})
 
 	it('prices fable at the frontier tier ($10/$50, cache 20/1)', () => {

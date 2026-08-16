@@ -141,18 +141,22 @@ export function priceFor(model: string | null | undefined): Price {
 
 /** Cache-write TTL the user's tool writes: prices differ (5m = 1.25× input,
  *  1h = 2× input). Claude Code writes 5m caches unless ENABLE_PROMPT_CACHING_1H
- *  is set, so 5m is the default. */
+ *  is set, so 5m is the default. Only a fallback: rows whose log carried the
+ *  per-TTL breakdown are priced by it exactly. */
 export type CacheTtl = '5m' | '1h'
 
-/** USD cost of a set of token counts under one model's list price. */
+/** USD cost of a set of token counts under one model's list price.
+ *  Cache writes use the per-TTL breakdown where the row carries it; only the
+ *  untagged remainder (legacy rows, pi rows) is priced by the `ttl` setting. */
 export function costForTokens(t: TokenCounts, model: string | null, ttl: CacheTtl = '5m'): number {
 	const p = priceFor(model)
-	const cacheWrite = ttl === '5m' ? p.input * 1.25 : p.cacheWrite
+	const write5m = p.input * 1.25
+	const five = t.cacheCreation5mTokens ?? 0
+	const oneHour = t.cacheCreation1hTokens ?? 0
+	const untagged = Math.max(0, t.cacheCreationTokens - five - oneHour)
+	const cacheWriteCost = five * write5m + oneHour * p.cacheWrite + untagged * (ttl === '5m' ? write5m : p.cacheWrite)
 	return (
-		(t.inputTokens * p.input +
-			t.outputTokens * p.output +
-			t.cacheCreationTokens * cacheWrite +
-			t.cacheReadTokens * p.cacheRead) /
+		(t.inputTokens * p.input + t.outputTokens * p.output + cacheWriteCost + t.cacheReadTokens * p.cacheRead) /
 		1_000_000
 	)
 }

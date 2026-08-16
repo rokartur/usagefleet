@@ -22,6 +22,10 @@ export interface DailyAggRow {
 	inputTokens: number
 	outputTokens: number
 	cacheCreationTokens: number
+	/** Per-TTL split of cacheCreationTokens; rows without the breakdown sum into
+	 *  neither, and pricing falls back to the user's TTL setting for the rest. */
+	cacheCreation5mTokens: number
+	cacheCreation1hTokens: number
 	cacheReadTokens: number
 }
 

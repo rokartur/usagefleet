@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { parseLimitsHeaders, parseOauthAccount, parseOauthUsage, parsePct, parseReset } from './claude-limits.js'
+import {
+	oauthLimitsReport,
+	parseLimitsHeaders,
+	parseOauthAccount,
+	parseOauthUsage,
+	parsePct,
+	parseReset,
+} from './claude-limits.js'
 
 describe(parseOauthAccount, () => {
 	it('reads the account-wide windows as whole percentages', () => {
@@ -31,7 +38,12 @@ describe(parsePct, () => {
 
 	it('reads a sub-1% header as itself, not as 100%', () => {
 		expect(parsePct('1')).toBe(1)
-		expect(parsePct('0.5')).toBe(1)
+		expect(parsePct('0.5')).toBe(0.5)
+	})
+
+	it('keeps one decimal, no more', () => {
+		expect(parsePct('13.4')).toBe(13.4)
+		expect(parsePct('13.46')).toBe(13.5)
 	})
 
 	it('clamps out of range', () => {
@@ -99,13 +111,45 @@ describe(parseLimitsHeaders, () => {
 				resetsAt: '2026-07-04T00:59:00.000Z',
 				window: '7d',
 			},
-			{ model: 'opus', pct: 1, resetsAt: null, window: '5h' },
+			{ model: 'opus', pct: 0.5, resetsAt: null, window: '5h' },
 		])
 	})
 
 	it('keeps working without a names iterable (no model limits)', () => {
 		const r = parseLimitsHeaders('api', () => null)
 		expect(r.modelLimits).toStrictEqual([])
+	})
+})
+
+describe(oauthLimitsReport, () => {
+	it('builds a full sub report from one oauth/usage payload', () => {
+		expect(
+			oauthLimitsReport({
+				five_hour: { resets_at: '2026-08-16T19:29:59Z', utilization: 13.4 },
+				limits: [
+					{
+						group: 'weekly',
+						kind: 'weekly_scoped',
+						percent: 25,
+						resets_at: '2026-08-21T23:59:59Z',
+						scope: { model: { display_name: 'Fable', id: null } },
+					},
+				],
+				seven_day: { resets_at: '2026-08-21T23:59:59Z', utilization: 22 },
+			}),
+		).toStrictEqual({
+			fiveHourPct: 13.4,
+			fiveHourResetsAt: '2026-08-16T19:29:59.000Z',
+			modelLimits: [{ model: 'fable', pct: 25, resetsAt: '2026-08-21T23:59:59.000Z', window: '7d' }],
+			sevenDayPct: 22,
+			sevenDayResetsAt: '2026-08-21T23:59:59.000Z',
+			source: 'sub',
+		})
+	})
+
+	it('returns null when no account-wide percentage came back, so the header ping runs', () => {
+		expect(oauthLimitsReport(null)).toBeNull()
+		expect(oauthLimitsReport({ limits: [] })).toBeNull()
 	})
 })
 

@@ -48,34 +48,38 @@ instead of the whole batch. `402` parks the device (plan wall) without losing
 data; uploads resume when a slot frees up.
 
 On the same loop, less often: the limits report every
-`USAGEFLEET_LIMITS_INTERVAL` seconds (default 300) and a self-update check every
-`USAGEFLEET_UPDATE_INTERVAL` seconds (default 6h).
+`USAGEFLEET_LIMITS_INTERVAL` seconds and a self-update check every
+`USAGEFLEET_UPDATE_INTERVAL` seconds (default 6h). The limits default is
+source-aware: 60s for subscription logins (the oauth/usage read below is free)
+and 300s for API keys (each reading costs a billable token).
 
 ## Limits reporting
 
 `claude-creds.ts` finds the local Claude login — subscription OAuth (macOS
 Keychain or `<config dir>/.credentials.json`, refreshing an expired token) or an
-API key — and `claude-limits.ts` sends a **1-token** request to
+API key. For a subscription login `claude-limits.ts` asks `api/oauth/usage`
+first — the undocumented endpoint Claude Code's own `/usage` screen uses. It is
+free (no billable ping), returns the exact account-wide 5h/7d percentages that
+screen shows, and is the source of the per-model caps ("Fable · 24% used").
+When it answers, that IS the report and nothing else is sent to Anthropic.
+
+The fallback — always used for API keys, and for subscriptions only when
+oauth/usage yields nothing — is a **1-token** request to
 `api.anthropic.com/v1/messages` purely to read the response headers:
 `anthropic-ratelimit-unified-{5h,7d}-*` plus per-model variants like
-`...-7d-fable-utilization`. That is why the limits ping is rate-limited
-separately from the usage scan: every one costs a billable token.
-
-For a subscription login there is a **second** source, and it wins:
-`api/oauth/usage` on the same host, the undocumented endpoint Claude Code's own
-`/usage` uses. It is the only source of the per-model caps ("Fable · 24% used"),
-and also of the account-wide 5h/7d percentages, because the Messages headers
-now report those as a **0–1 fraction** (`0.13` for 13% used) that rounds to a
-flat 0. Header values only survive where oauth/usage has nothing to say, so a
-non-OK response or an unexpected shape degrades to the old header numbers
-rather than failing the report.
+`...-7d-fable-utilization`. That is why the limits leg is rate-limited
+separately from the usage scan: on the fallback path every reading costs a
+billable token. (On subscription logins those headers now carry a 0–1 fraction,
+so the fallback is genuinely degraded there — tiny percentages — but it beats
+reporting nothing.)
 
 The parsed report goes to `POST /api/v1/limits`. oauth/usage reports **0–100
-percentages** (`utilization`/`percent`), so parsing is a clamp and nothing else.
-There is deliberately no "0–1 fraction" normalisation on the header path: `1`
-would mean 1%, and reading it as 100% would drive the headline number, the
-critical desktop notification and `guard`'s prompt block, every time a window
-has just reset.
+percentages** (`utilization`/`percent`), so parsing is a clamp keeping one
+decimal — the server multiplies the group split by the group count, so integer
+rounding here would amplify on the dashboard. There is deliberately no "0–1
+fraction" normalisation on the header path: `1` would mean 1%, and reading it
+as 100% would drive the headline number, the critical desktop notification and
+`guard`'s prompt block, every time a window has just reset.
 
 For a subscription login the report also names **which Anthropic account** it
 describes: `claude-account.ts` reads `oauthAccount` out of Claude Code's own

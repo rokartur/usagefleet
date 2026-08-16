@@ -59,7 +59,17 @@ describe(parseLine, () => {
 			type: 'assistant',
 			uuid: 'u2',
 		})
-		expect(parseLine(line)!.cacheCreationTokens).toBe(300)
+		const r = parseLine(line)!
+		expect(r.cacheCreationTokens).toBe(300)
+		// The per-TTL split rides along — 5m and 1h writes price differently.
+		expect(r.cacheCreation5m).toBe(100)
+		expect(r.cacheCreation1h).toBe(200)
+	})
+
+	it('leaves the TTL breakdown null when the log predates it', () => {
+		const r = parseLine(assistantLine)!
+		expect(r.cacheCreation5m).toBeNull()
+		expect(r.cacheCreation1h).toBeNull()
 	})
 
 	it('parses pi agent lines, keeping only anthropic-provider usage', () => {

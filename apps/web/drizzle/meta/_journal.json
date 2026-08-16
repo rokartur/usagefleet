@@ -127,6 +127,13 @@
       "when": 1786876439963,
       "tag": "0017_premium_hairball",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1786904997158,
+      "tag": "0018_mixed_sir_ram",
+      "breakpoints": true
     }
   ]
 }

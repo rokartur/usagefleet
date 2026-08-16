@@ -34,6 +34,90 @@ export function pastWindowStarts(origin: Date, strideMs: number, now: Date, coun
 	return Array.from({ length: count }, (_, i) => new Date(currentStart - (i + 1) * strideMs))
 }
 
+/** One past limit window: a real recorded one (pct = its peak utilization) or
+ *  a grid-guessed / clipped filler for time no sample covers (pct = null). */
+export interface WindowSpan {
+	/** Epoch ms. */
+	start: number
+	end: number
+	pct: number | null
+}
+
+/** Ignore filler fragments shorter than this — boundary slivers between a real
+ *  window and the grid carry a handful of tokens and would render as noise. */
+const MIN_SPAN_MS = 5 * 60 * 1000
+
+/**
+ * The `count` most recent completed limit windows, newest first.
+ *
+ * Anthropic's windows are NOT on a fixed grid — after idle time the next one
+ * starts at the first prompt — so the recorded utilization samples, whose
+ * `windowStart` is the reset instant minus the window length, are the real
+ * boundaries. Sampled windows are used verbatim. Time no sample covers is
+ * filled with `pastWindowStarts` grid windows (anchored on the CURRENT reset
+ * phase — the best guess available), clipped where they overlap a sampled
+ * window so usage between known windows still shows up, attributed to an
+ * honest partial span rather than a wrong-phase full one.
+ *
+ * `samples` may include the currently open window; it is excluded from the
+ * output (still filling) but still masks the filler grid.
+ */
+export function windowSpans(
+	samples: { start: number; pct: number }[],
+	strideMs: number,
+	origin: Date,
+	now: Date,
+	count: number,
+): WindowSpan[] {
+	// Cluster near-duplicates: reset instants for one real window can jitter by
+	// seconds across reports, and each jittered value is its own DB row.
+	const sorted = samples.toSorted((a, b) => b.start - a.start)
+	const real: { start: number; pct: number }[] = []
+	for (const s of sorted) {
+		const prev = real.at(-1)
+		if (prev && prev.start - s.start < strideMs / 2) {
+			prev.pct = Math.max(prev.pct, s.pct)
+		} else {
+			real.push({ ...s })
+		}
+	}
+
+	const spans: WindowSpan[] = real
+		.filter(s => s.start + strideMs <= now.getTime())
+		.map(s => ({ end: s.start + strideMs, pct: s.pct, start: s.start }))
+
+	// Grid fillers for uncovered time. Extra depth so clipped-away grid windows
+	// don't shrink the reach below `count`.
+	const covered = real.map(s => [s.start, s.start + strideMs] as const)
+	for (const g of pastWindowStarts(origin, strideMs, now, count + real.length)) {
+		let start = g.getTime()
+		let end = start + strideMs
+		for (const [cs, ce] of covered) {
+			if (cs >= end || ce <= start) {
+				continue
+			}
+			if (cs <= start && ce >= end) {
+				// fully inside a sampled window — nothing left of this filler
+				start = end
+				break
+			}
+			// Clip the overlapping edge. Two sampled neighbours can clip both edges,
+			// leaving the fragment between them.
+			if (cs <= start) {
+				start = ce
+			} else {
+				end = cs
+			}
+		}
+		if (end - start >= MIN_SPAN_MS) {
+			spans.push({ end, pct: null, start })
+		}
+	}
+
+	spans.sort((a, b) => b.start - a.start)
+	return spans.slice(0, count)
+}
+
 export function filterByWindow(events: UsageRecord[], start: Date, end: Date): UsageRecord[] {
 	const s = start.getTime()
 	const e = end.getTime()
