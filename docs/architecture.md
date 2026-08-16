@@ -100,9 +100,14 @@ handlers, and on the `402` path so a parked device still shows as alive.
   the future are *clamped* to arrival time, not dropped — a machine with a fast
   clock would otherwise inflate month and all-time spend permanently, and
   rejecting them instead would be silent data loss, since the collector commits
-  its file offsets on any 200 and never reads `skipped`. `os` is also accepted as
-  `other` (freebsd/sunos/…); the column is a display-only enum, so an unlabelled
-  box keeps whatever it had rather than forcing a migration.
+  its file offsets on any 200 and never reads `skipped`. Clamped rows are counted
+  back as `clamped`, because nothing else in the response would reveal a machine
+  whose clock is wrong. Each token field must be an integer 0..500,000,000 — the
+  columns are int4, and a record outside that is a `422` the collector bisects
+  down to and drops, so it is the one wire bound a third-party client has to know.
+  `os` is also accepted as `other` (freebsd/sunos/…); the column is a
+  display-only enum, so an unlabelled box keeps whatever it had rather than
+  forcing a migration.
 - `POST /api/v1/limits` — the parsed rate-limit headers, plus the optional
   `account` the collector read from `~/.claude.json`. Upserts `claude_account`,
   stamps the device with it, and upserts the peak into `limit_sample`.

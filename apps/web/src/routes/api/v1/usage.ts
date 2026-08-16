@@ -16,13 +16,10 @@ const MAX_BODY = 8 * 1024 * 1024 // 8 MB (1000 records * generous per-record)
 const ID = 200
 const LABEL = 512
 
-// Cap at a quarter of Postgres int4 max (2^31-1). The columns are int4, and the
-// per-row `ROW_TOTAL` in lib/data.ts adds all four in int4 arithmetic to order
-// the fold, so the ceiling has to hold for that sum, not just one column: 4 × 500M
-// stays under the limit. (The `sum()` aggregates are safe either way — Postgres
-// widens sum(int4) to bigint.) A looser cap lets one corrupt row raise `integer
-// out of range` on every dashboard query for that user, with no in-app way to
-// delete it. Real per-message counts are bounded by the context window (~1M).
+// The columns are int4, so each count has to fit on its own; 500M leaves plenty
+// of headroom over the ~1M a context window can actually produce. Summing is not
+// the constraint: `sum()` widens to bigint, and `ROW_TOTAL` in lib/data.ts casts
+// its first operand (keep that cast — rows predating this cap are still out there).
 const TOKENS = `0 <= number.integer <= 500000000 = 0` as const
 
 const RecordSchema = type({
@@ -72,15 +69,8 @@ async function POST(req: Request) {
 	// predate the token. Counting starts when the token was issued.
 	const records = batch.records.filter(r => new Date(r.timestamp) >= device.createdAt)
 
-	// A machine with a fast clock reports future timestamps, and while the live
-	// window drops those (`t <= now`), the daily aggregates have only a lower bound,
-	// so they would inflate month and all-time spend forever with no way to remove
-	// them. Clamped rather than rejected: the tokens were really spent, and dropping
-	// them is silent permanent data loss — the collector commits its file offsets on
-	// a 200 and never reads `skipped`, so a skewed machine would report nothing, for
-	// good, while still looking healthy. Costs no abuse surface either: a client that
-	// wanted its usage stamped `now` could always just send `now`.
 	const receivedAt = Date.now()
+	const clamped = records.filter(r => new Date(r.timestamp).getTime() > receivedAt).length
 
 	let accepted = 0
 	if (records.length > 0) {
@@ -93,6 +83,11 @@ async function POST(req: Request) {
 			requestId: r.requestId ?? null,
 			model: r.model ?? null,
 			sessionId: r.sessionId ?? null,
+			// Clamped, not dropped: the daily aggregates have no upper bound, so one
+			// fast clock would inflate month and all-time spend forever. Rejecting
+			// instead would be silent permanent loss — the collector commits its file
+			// offsets on any 200 and never reads `skipped`. Counted so a skewed machine
+			// is diagnosable rather than just quietly wrong.
 			ts: new Date(Math.min(new Date(r.timestamp).getTime(), receivedAt)),
 			inputTokens: r.inputTokens,
 			outputTokens: r.outputTokens,
@@ -126,6 +121,10 @@ async function POST(req: Request) {
 
 	return Response.json({
 		accepted,
+		// Stored, but with a timestamp we moved. Nothing else in the response would
+		// reveal a machine whose clock is wrong, and its rows land in the live window
+		// and skew that group's cost share.
+		clamped,
 		duplicates: records.length - accepted,
 		// Pre-activation rows are neither stored nor duplicates, so they get their
 		// own count rather than inflating `duplicates` on a new device's first cycle.
