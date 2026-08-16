@@ -12,8 +12,10 @@ const LABEL = 'dev.usagefleet.collector'
 /** Scheduled Task name on Windows (mirrors the launchd label / systemd unit). */
 const TASK = 'usagefleet'
 
-/** Extra env var the service needs that does not carry the USAGEFLEET_ prefix. */
-const EXTRA_PASSTHROUGH_ENV = 'ANTHROPIC_API_KEY'
+/** Extra env the service needs that does not carry the USAGEFLEET_ prefix.
+ *  CLAUDE_CONFIG_DIR picks which Claude login this collector watches, so a
+ *  service that lost it would silently report the default account instead. */
+const EXTRA_PASSTHROUGH_ENV = new Set(['ANTHROPIC_API_KEY', 'CLAUDE_CONFIG_DIR'])
 
 /** Per-user dir for the collector's own runtime files: the Windows launcher and
  *  its log, plus the binary copy that pre-npm releases left there. */
@@ -121,7 +123,7 @@ function systemdUnitPath(): string {
 function presentEnv(): [string, string][] {
 	return Object.entries(process.env).filter(
 		(entry): entry is [string, string] =>
-			!!entry[1] && (entry[0].startsWith('USAGEFLEET_') || entry[0] === EXTRA_PASSTHROUGH_ENV),
+			!!entry[1] && (entry[0].startsWith('USAGEFLEET_') || EXTRA_PASSTHROUGH_ENV.has(entry[0])),
 	)
 }
 

@@ -46,10 +46,22 @@ export function defaultPiSessionsDirs(): string[] {
 	return [...new Set(dirs)]
 }
 
-/** Claude Code's user settings file, where the prompt guard hook is registered.
- *  CLAUDE_CONFIG_DIR is Claude Code's own relocation knob. */
+/** Claude Code's config dir. CLAUDE_CONFIG_DIR is Claude Code's own relocation
+ *  knob, and a relocated dir is a second, independent login: its own settings,
+ *  its own credentials, its own Anthropic account. */
+export function claudeConfigDir(): string {
+	return process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
+}
+
+/** Claude Code's user settings file, where the prompt guard hook is registered. */
 export function claudeSettingsPath(): string {
-	return join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json')
+	return join(claudeConfigDir(), 'settings.json')
+}
+
+/** Where Claude Code keeps its OAuth blob on Linux and Windows — and on macOS
+ *  too when the login Keychain is unavailable. */
+export function claudeCredentialsPath(): string {
+	return join(claudeConfigDir(), '.credentials.json')
 }
 
 /** Claude Code's global state file (`~/.claude.json`), which records which

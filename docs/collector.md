@@ -53,7 +53,7 @@ On the same loop, less often: the limits report every
 ## Limits reporting
 
 `claude-creds.ts` finds the local Claude login — subscription OAuth (macOS
-Keychain or `~/.claude/.credentials.json`, refreshing an expired token) or an
+Keychain or `<config dir>/.credentials.json`, refreshing an expired token) or an
 API key — and `claude-limits.ts` sends a **1-token** request to
 `api.anthropic.com/v1/messages` purely to read the response headers:
 `anthropic-ratelimit-unified-{5h,7d}-*` plus per-model variants like
@@ -77,6 +77,14 @@ describes: `claude-account.ts` reads `oauthAccount` out of Claude Code's own
 keeps one set of percentages per account, so two machines on two different
 subscriptions stop overwriting each other. An API-key login has no account
 identity and reports none; the server buckets those together.
+
+Every per-login path hangs off `claudeConfigDir()` (`paths.ts`), i.e. honours
+`CLAUDE_CONFIG_DIR`, so a second collector started against a second config dir
+reports the second subscription. With that variable set the macOS Keychain is
+deliberately not consulted: its item is global and belongs to the default login,
+so falling back to it would report one account's limits under the other's uuid.
+`service.ts` bakes the variable into the launchd/systemd unit for the same
+reason.
 
 `notifier.ts` compares each window's utilization against ascending thresholds
 (`USAGEFLEET_NOTIFY_THRESHOLDS`, default 80/95) and fires one desktop

@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { homedir, userInfo } from 'node:os'
-import { join } from 'node:path'
+import { userInfo } from 'node:os'
 import { writeFileAtomic } from './atomic-write.js'
+import { claudeCredentialsPath } from './paths.js'
 import { dim, line, yellow } from './ui.js'
 
 export interface ClaudeCreds {
@@ -23,14 +23,10 @@ interface OAuthBlob {
 
 const KEYCHAIN_SERVICE = 'Claude Code-credentials'
 
-function credentialsFilePath(): string {
-	return join(homedir(), '.claude', '.credentials.json')
-}
-
-/** Linux/Windows (and sometimes macOS): ~/.claude/.credentials.json */
+/** Linux/Windows (and sometimes macOS): <config dir>/.credentials.json */
 function fromCredentialsFile(): OAuthBlob | null {
 	try {
-		return JSON.parse(readFileSync(credentialsFilePath(), 'utf-8')) as OAuthBlob
+		return JSON.parse(readFileSync(claudeCredentialsPath(), 'utf-8')) as OAuthBlob
 	} catch {
 		return null
 	}
@@ -76,7 +72,7 @@ function persist(blob: OAuthBlob, from: 'file' | 'keychain'): void {
 	if (from === 'file') {
 		// Atomic: an interrupted write here truncates the user's live credentials
 		// and logs them out of Claude Code entirely.
-		writeFileAtomic(credentialsFilePath(), json, 0o600)
+		writeFileAtomic(claudeCredentialsPath(), json, 0o600)
 		return
 	}
 	// The password must go in argv: `security`'s stdin prompt reads at most 128
@@ -167,7 +163,11 @@ async function refreshOauth(blob: OAuthBlob, from: 'file' | 'keychain'): Promise
  */
 export async function detectClaudeCreds(): Promise<ClaudeCreds | null> {
 	const fileBlob = fromCredentialsFile()
-	const blob = fileBlob ?? fromMacKeychain()
+	// The Keychain item is global, so it belongs to whoever owns the default
+	// config dir. A collector watching a relocated one is a different login and
+	// must not fall back to it: it would report that login's limits under this
+	// account's uuid.
+	const blob = fileBlob ?? (process.env.CLAUDE_CONFIG_DIR ? null : fromMacKeychain())
 	const from = fileBlob ? 'file' : 'keychain'
 	const oauth = blob?.claudeAiOauth
 	// Only use the OAuth token if it isn't expired (60s skew margin).

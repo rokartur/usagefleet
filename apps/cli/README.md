@@ -61,7 +61,7 @@ shell once. `uninstall` removes both again, and self-update keeps them current.
   is at-least-once — the server dedups on `uuid`.
 - **Your real limit %** — the collector uses the Claude login already on the
   machine (subscription OAuth from `claude`: macOS login Keychain, elsewhere
-  `~/.claude/.credentials.json`; falling back to `ANTHROPIC_API_KEY`), sends a
+  `<config dir>/.credentials.json`; falling back to `ANTHROPIC_API_KEY`), sends a
   1-token ping to the Messages API, and reads Anthropic's
   `anthropic-ratelimit-unified-5h/7d-utilization` headers. Credentials never
   leave the machine — only the percentages do. `usagefleet status` shows which
@@ -129,9 +129,28 @@ Env vars override the file:
 | `USAGEFLEET_UPDATE` | `0` turns the self-update check off |
 | `USAGEFLEET_UPDATE_INTERVAL` | seconds between update checks (default `21600` = 6h) |
 | `USAGEFLEET_HOOK` | `0` keeps the prompt-blocking hook out of `~/.claude/settings.json` |
+| `CLAUDE_CONFIG_DIR` | Claude Code's own knob: which login to watch (default `~/.claude`) |
 
 When run as a service, `install` bakes every `USAGEFLEET_*` value currently set
-(plus `ANTHROPIC_API_KEY`) into the launchd/systemd unit, written mode `600`.
+(plus `ANTHROPIC_API_KEY` and `CLAUDE_CONFIG_DIR`) into the launchd/systemd
+unit, written mode `600`.
+
+### Two Claude accounts on one machine
+
+One collector watches one login. To report a second subscription from the same
+machine, run a second collector against Claude Code's other config dir, with its
+own device token and its own state:
+
+```sh
+CLAUDE_CONFIG_DIR=~/.claude-work \
+  USAGEFLEET_CONFIG=~/.config/usagefleet/work.json \
+  USAGEFLEET_PROJECTS=~/.claude-work/projects \
+  usagefleet install --token uf_...
+```
+
+Each reports its own account, and the dashboard keeps their limits apart. With a
+relocated config dir the macOS Keychain is skipped on purpose: that item belongs
+to the default login.
 
 ## Background service
 
