@@ -4,7 +4,7 @@ import { siteUrl } from '@/lib/site'
 // Only pages a signed-out visitor can actually load. /login is deliberately out:
 // it is indexable but worthless as a search result, and it is in robots.txt's
 // disallow neighbourhood anyway.
-const PATHS = ['/']
+const PATHS = ['/', '/privacy', '/terms']
 
 function GET() {
 	const origin = siteUrl()

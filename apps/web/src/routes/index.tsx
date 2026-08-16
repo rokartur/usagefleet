@@ -6,7 +6,7 @@ import { ArrowRight, Check, Copy } from 'lucide-react'
 import type { Variants } from 'motion/react'
 import { motion, MotionConfig, useScroll, useTransform } from 'motion/react'
 import { OrbitMark } from '@/components/orbit-mark'
-import { ThemeToggle } from '@/components/theme-toggle'
+import { SiteFooter } from '@/components/site-footer'
 import { buttonVariants } from '@/components/ui/button'
 import { UsageFleetMark } from '@/components/usage-fleet-mark'
 import { formatPlanPrice, FREE_DEVICES, PLANS, planPriceCents } from '@/lib/plans'
@@ -327,10 +327,13 @@ function Landing() {
 				    the content reads as passing beneath. */}
 				<header className='sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md'>
 					<div className='mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-6'>
-						<span className='flex items-center gap-2 font-semibold tracking-tight'>
+						<a
+							href='#top'
+							className='flex items-center gap-2 font-semibold tracking-tight transition-opacity hover:opacity-70'
+						>
 							<UsageFleetMark className='size-5' />
 							UsageFleet
-						</span>
+						</a>
 						<nav className='hidden gap-7 text-sm text-muted-foreground sm:flex'>
 							<a href='#how' className='transition-colors hover:text-foreground'>
 								How it works
@@ -351,7 +354,7 @@ function Landing() {
 				<div className='mx-auto w-full max-w-7xl px-6'>
 					{/* isolate, so the mark's -z-10 lands behind the hero copy and not
 					    behind the page background, where it would vanish. */}
-					<section ref={heroRef} className='relative isolate pt-16 sm:pt-24'>
+					<section id='top' ref={heroRef} className='relative isolate pt-16 sm:pt-24'>
 						{/* Out of flow and behind the copy: decorative, and the only thing on
 						    the page that repaints every frame, so a phone skips it. */}
 						<motion.div
@@ -605,14 +608,7 @@ function Landing() {
 						</Reveal>
 					</section>
 
-					<footer className='flex flex-wrap items-center justify-between gap-4 border-t border-border py-5 pb-10 font-mono text-xs text-muted-foreground/70'>
-						<span className='flex items-center gap-2'>
-							<UsageFleetMark className='size-3.5' />
-							USAGEFLEET
-						</span>
-						<ThemeToggle />
-						<span>MACOS / LINUX / WINDOWS</span>
-					</footer>
+					<SiteFooter />
 				</div>
 			</div>
 		</MotionConfig>
