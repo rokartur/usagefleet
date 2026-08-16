@@ -12,7 +12,7 @@ import { UsageFleetMark } from '@/components/usage-fleet-mark'
 import { formatPlanPrice, FREE_DEVICES, PLANS, planPriceCents } from '@/lib/plans'
 import type { PaidPlan, PlanPrices } from '@/lib/plans'
 import { getSession } from '@/lib/session'
-import { SITE_DESCRIPTION, SITE_NAME, siteUrl } from '@/lib/site'
+import { PACKAGE_URL, REPO_URL, SITE_DESCRIPTION, SITE_NAME, siteUrl } from '@/lib/site'
 import { planPrices } from '@/lib/stripe-prices'
 import { cn } from '@/lib/utils'
 
@@ -24,7 +24,34 @@ const landing = createServerFn().handler(async () => {
 	return { signedIn: Boolean(session), prices }
 })
 
-const TITLE = `${SITE_NAME} — Claude Code usage across your whole fleet`
+/** The questions that decide whether someone installs it, answered in the same
+ *  words the collector uses. Every one of these is a real invariant, not copy. */
+const FAQ = [
+	{
+		q: 'Does this need an Anthropic API key?',
+		a: 'No. The collector uses the Claude login already sitting on the machine, reads the local Claude Code logs and the rate limit headers that come back with them.',
+	},
+	{
+		q: 'Can you see my prompts?',
+		a: 'No. Prompts, responses and file contents never leave the machine. What is uploaded is counters plus context: token counts, model, session id, hostname, working directory and git branch.',
+	},
+	{
+		q: 'Why do the group percentages add up past the account number?',
+		a: 'Because a group is measured against its own slice of the account, not against the whole thing. Two groups, one using half of everything, means that group reads 100% of its budget while the account reads 50%.',
+	},
+	{
+		q: 'What happens when I downgrade?',
+		a: 'Devices over the new limit are parked, not deleted. Nothing is lost, and they report again with the same token as soon as they fit.',
+	},
+	{
+		q: 'Does the guard block my work if you go down?',
+		a: 'Never. Offline, timed out, junk response or a server too old to answer all exit clean. Only an explicit refusal stops a prompt.',
+	},
+]
+
+// Under 60 characters so Google shows it whole, and leading with the words a
+// search for this product actually contains rather than with the brand alone.
+const TITLE = `${SITE_NAME} — Claude Code usage tracker for your whole fleet`
 
 export const Route = createFileRoute('/')({
 	loader: () => landing(),
@@ -57,6 +84,7 @@ export const Route = createFileRoute('/')({
 						description: SITE_DESCRIPTION,
 						applicationCategory: 'DeveloperApplication',
 						operatingSystem: 'macOS, Linux, Windows',
+						sameAs: [REPO_URL, PACKAGE_URL],
 						// The same tiers the pricing section renders, so the two can't
 						// disagree. Custom is quoted at its entry price, hence "from".
 						offers: offered.map(tier => ({
@@ -67,6 +95,20 @@ export const Route = createFileRoute('/')({
 							description: `${tier.id === 'custom' ? 'from ' : ''}${tier.devices} device${
 								tier.devices === 1 ? '' : 's'
 							}`,
+						})),
+					}),
+				},
+				// The FAQ section, in the shape Google reads. Same source array as the
+				// markup below, so an answer can't be edited in one place only.
+				{
+					type: 'application/ld+json',
+					children: JSON.stringify({
+						'@context': 'https://schema.org',
+						'@type': 'FAQPage',
+						mainEntity: FAQ.map(item => ({
+							'@type': 'Question',
+							name: item.q,
+							acceptedAnswer: { '@type': 'Answer', text: item.a },
 						})),
 					}),
 				},
@@ -141,31 +183,6 @@ const SPECS = [
 		// Keep this in step with the collector payload (apps/cli/src/types.ts):
 		// it also uploads cwd, git branch, hostname, model and session id.
 		body: 'Prompts, responses and file contents never leave your machine. What does: token counts, model, session id, hostname, working directory and git branch.',
-	},
-]
-
-/** The questions that decide whether someone installs it, answered in the same
- *  words the collector uses. Every one of these is a real invariant, not copy. */
-const FAQ = [
-	{
-		q: 'Does this need an Anthropic API key?',
-		a: 'No. The collector uses the Claude login already sitting on the machine, reads the local Claude Code logs and the rate limit headers that come back with them.',
-	},
-	{
-		q: 'Can you see my prompts?',
-		a: 'No. Prompts, responses and file contents never leave the machine. What is uploaded is counters plus context: token counts, model, session id, hostname, working directory and git branch.',
-	},
-	{
-		q: 'Why do the group percentages add up past the account number?',
-		a: 'Because a group is measured against its own slice of the account, not against the whole thing. Two groups, one using half of everything, means that group reads 100% of its budget while the account reads 50%.',
-	},
-	{
-		q: 'What happens when I downgrade?',
-		a: 'Devices over the new limit are parked, not deleted. Nothing is lost, and they report again with the same token as soon as they fit.',
-	},
-	{
-		q: 'Does the guard block my work if you go down?',
-		a: 'Never. Offline, timed out, junk response or a server too old to answer all exit clean. Only an explicit refusal stops a prompt.',
 	},
 ]
 

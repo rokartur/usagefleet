@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { authClient } from '@/lib/auth-client'
+import { SITE_NAME } from '@/lib/site'
 
 /** Both halves of a reset live on this one path, because that is what the mail
  *  link forces: better-auth's /reset-password/:token callback checks the token
@@ -24,6 +25,10 @@ function validateSearch(search: Record<string, unknown>): { token?: string; erro
 
 export const Route = createFileRoute('/reset-password')({
 	validateSearch,
+	// A one-time token in the URL has no business in a search index.
+	head: () => ({
+		meta: [{ title: `Reset password — ${SITE_NAME}` }, { name: 'robots', content: 'noindex, nofollow' }],
+	}),
 	component: ResetPasswordPage,
 })
 

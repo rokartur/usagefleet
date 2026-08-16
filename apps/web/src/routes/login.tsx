@@ -10,6 +10,7 @@ import { signupEnabled } from '@/lib/flags'
 import { isPaidPlan } from '@/lib/plans'
 import type { PaidPlan } from '@/lib/plans'
 import { getSession } from '@/lib/session'
+import { SITE_NAME } from '@/lib/site'
 
 /** Signed-in visitors skip the form; ALLOW_SIGNUP is a server-side flag, so the
  *  "new accounts are off" notice has to be resolved on the server too. */
@@ -42,6 +43,11 @@ function validateSearch(search: Record<string, unknown>): {
 export const Route = createFileRoute('/login')({
 	validateSearch,
 	loader: () => loginPage(),
+	// robots.txt keeps crawlers off the app itself, but this page answers 200 to
+	// anyone, and a sign-in form is not a search result worth having.
+	head: () => ({
+		meta: [{ title: `Sign in — ${SITE_NAME}` }, { name: 'robots', content: 'noindex, nofollow' }],
+	}),
 	component: LoginPage,
 })
 

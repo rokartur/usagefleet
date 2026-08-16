@@ -1,9 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { UsageFleetMark } from '@/components/usage-fleet-mark'
-
-const REPO = 'https://github.com/rokartur/usagefleet'
-const PACKAGE = 'https://www.npmjs.com/package/@usagefleet/cli'
+import { PACKAGE_URL, REPO_URL } from '@/lib/site'
 
 /** Public-page footer: the legal pages and the source, plus the theme switch,
  *  which lives here because signed-out visitors have no settings page. The page
@@ -22,10 +20,15 @@ export function SiteFooter() {
 				<Link to='/terms' className='transition-colors hover:text-foreground'>
 					TERMS
 				</Link>
-				<a href={REPO} target='_blank' rel='noreferrer' className='transition-colors hover:text-foreground'>
+				<a href={REPO_URL} target='_blank' rel='noreferrer' className='transition-colors hover:text-foreground'>
 					GITHUB
 				</a>
-				<a href={PACKAGE} target='_blank' rel='noreferrer' className='transition-colors hover:text-foreground'>
+				<a
+					href={PACKAGE_URL}
+					target='_blank'
+					rel='noreferrer'
+					className='transition-colors hover:text-foreground'
+				>
 					NPM
 				</a>
 			</nav>
