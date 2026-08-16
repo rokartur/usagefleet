@@ -109,7 +109,10 @@ device, source), and it buckets by day or by month once the span passes
 30-day window, then sums the models away per directory so each project carries
 one cost. The working directory is the only project identity the JSONL logs
 carry, so two checkouts of the same repo are two projects, and a message logged
-without a `cwd` lands in one "Unknown" row. Nothing here is limit-shaped: the
+without a `cwd` lands in one "Unknown" row. Claude Code and Desktop put it on
+every assistant line; pi puts it only on its session header, which the tailer
+reads per file (`piSessionCwd`) — rows ingested before that landed in "Unknown"
+and stay there, since ingest dedups on uuid. Nothing here is limit-shaped: the
 table is tokens and estimated cost, per user, across every account.
 
 ## When you change any of this

@@ -6,6 +6,27 @@ import { dim, line, tilde, yellow } from './ui.js'
 /** Max bytes read from a single file per cycle (bounds memory on huge backlogs). */
 const MAX_READ = 16 * 1024 * 1024
 
+/**
+ * The working directory of a pi session, read from the file's first line
+ * (`{"type":"session",…,"cwd":"/path"}`). pi's message lines carry no cwd, and
+ * tailing usually resumes past the header, so it is re-read per cycle rather
+ * than remembered. The session dir name encodes the same path but lossily
+ * (`/Developer/claude-track` and `/Developer/claude/track` collide), so the
+ * header is the only exact source.
+ */
+function piSessionCwd(fd: number): string | null {
+	const head = Buffer.alloc(4096)
+	const read = readSync(fd, head, 0, head.length, 0)
+	const nl = head.indexOf(0x0a)
+	try {
+		const o: unknown = JSON.parse(head.subarray(0, nl === -1 ? read : nl).toString('utf-8'))
+		const cwd = (o as { cwd?: unknown } | null)?.cwd
+		return typeof cwd === 'string' && cwd.length > 0 ? cwd : null
+	} catch {
+		return null
+	}
+}
+
 export interface TailResult {
 	records: UsageRecord[]
 	/** New offset to persist ONLY after the records are acknowledged by the server. */
@@ -45,8 +66,12 @@ export function tailFile(
 	const length = Math.min(st.size - start, MAX_READ)
 	const buf = Buffer.alloc(length)
 	const fd = openSync(filePath, 'r')
+	let sessionCwd: string | null = null
 	try {
 		readSync(fd, buf, 0, length, start)
+		if (source === 'pi') {
+			sessionCwd = piSessionCwd(fd)
+		}
 	} finally {
 		closeSync(fd)
 	}
@@ -71,7 +96,7 @@ export function tailFile(
 
 	const records: UsageRecord[] = []
 	for (const line of text.split('\n')) {
-		const rec = parseLine(line, source)
+		const rec = parseLine(line, source, sessionCwd)
 		if (rec) {
 			records.push(rec)
 		}

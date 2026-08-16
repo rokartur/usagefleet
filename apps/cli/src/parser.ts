@@ -40,8 +40,10 @@ function cacheCreation(u: RawUsage): number {
  *  provider, model, responseId, usage:{input, output, cacheRead, cacheWrite}}}`.
  *  Only provider "anthropic" hits the user's Claude account — other providers
  *  (openai-codex, openrouter, …) are skipped. `output` already includes reasoning
- *  tokens (totalTokens = input + output + cacheRead + cacheWrite). */
-function parsePiLine(o: Record<string, unknown>): UsageRecord | null {
+ *  tokens (totalTokens = input + output + cacheRead + cacheWrite).
+ *  The line carries no working directory; `sessionCwd` comes from the file's
+ *  session header (see piSessionCwd). */
+function parsePiLine(o: Record<string, unknown>, sessionCwd: string | null): UsageRecord | null {
 	if (o.type !== 'message') {
 		return null
 	}
@@ -77,7 +79,7 @@ function parsePiLine(o: Record<string, unknown>): UsageRecord | null {
 	return {
 		cacheCreationTokens: u.cacheWrite ?? 0,
 		cacheReadTokens: u.cacheRead ?? 0,
-		cwd: null,
+		cwd: sessionCwd,
 		gitBranch: null,
 		inputTokens: u.input ?? 0,
 		messageId: rid,
@@ -99,8 +101,13 @@ function parsePiLine(o: Record<string, unknown>): UsageRecord | null {
  * `uuid` is the per-line idempotency key the server dedups on. `source` tags which
  * app the file came from (the line itself carries no app identifier) and selects
  * the format: `pi` files use pi's own schema, everything else Claude Code's.
+ * `sessionCwd` is the file-level working directory, used only by `pi`.
  */
-export function parseLine(line: string, source: UsageSource = 'cli'): UsageRecord | null {
+export function parseLine(
+	line: string,
+	source: UsageSource = 'cli',
+	sessionCwd: string | null = null,
+): UsageRecord | null {
 	const trimmed = line.trim()
 	if (!trimmed) {
 		return null
@@ -122,7 +129,7 @@ export function parseLine(line: string, source: UsageSource = 'cli'): UsageRecor
 	}
 	const o = parsed as Record<string, unknown>
 	if (source === 'pi') {
-		return parsePiLine(o)
+		return parsePiLine(o, sessionCwd)
 	}
 	if (o.type !== 'assistant') {
 		return null
