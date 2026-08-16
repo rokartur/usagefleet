@@ -108,12 +108,13 @@ handlers, and on the `402` path so a parked device still shows as alive.
   its file offsets on any 200 and never reads `skipped`. Clamped rows are counted
   back as `clamped`, because nothing else in the response would reveal a machine
   whose clock is wrong. Each token field must be an integer 0..500,000,000 — the
-  columns are int4, and a record outside that is a `422` the collector bisects
+  columns are int4, and a record outside that is a `400` the collector bisects
   down to and drops, so it is the one wire bound a third-party client has to know.
   `os` is also accepted as `other` (freebsd/sunos/…); the column is a
   display-only enum, so an unlabelled box keeps whatever it had rather than
   forcing a migration.
-- `POST /api/v1/limits` — the parsed rate-limit headers, plus the optional
+- `POST /api/v1/limits` — the parsed limits reading (oauth/usage for
+  subscriptions, rate-limit headers for API keys), plus the optional
   `account` the collector read from `~/.claude.json`. Upserts `claude_account`,
   stamps the device with it, and upserts the peak into `limit_sample`.
 - `GET /api/v1/limits` — what `usagefleet guard` asks before a prompt. Returns
@@ -126,7 +127,7 @@ handlers, and on the `402` path so a parked device still shows as alive.
   keeps working, and nothing decays the stored percentage.
 
 Status codes carry meaning to the CLI: `401` revoked/unknown token (stop),
-`402` device outside the plan's device limit (park, keep data), `400/422`
+`402` device outside the plan's device limit (park, keep data), `400`
 malformed records (the collector splits the chunk and retries), `429` backoff.
 
 ## Auth and entitlement

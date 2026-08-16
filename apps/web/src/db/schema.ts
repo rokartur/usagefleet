@@ -96,6 +96,10 @@ export const devices = pgTable(
 			onDelete: 'set null',
 		}),
 		collectorVersion: text('collector_version'),
+		// createdAt / lastSeenAt are tz-naive and compared against absolute instants
+		// at ingest (usage.ts drops records older than createdAt) — correct while
+		// Node and Postgres both run UTC, which the Docker images do by default.
+		// New timestamp columns should use `withTimezone: true` instead.
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		groupId: text('group_id').references(() => groups.id, {
 			onDelete: 'set null',
