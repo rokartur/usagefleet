@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { Badge } from '@/components/ui/badge'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Section, UsageBar } from '@/components/usage-ui'
 import type { PastWindow, WindowHistoryDTO } from '@/lib/data'
 import { formatTokens } from '@/lib/format'
@@ -77,26 +79,37 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 		<Section
 			title={account ? `Past windows · ${account}` : 'Past windows'}
 			actions={
-				<Select
-					value={kind}
-					onValueChange={v => {
-						if (v) {
-							setKind(v)
-						}
-					}}
-					items={KINDS.map(k => ({ label: k.label, value: k.key }))}
-				>
-					<SelectTrigger size='sm' aria-label='Window'>
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{KINDS.map(k => (
-							<SelectItem key={k.key} value={k.key}>
-								{k.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				<div className='flex flex-wrap items-center gap-2'>
+					<Tooltip>
+						<TooltipTrigger render={<Badge variant='outline' className='font-normal' />}>
+							Beta
+						</TooltipTrigger>
+						<TooltipContent>
+							Window history is new: it reconstructs closed windows from the samples the collector
+							happened to record, so a window that nobody reported during reads as tokens only.
+						</TooltipContent>
+					</Tooltip>
+					<Select
+						value={kind}
+						onValueChange={v => {
+							if (v) {
+								setKind(v)
+							}
+						}}
+						items={KINDS.map(k => ({ label: k.label, value: k.key }))}
+					>
+						<SelectTrigger size='sm' aria-label='Window'>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{KINDS.map(k => (
+								<SelectItem key={k.key} value={k.key}>
+									{k.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
 			}
 		>
 			{windows.length === 0 ? (
