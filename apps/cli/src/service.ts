@@ -335,24 +335,33 @@ ${envXml}
 		} catch {
 			/* not loaded yet — fine */
 		}
+		let loaded = false
 		try {
 			execFileSync('launchctl', ['bootstrap', domain, path], {
 				stdio: 'inherit',
 			})
+			loaded = true
 		} catch {
 			try {
 				execFileSync('launchctl', ['load', path], { stdio: 'inherit' })
+				loaded = true
 			} catch {
 				/* report below; user can load manually */
 			}
 		}
-		// Force a (re)start so an update takes effect immediately, not on next respawn.
-		try {
-			execFileSync('launchctl', ['kickstart', '-k', `${domain}/${LABEL}`], {
-				stdio: 'ignore',
-			})
-		} catch {
-			/* best-effort */
+		// Only when the (re)load failed — i.e. the old job is still resident, so this
+		// is the one thing that can swap it. On a job launchd just started via
+		// RunAtLoad, `kickstart -k` kills that instance and the respawn waits out
+		// ThrottleInterval: a guaranteed 30s hole where `status` right after an
+		// update reads "stopped".
+		if (!loaded) {
+			try {
+				execFileSync('launchctl', ['kickstart', '-k', `${domain}/${LABEL}`], {
+					stdio: 'ignore',
+				})
+			} catch {
+				/* best-effort */
+			}
 		}
 		console.log(step('service', 'launchd · starts at login'))
 		console.log(row('logs', tilde(macLogDir())))
