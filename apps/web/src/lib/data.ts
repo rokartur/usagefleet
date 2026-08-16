@@ -487,7 +487,11 @@ export function accountViews(rows: ClaudeAccountRow[], userId: string): AccountV
  * (which reads it from the local Claude Code login), with a local token-share
  * split per group. `connected: false` until a collector has reported once.
  */
-async function loadLiveDashboard(view: AccountView, now: Date): Promise<LiveDashboard> {
+async function loadLiveDashboard(
+	view: AccountView,
+	now: Date,
+	shared: () => ReturnType<typeof loadSharedRows>,
+): Promise<LiveDashboard> {
 	const { userId } = view
 	const acct = view.account
 	const settings = await ensureSettings(userId)
@@ -544,37 +548,10 @@ async function loadLiveDashboard(view: AccountView, now: Date): Promise<LiveDash
 			return { entry: m, resetsAt, start }
 		})
 
-	// Load only what the windows need (covers a future reset too), not a fixed 8d.
-	const earliest = new Date(
-		Math.min(weekStart.getTime(), fiveStart.getTime(), ...modelWindows.map(w => w.start.getTime())) - 5 * 60 * 1000,
-	)
-	// Events, the group list and the daily aggregates are independent — one
-	// round-trip. This is a per-request path (5s dashboard poll, plus the
-	// collector guard on every prompt), and the only thing it takes from the
-	// aggregates is the current month, so the scan is bounded to that month
-	// rather than the whole history. Both sides bucket in UTC, so the bound is
-	// exact.
-	//
-	// refreshPrices rides along because it has to finish BEFORE splitByShare: that
-	// split is cost-weighted, so pricing every event off the fallback tiers would
-	// hand the first dashboard of a cold process a different answer than the next
-	// poll gives. It is a no-op after the first call.
-	const monthStart = new Date(`${monthKey(now)}-01T00:00:00.000Z`)
-	const [allEvents, groupRows, allAggRows, deviceRows] = await Promise.all([
-		loadRecentEvents(userId, earliest),
-		db.select().from(groups).where(eq(groups.ownerId, userId)),
-		loadDailyAggregates(userId, monthStart),
-		db
-			.select({
-				claudeAccountId: devices.claudeAccountId,
-				groupId: devices.groupId,
-				id: devices.id,
-				revoked: devices.revoked,
-			})
-			.from(devices)
-			.where(eq(devices.userId, userId)),
-		refreshPrices(),
-	])
+	// The shared flight loads a superset window (see getLiveDashboards); every
+	// consumer below filters to its exact window, so the wider bound only costs
+	// scan range, never correctness.
+	const [allEvents, groupRows, allAggRows, deviceRows] = await shared()
 
 	// Usage belongs to the account its device is signed into *now*, the same way
 	// it already follows a device between groups.
@@ -653,8 +630,8 @@ async function loadLiveDashboard(view: AccountView, now: Date): Promise<LiveDash
 	// (day × group × model) cell the same way.
 	const weeklyFolded = foldEvents(filterByWindow(events, weekStart, now))
 	const monthK = monthKey(now)
-	// Redundant while aggRows is loaded with the matching `since` bound above, and
-	// kept so this stays correct if that bound is ever widened.
+	// Redundant while the shared load bounds aggRows to the same month, and kept
+	// so this stays correct if that bound is ever widened.
 	const monthRows = aggRows.filter(r => r.day.startsWith(monthK))
 	const spend: Spend = {
 		month: {
@@ -677,6 +654,37 @@ async function loadLiveDashboard(view: AccountView, now: Date): Promise<LiveDash
 }
 
 /**
+ * One flight's user-scoped loads, shared by every account view: the two
+ * whole-user scans (recent events + current-month daily aggregates) plus the
+ * group and device lists are identical per view, so a fleet split over two
+ * subscriptions pays the biggest hot-path scan once, not once per account.
+ * The aggregate scan is bounded to the current month — the only thing spend
+ * takes from it — and both sides bucket in UTC, so the bound is exact.
+ *
+ * refreshPrices rides along because it has to finish BEFORE splitByShare: that
+ * split is cost-weighted, so pricing every event off the fallback tiers would
+ * hand the first dashboard of a cold process a different answer than the next
+ * poll gives. It is a no-op after the first call.
+ */
+function loadSharedRows(userId: string, earliest: Date, monthStart: Date) {
+	return Promise.all([
+		loadRecentEvents(userId, earliest),
+		db.select().from(groups).where(eq(groups.ownerId, userId)),
+		loadDailyAggregates(userId, monthStart),
+		db
+			.select({
+				claudeAccountId: devices.claudeAccountId,
+				groupId: devices.groupId,
+				id: devices.id,
+				revoked: devices.revoked,
+			})
+			.from(devices)
+			.where(eq(devices.userId, userId)),
+		refreshPrices(),
+	])
+}
+
+/**
  * Cached {@link loadLiveDashboard}. Every open tab polls this every 5s and every
  * device asks for it before every prompt, while the load underneath reads each
  * raw usage row in the window — Claude Code writes one per streamed segment, so
@@ -690,7 +698,19 @@ async function loadLiveDashboard(view: AccountView, now: Date): Promise<LiveDash
 export const getLiveDashboards = createPromiseCache(5000, async (userId: string) => {
 	const now = new Date()
 	const views = await listAccountViews(userId)
-	return Promise.all(views.map(view => loadLiveDashboard(view, now)))
+	// One shared load per flight, lazy so a user with no reported limits still
+	// loads nothing. The event-scan bound covers the widest window any view can
+	// need (weekly, plus any longer per-model window); each view filters to its
+	// exact windows from there.
+	const maxWindowMs = Math.max(
+		SEVEN_D_MS,
+		...views.flatMap(v => (v.account?.modelLimits ?? []).map(m => windowDurationMs(m.window) ?? SEVEN_D_MS)),
+	)
+	const earliest = new Date(now.getTime() - maxWindowMs - 5 * 60 * 1000)
+	const monthStart = new Date(`${monthKey(now)}-01T00:00:00.000Z`)
+	let flight: ReturnType<typeof loadSharedRows> | null = null
+	const shared = () => (flight ??= loadSharedRows(userId, earliest, monthStart))
+	return Promise.all(views.map(view => loadLiveDashboard(view, now, shared)))
 })
 
 /** The account a device's own prompts count against. Devices that have never
