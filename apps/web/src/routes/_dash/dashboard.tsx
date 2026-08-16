@@ -17,8 +17,9 @@ import { requireUser } from '@/lib/session'
 const dashboardData = createServerFn().handler(async () => {
 	const user = await requireUser()
 	const now = new Date()
-	// One card set per Anthropic account the fleet reports on: the percentages are
-	// Anthropic's and Anthropic meters each subscription separately.
+	// One set of numbers per Anthropic account the fleet reports on: the
+	// percentages are Anthropic's and Anthropic meters each subscription
+	// separately.
 	const [dashboards, history, views] = await Promise.all([
 		getLiveDashboards(user.id),
 		getHistory(user.id),
@@ -61,17 +62,18 @@ function DashboardPage() {
 		<>
 			{/* The live cards poll on their own; this keeps the history chart fresh. */}
 			<AutoRefresh intervalMs={60_000} />
-			{accounts.map(({ dash, windows }) => (
-				<div key={dash.accountId ?? 'unidentified'}>
-					{multi && (
-						<div className='mb-2 text-sm text-white'>{dash.accountLabel ?? 'Unidentified account'}</div>
-					)}
-					<LiveDashboard initial={dash} setup={setup} />
-					{/* Both of these show up once there is something in them; an account
-              with no reports yet gets the setup rail alone. */}
-					{(windows.sessions.length > 0 || windows.weeks.length > 0) && <WindowHistory history={windows} />}
-				</div>
-			))}
+			<LiveDashboard initial={accounts.map(a => a.dash)} setup={setup} />
+			{/* Past windows are per account and only show up once an account has
+          closed one; a fleet that never reported gets the setup rail alone. */}
+			{accounts.map(({ dash, windows }) =>
+				windows.sessions.length > 0 || windows.weeks.length > 0 ? (
+					<WindowHistory
+						key={dash.accountId ?? 'unidentified'}
+						history={windows}
+						account={multi ? (dash.accountLabel ?? 'Unidentified account') : undefined}
+					/>
+				) : null,
+			)}
 			{history.rows.length > 0 && <UsageExplorer history={history} />}
 		</>
 	)

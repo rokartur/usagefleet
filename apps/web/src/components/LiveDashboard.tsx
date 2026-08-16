@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { CheckIcon } from 'lucide-react'
 import { GroupTable } from '@/components/dashboard/GroupTable'
+import type { GroupRow } from '@/components/dashboard/GroupTable'
 import { InstallCommand } from '@/components/InstallCommand'
 import { ResetCountdown } from '@/components/ResetCountdown'
 import { Button } from '@/components/ui/button'
@@ -55,6 +56,37 @@ function GroupSplit({
 }
 
 const groupKey = (groupId: string | null) => groupId ?? 'ungrouped'
+
+/** Whose subscription this card reports on. An account the collector could not
+ *  name (API-key login, or a collector too old to report one) is the bucket
+ *  every unidentified device falls into. */
+const accountName = (dash: DashboardDTO) => dash.accountLabel ?? 'Unidentified account'
+
+/** One window's usage split across the groups on this account. */
+const splitOf = (dash: DashboardDTO, pct: (g: LiveGroupUsage) => number) =>
+	dash.groups.map(g => ({
+		color: g.color,
+		key: groupKey(g.groupId),
+		name: g.name,
+		pct: pct(g),
+	}))
+
+/** "live · subscription · updated 40s ago" for one account. A dead poll is a
+ *  fleet-wide fact, the report age is per account: one machine can stop
+ *  reporting while the other keeps going. */
+function StatusLine({ dash, now, pollDown }: { dash: DashboardDTO; now: number; pollDown: boolean }) {
+	const reportAge = dash.reportedAt ? now - Date.parse(dash.reportedAt) : 0
+	const stale = pollDown || reportAge > LIMITS_STALE_MS
+	const label = pollDown ? 'reconnecting…' : stale ? 'collector offline' : 'live'
+	const source = dash.source === 'sub' ? 'subscription' : dash.source === 'api' ? 'API key' : '—'
+	return (
+		<p className='flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground'>
+			<span className={cn('size-1.5 rounded-full', stale ? 'bg-amber-500' : 'bg-emerald-500')} aria-hidden />
+			<span className={stale ? 'text-amber-500' : 'text-foreground'}>{label}</span>· {source}
+			{dash.reportedAt ? ` · updated ${formatRelative(new Date(dash.reportedAt))}` : ''}
+		</p>
+	)
+}
 
 /** One column of the headline strip: label, one big number, detail underneath. */
 function StatCell({ label, value, children }: { label: string; value: string; children?: React.ReactNode }) {
@@ -236,8 +268,74 @@ function SetupRail({ setup }: { setup: SetupState | null }) {
 	)
 }
 
-export function LiveDashboard({ initial, setup }: { initial: DashboardDTO; setup: SetupState | null }) {
-	const [dash, setDash] = useState<DashboardDTO>(initial)
+/** One window inside an account row: the percentage, the bar, the countdown and
+ *  the group split, at half the size of the single-account headline cell. */
+function AccountWindow({
+	label,
+	pct,
+	resetsAt,
+	groups,
+}: {
+	label: string
+	pct: number
+	resetsAt: string | null
+	groups: { key: string; name: string; color: string; pct: number }[]
+}) {
+	return (
+		<div className='flex flex-col gap-2'>
+			<div className='flex flex-wrap items-baseline gap-x-2'>
+				<span className='text-lg leading-none tabular-nums'>{Math.min(100, pct)}%</span>
+				<span className='text-[11px] text-muted-foreground'>
+					{label} · <ResetCountdown resetsAt={resetsAt} />
+				</span>
+			</div>
+			<UsageBar pct={pct} />
+			<GroupSplit groups={groups} />
+		</div>
+	)
+}
+
+/** One Anthropic account on a single line — who it is, both windows, spend.
+ *  Several subscriptions stack into a list of these instead of repeating the
+ *  whole card set per account. */
+function AccountRow({ dash, now, pollDown }: { dash: DashboardDTO; now: number; pollDown: boolean }) {
+	return (
+		<div className='grid gap-x-5 gap-y-4 border-b py-4 last:border-b-0 sm:grid-cols-[minmax(0,1.2fr)_repeat(2,minmax(0,1fr))_minmax(0,0.7fr)]'>
+			<div className='flex min-w-0 flex-col gap-1.5'>
+				<span className='truncate text-sm'>{accountName(dash)}</span>
+				<StatusLine dash={dash} now={now} pollDown={pollDown} />
+			</div>
+			<AccountWindow
+				label='5h'
+				pct={dash.fiveHourPct}
+				resetsAt={dash.fiveHourResetsAt}
+				groups={splitOf(dash, g => g.sessionBudgetPct)}
+			/>
+			<AccountWindow
+				label='week'
+				pct={dash.sevenDayPct}
+				resetsAt={dash.sevenDayResetsAt}
+				groups={splitOf(dash, g => g.weeklyBudgetPct)}
+			/>
+			<div className='flex flex-col gap-1.5'>
+				<div className='flex flex-wrap items-baseline gap-x-2'>
+					<span className='text-lg leading-none tabular-nums'>{formatUsd(dash.spend.week.costUsd)}</span>
+					<span className='text-[11px] text-muted-foreground'>week</span>
+				</div>
+				<span className='text-[11px] text-muted-foreground tabular-nums'>
+					{formatUsd(dash.spend.month.costUsd)} month
+				</span>
+			</div>
+		</div>
+	)
+}
+
+/** Live cards for every Anthropic account the fleet reports on. One account
+ *  renders the full headline strip; several collapse to one row each with a
+ *  single merged group table, so the page keeps its height as accounts are
+ *  added. Polls the whole set at once: /api/dashboard answers for all of them. */
+export function LiveDashboard({ initial, setup }: { initial: DashboardDTO[]; setup: SetupState | null }) {
+	const [dashes, setDashes] = useState<DashboardDTO[]>(initial)
 	const [lastOk, setLastOk] = useState(() => Date.now())
 	// `now` advances once a second (below) so the staleness check stays a pure
 	// read of state during render.
@@ -283,11 +381,11 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO; setup
 				return
 			}
 			if (res.ok) {
-				// One payload per Anthropic account; keep the one this card renders.
+				// One payload per Anthropic account. An empty array would mean the
+				// account list is still being built server-side; keep what we have.
 				const all = (await res.json()) as DashboardDTO[]
-				const mine = all.find(d => d.accountId === initial.accountId)
-				if (mine) {
-					setDash(mine)
+				if (all.length > 0) {
+					setDashes(all)
 					setLastOk(Date.now())
 				}
 			}
@@ -296,7 +394,7 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO; setup
 		} finally {
 			inFlightRef.current = false
 		}
-	}, [initial.accountId])
+	}, [])
 
 	useEffect(() => {
 		const id = setInterval(refresh, POLL_MS)
@@ -315,65 +413,85 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO; setup
 	}, [refresh])
 
 	const pollDown = now - lastOk > 3 * POLL_MS
-	const reportAge = dash.reportedAt ? now - Date.parse(dash.reportedAt) : 0
-	const stale = pollDown || reportAge > LIMITS_STALE_MS
-	const statusLabel = pollDown ? 'reconnecting…' : stale ? 'collector offline' : 'live'
+	const solo = dashes.length === 1 ? dashes[0] : undefined
 
-	if (!dash.connected) {
+	if (dashes.length === 0 || (solo && !solo.connected)) {
 		return <SetupRail setup={setup} />
 	}
 
-	const sourceLabel = dash.source === 'sub' ? 'subscription' : dash.source === 'api' ? 'API key' : '—'
-	const split = (pct: (g: LiveGroupUsage) => number) =>
-		dash.groups.map(g => ({
-			color: g.color,
-			key: groupKey(g.groupId),
-			name: g.name,
-			pct: pct(g),
-		}))
+	const footnote = (
+		<p className='max-w-2xl text-[11px] text-muted-foreground'>
+			Headline percentages are Claude&apos;s own account utilization. Per-group percentages are budget-relative:
+			the group&apos;s usage against its equal slice of the limit, so 100% means it has eaten its slice.
+		</p>
+	)
+
+	if (solo) {
+		return (
+			<div className='flex flex-col gap-5'>
+				<StatusLine dash={solo} now={now} pollDown={pollDown} />
+
+				<div className='grid gap-x-5 gap-y-6 border-y py-4 sm:grid-cols-4'>
+					<LimitCell
+						label='5-hour session'
+						pct={solo.fiveHourPct}
+						resetsAt={solo.fiveHourResetsAt}
+						groups={splitOf(solo, g => g.sessionBudgetPct)}
+					/>
+					<LimitCell
+						label='Weekly'
+						pct={solo.sevenDayPct}
+						resetsAt={solo.sevenDayResetsAt}
+						groups={splitOf(solo, g => g.weeklyBudgetPct)}
+					/>
+					<SpendCell label='Spend, this week' period={solo.spend.week} />
+					<SpendCell label='Spend, this month' period={solo.spend.month} />
+				</div>
+
+				{solo.modelLimits.length > 0 && (
+					<Section title='Model limits'>
+						{solo.modelLimits.map(m => (
+							<ModelLimitRow key={`${m.model}-${m.window}`} limit={m} />
+						))}
+					</Section>
+				)}
+
+				<Section title='Groups'>
+					<GroupTable groups={solo.groups} expanded={expanded} onToggle={toggleRow} />
+				</Section>
+
+				{footnote}
+			</div>
+		)
+	}
+
+	// A group can hold devices on two subscriptions, so it earns one row per
+	// account it spends on — the percentages only mean anything against a limit.
+	const rows: GroupRow[] = dashes.flatMap(d => d.groups.map(g => ({ ...g, account: accountName(d) })))
 
 	return (
 		<div className='flex flex-col gap-5'>
-			<p className='flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground'>
-				<span className={cn('size-1.5 rounded-full', stale ? 'bg-amber-500' : 'bg-emerald-500')} aria-hidden />
-				<span className={stale ? 'text-amber-500' : 'text-foreground'}>{statusLabel}</span>· {sourceLabel}
-				{dash.reportedAt ? ` · updated ${formatRelative(new Date(dash.reportedAt))}` : ''}
-			</p>
-
-			<div className='grid gap-x-5 gap-y-6 border-y py-4 sm:grid-cols-4'>
-				<LimitCell
-					label='5-hour session'
-					pct={dash.fiveHourPct}
-					resetsAt={dash.fiveHourResetsAt}
-					groups={split(g => g.sessionBudgetPct)}
-				/>
-				<LimitCell
-					label='Weekly'
-					pct={dash.sevenDayPct}
-					resetsAt={dash.sevenDayResetsAt}
-					groups={split(g => g.weeklyBudgetPct)}
-				/>
-				<SpendCell label='Spend, this week' period={dash.spend.week} />
-				<SpendCell label='Spend, this month' period={dash.spend.month} />
+			<div className='border-y'>
+				{dashes.map(d => (
+					<AccountRow key={d.accountId ?? 'unidentified'} dash={d} now={now} pollDown={pollDown} />
+				))}
 			</div>
 
-			{dash.modelLimits.length > 0 && (
-				<Section title='Model limits'>
-					{dash.modelLimits.map(m => (
-						<ModelLimitRow key={`${m.model}-${m.window}`} limit={m} />
-					))}
-				</Section>
+			{dashes.map(d =>
+				d.modelLimits.length > 0 ? (
+					<Section key={d.accountId ?? 'unidentified'} title={`Model limits · ${accountName(d)}`}>
+						{d.modelLimits.map(m => (
+							<ModelLimitRow key={`${m.model}-${m.window}`} limit={m} />
+						))}
+					</Section>
+				) : null,
 			)}
 
 			<Section title='Groups'>
-				<GroupTable groups={dash.groups} expanded={expanded} onToggle={toggleRow} />
+				<GroupTable groups={rows} expanded={expanded} onToggle={toggleRow} />
 			</Section>
 
-			<p className='max-w-2xl text-[11px] text-muted-foreground'>
-				Headline percentages are Claude&apos;s own account utilization. Per-group percentages are
-				budget-relative: the group&apos;s usage against its equal slice of the limit, so 100% means it has eaten
-				its slice.
-			</p>
+			{footnote}
 		</div>
 	)
 }

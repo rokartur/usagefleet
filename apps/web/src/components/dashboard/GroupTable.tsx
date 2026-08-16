@@ -95,18 +95,27 @@ function WindowHead({ label }: { label: string }) {
 	)
 }
 
+/** A group as the table renders it. `account` is set only when several
+ *  Anthropic accounts are merged into one table: the same group can hold
+ *  devices on two subscriptions and then appears once per account. */
+export type GroupRow = LiveGroupUsage & { account?: string }
+
+/** Expand key: unique per row, so a group split across accounts toggles
+ *  independently. */
+const groupRowKey = (g: GroupRow) => `${g.account ?? ''}:${g.groupId ?? 'ungrouped'}`
+
 /** Group-vs-group comparison over both windows. Rows expand to reveal each
- *  group's per-model session/weekly breakdown. Expand keys are the raw groupId
- *  (or "ungrouped"). */
+ *  group's per-model session/weekly breakdown. */
 export function GroupTable({
 	groups,
 	expanded,
 	onToggle,
 }: {
-	groups: LiveGroupUsage[]
+	groups: GroupRow[]
 	expanded: Set<string>
 	onToggle: (key: string) => void
 }) {
+	const showAccount = groups.some(g => g.account)
 	if (groups.length === 0) {
 		return (
 			<Empty className='border'>
@@ -122,13 +131,14 @@ export function GroupTable({
 			<TableHeader>
 				<TableRow>
 					<TableHead>Group</TableHead>
+					{showAccount && <TableHead>Account</TableHead>}
 					<WindowHead label='Session (5h)' />
 					<WindowHead label='Weekly' />
 				</TableRow>
 			</TableHeader>
 			<TableBody>
 				{groups.map(g => {
-					const key = g.groupId ?? 'ungrouped'
+					const key = groupRowKey(g)
 					const isOpen = expanded.has(key)
 					const modelCount = new Set([...g.models, ...g.sessionModels].map(m => m.model)).size
 					return (
@@ -158,6 +168,11 @@ export function GroupTable({
 										</Badge>
 									</button>
 								</TableCell>
+								{showAccount && (
+									<TableCell className='max-w-48 truncate text-muted-foreground'>
+										{g.account}
+									</TableCell>
+								)}
 								<TableCell>
 									<WindowCell
 										pct={g.sessionBudgetPct}
@@ -175,7 +190,7 @@ export function GroupTable({
 							</TableRow>
 							{isOpen && (
 								<TableRow className='bg-muted/40 hover:bg-muted/40'>
-									<TableCell colSpan={3} className='py-3 whitespace-normal'>
+									<TableCell colSpan={showAccount ? 4 : 3} className='py-3 whitespace-normal'>
 										<ModelCompare session={g.sessionModels} weekly={g.models} />
 									</TableCell>
 								</TableRow>

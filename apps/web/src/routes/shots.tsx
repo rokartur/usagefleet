@@ -237,7 +237,7 @@ function ShotsPage() {
 					</div>
 				</header>
 				<div className='flex w-full max-w-4xl flex-1 flex-col gap-6 p-4 md:p-6'>
-					<LiveDashboard initial={dashboard} setup={null} />
+					<LiveDashboard initial={[dashboard]} setup={null} />
 					<WindowHistory history={windows} />
 					<UsageExplorer history={history} />
 				</div>

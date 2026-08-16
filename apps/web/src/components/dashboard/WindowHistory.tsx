@@ -62,15 +62,18 @@ function columnsOf(windows: PastWindow[]) {
  * limit: the utilization Claude reported for that window, split across groups
  * by cost, so the group cells sum to the window total. Windows that closed
  * before the collector recorded a utilization sample show tokens only.
+ *
+ * `account` names the subscription the windows belong to, and is passed only
+ * when the fleet reports on more than one.
  */
-export function WindowHistory({ history }: { history: WindowHistoryDTO }) {
+export function WindowHistory({ history, account }: { history: WindowHistoryDTO; account?: string }) {
 	const [kind, setKind] = useState<Kind>('sessions')
 	const windows = history[kind]
 	const columns = columnsOf(windows)
 
 	return (
 		<Section
-			title='Past windows'
+			title={account ? `Past windows · ${account}` : 'Past windows'}
 			actions={
 				<Select
 					value={kind}
