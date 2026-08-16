@@ -1,8 +1,11 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
+// USAGEFLEET_PROJECTS is resolved in config.ts's precedence chain, not here —
+// a second env read (with `??` vs `||` drift) once made an empty env var
+// silently scan nothing.
 export function defaultProjectsDir(): string {
-	return process.env.USAGEFLEET_PROJECTS ?? join(homedir(), '.claude', 'projects')
+	return join(homedir(), '.claude', 'projects')
 }
 
 /** Claude Desktop's Electron userData dir, per-OS. Mirrors the app's own
