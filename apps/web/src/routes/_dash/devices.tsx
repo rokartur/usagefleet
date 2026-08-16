@@ -41,19 +41,21 @@ function DevicesPage() {
 			.map(d => d.id),
 	)
 	const groupOptions = groups.map(g => ({ id: g.id, name: g.name }))
+	// Revoked devices stay listed, but sink below the live ones in their section.
+	const ordered = devices.toSorted((a, b) => Number(a.revoked) - Number(b.revoked))
 	// One section per group (empty ones included), then anything still ungrouped.
 	const sections = [
 		...groups.map(g => ({
 			key: g.id,
 			name: g.name,
 			color: g.color,
-			items: devices.filter(d => d.groupId === g.id),
+			items: ordered.filter(d => d.groupId === g.id),
 		})),
 		{
 			key: 'ungrouped',
 			name: 'Ungrouped',
 			color: '#94a3b8',
-			items: devices.filter(d => !groups.some(g => g.id === d.groupId)),
+			items: ordered.filter(d => !groups.some(g => g.id === d.groupId)),
 		},
 	].filter(s => s.key !== 'ungrouped' || s.items.length > 0)
 
