@@ -73,11 +73,7 @@ export async function ensureSettings(userId: string) {
  * several different windows (5h, weekly, one per model limit) and weigh them by
  * per-model cost, so they need the timestamp and model of each message.
  *
- * Callers still fold. That is not redundant bookkeeping: `splitByShare` is an
- * exported pure function with its own tests over unfolded input, and "never SUM
- * raw rows" is the one invariant that silently produces wrong numbers rather
- * than an error. `foldEvents` is idempotent and the input here is already small,
- * so the guarantee costs a Map pass — worth keeping on this path.
+ * Callers still fold; see the note at that call site for why.
  */
 export async function loadRecentEvents(userId: string, cutoff: Date): Promise<UsageRecord[]> {
 	const result = await db.execute(sql`
@@ -107,11 +103,15 @@ export async function loadRecentEvents(userId: string, cutoff: Date): Promise<Us
 		request_id: string | null
 		model: string | null
 		source: string | null
-		// A raw db.execute bypasses drizzle's column decoding, so postgres-js hands
-		// timestamptz back as its wire text ('2026-06-18 12:00:00+00') rather than a
-		// Date. Declaring it Date here would typecheck and then blow up at the first
-		// `e.ts.getTime()` in splitByShare, on every dashboard load.
-		ts: string
+		// Measured against postgres:17, not assumed: postgres-js on its own decodes
+		// timestamptz to a Date, but through drizzle's `db.execute` the row comes back
+		// undecoded, as wire text ('2026-06-18 12:00:00+00'). The union matches what
+		// this file already does for the same kind of raw column (`last_ts` below) and
+		// keeps `new Date()` correct if that ever changes — declaring it `Date` alone
+		// typechecks and then throws at the first `e.ts.getTime()` in splitByShare,
+		// i.e. on every dashboard load. int4 does arrive as a number, so it is not
+		// wrapped.
+		ts: string | Date
 		device_id: string | null
 		group_id: string | null
 		input_tokens: number
@@ -119,7 +119,6 @@ export async function loadRecentEvents(userId: string, cutoff: Date): Promise<Us
 		cache_creation_tokens: number
 		cache_read_tokens: number
 	}[]
-	// int4 really does arrive as a JS number, so only `ts` needs converting.
 	return rows.map(r => ({
 		cacheCreationTokens: r.cache_creation_tokens,
 		cacheReadTokens: r.cache_read_tokens,
@@ -363,6 +362,10 @@ export function splitByShare(
 	const modelsByKey = new Map<string | null, ModelUsage[]>()
 	let totalCost = 0
 	for (const [k, evs] of byKey) {
+		// Kept even though loadRecentEvents already folds in SQL: this is an exported
+		// function tested over unfolded input, and "never SUM raw rows" fails silently
+		// rather than loudly. foldEvents is idempotent, so on folded input it costs one
+		// Map pass.
 		const folded = foldEvents(evs)
 		const totals = sumTokens(folded)
 		tokensByKey.set(k, billableTokens(totals))
