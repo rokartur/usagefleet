@@ -76,7 +76,9 @@ function persist(blob: OAuthBlob, from: 'file' | 'keychain'): void {
 		return
 	}
 	// The password must go in argv: `security`'s stdin prompt reads at most 128
-	// bytes and would silently store a truncated (unparseable) blob.
+	// bytes and would silently store a truncated (unparseable) blob. Argv is
+	// briefly visible in the process list, but only to the same user — who can
+	// read the Keychain item anyway. Accepted.
 	execFileSync(
 		'security',
 		['add-generic-password', '-U', '-s', KEYCHAIN_SERVICE, '-a', userInfo().username, '-w', json],

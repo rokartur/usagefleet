@@ -47,8 +47,8 @@ export function resolvePiDirs(env: string | undefined, fromFile: string | string
 	return [...new Set(raw.map(d => d.trim()).filter(d => d.length > 0))]
 }
 
-/** Optional scan root (USAGEFLEET_DESKTOP / USAGEFLEET_PI): env "off"/"0"
- *  disables, env or config-file path overrides, else the auto-detected default. */
+/** Optional scan root (USAGEFLEET_DESKTOP): env "off"/"0" disables, env or
+ *  config-file path overrides, else the auto-detected default. */
 function resolveOptionalDir(env: string | undefined, fromFile: string | undefined, fallback: string): string | null {
 	if (env === '0' || env?.toLowerCase() === 'off') {
 		return null

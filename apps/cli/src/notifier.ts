@@ -69,10 +69,8 @@ export function evaluateWindow(
 	if (top > lastBucket) {
 		return { fire: top, next: { lastBucket: top, resetsAt } }
 	}
-	if (top < lastBucket) {
-		return { fire: null, next: { lastBucket: top, resetsAt } }
-	}
-	return { fire: null, next: { lastBucket, resetsAt } }
+	// top <= lastBucket: the mark follows pct down (or holds); nothing fires.
+	return { fire: null, next: { lastBucket: top, resetsAt } }
 }
 
 /** Relative "resets in 12m" / "resets in 2h" suffix, or "" if unknown/past. */
