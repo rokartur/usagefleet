@@ -1,13 +1,15 @@
 import { useState } from 'react'
+import { IconPlus, IconX } from '@tabler/icons-react'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { Button } from '@/components/ui/button'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import type { ChartConfig } from '@/components/ui/chart'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Section } from '@/components/usage-ui'
 import type { HistoryDTO, HistoryRow } from '@/lib/data'
 import { formatTokens, formatUsd } from '@/lib/format'
@@ -132,8 +134,10 @@ function keyOf(r: HistoryRow, dim: Dim): string {
 const formatMetric = (v: number, m: Metric) => (m === 'cost' ? formatUsd(v) : formatTokens(v))
 
 /** Charted, filterable view of the all-time usage history: pick a period, a
- *  metric, what to split the stack by, and which groups/models/devices/sources
- *  to include. */
+ *  metric, and what to split the stack by. Narrowing to certain
+ *  groups/models/devices/sources goes through one palette, so an unfiltered
+ *  dashboard shows no filter UI at all — active filters are the only thing that
+ *  takes up room, one chip per dimension. */
 export function UsageExplorer({ history }: { history: HistoryDTO }) {
 	const [period, setPeriod] = useState<PeriodKey>('30d')
 	const [from, setFrom] = useState('')
@@ -146,6 +150,7 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 		model: [],
 		source: [],
 	})
+	const [picking, setPicking] = useState(false)
 
 	const groupName = new Map(history.groups.map(g => [g.id, g.name]))
 	const deviceName = new Map(history.devices.map(d => [d.id, d.name]))
@@ -166,8 +171,8 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 		}
 	}
 
-	// Every value each dimension takes across the WHOLE history, so the filter
-	// chips don't disappear as soon as you filter something out.
+	// Every value each dimension takes across the WHOLE history, so the palette
+	// keeps offering a value after you filtered it out.
 	const dimValues: Record<Dim, string[]> = {
 		device: [],
 		group: [],
@@ -179,6 +184,23 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 			label(d.key, a).localeCompare(label(d.key, b)),
 		)
 	}
+	// A dimension with a single value can't narrow anything, so it stays out of
+	// the palette.
+	const pickable = DIMENSIONS.filter(d => dimValues[d.key].length > 1)
+
+	const toggleFilter = (d: Dim, key: string) =>
+		setFilters(f => {
+			const next = f[d].includes(key) ? f[d].filter(k => k !== key) : [...f[d], key]
+			// Picking every value is the same as picking none.
+			return { ...f, [d]: next.length === dimValues[d].length ? [] : next }
+		})
+
+	/** What an active filter's chip reads: the values themselves while they still
+	 *  fit, a count once they don't. */
+	const chipLabel = (d: Dim) =>
+		filters[d].length > 2
+			? `${filters[d].length} of ${dimValues[d].length}`
+			: filters[d].map(k => label(d, k)).join(', ')
 
 	const view = (() => {
 		const [lo, hi] = periodBounds(period, from, to)
@@ -319,6 +341,56 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 							))}
 						</SelectContent>
 					</Select>
+					{pickable.map(
+						d =>
+							filters[d.key].length > 0 && (
+								<Button
+									key={d.key}
+									variant='outline'
+									size='sm'
+									onClick={() => setFilters(f => ({ ...f, [d.key]: [] }))}
+								>
+									{d.label}: {chipLabel(d.key)}
+									<IconX className='text-muted-foreground' aria-label='Clear' />
+								</Button>
+							),
+					)}
+					{pickable.length > 0 && (
+						<Popover open={picking} onOpenChange={setPicking}>
+							<PopoverTrigger
+								render={
+									<Button variant='ghost' size='sm' className='text-muted-foreground'>
+										<IconPlus />
+										Filter
+									</Button>
+								}
+							/>
+							<PopoverContent align='end' className='w-64 p-0'>
+								<Command>
+									<CommandInput placeholder='Group, model, device, source' />
+									<CommandList>
+										<CommandEmpty>Nothing matches.</CommandEmpty>
+										{pickable.map(d => (
+											<CommandGroup key={d.key} heading={d.label}>
+												{dimValues[d.key].map(key => (
+													<CommandItem
+														key={key}
+														// Prefixed so the two namespaces can't collide
+														// and so "model opus" narrows the list.
+														value={`${d.label} ${label(d.key, key)}`}
+														data-checked={filters[d.key].includes(key)}
+														onSelect={() => toggleFilter(d.key, key)}
+													>
+														{label(d.key, key)}
+													</CommandItem>
+												))}
+											</CommandGroup>
+										))}
+									</CommandList>
+								</Command>
+							</PopoverContent>
+						</Popover>
+					)}
 				</div>
 			}
 		>
@@ -342,46 +414,6 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 						/>
 					</div>
 				)}
-
-				{DIMENSIONS.filter(d => dimValues[d.key].length > 1).map(d => {
-					const all = dimValues[d.key]
-					const active = filters[d.key].length ? filters[d.key] : all
-					return (
-						<div key={d.key} className='flex flex-wrap items-center gap-2'>
-							<span className='w-14 shrink-0 text-xs text-muted-foreground'>{d.label}</span>
-							<ToggleGroup
-								multiple
-								variant='outline'
-								size='sm'
-								value={active}
-								onValueChange={next =>
-									setFilters(f => ({
-										...f,
-										// "nothing" and "everything" both mean no filter.
-										[d.key]: next.length === 0 || next.length === all.length ? [] : next,
-									}))
-								}
-								className='flex-wrap'
-								aria-label={`Filter by ${d.label.toLowerCase()}`}
-							>
-								{all.map(key => (
-									<ToggleGroupItem key={key} value={key}>
-										{label(d.key, key)}
-									</ToggleGroupItem>
-								))}
-							</ToggleGroup>
-							{filters[d.key].length > 0 && (
-								<Button
-									variant='ghost'
-									size='xs'
-									onClick={() => setFilters(f => ({ ...f, [d.key]: [] }))}
-								>
-									Reset
-								</Button>
-							)}
-						</div>
-					)
-				})}
 
 				{view ? (
 					<>
