@@ -8,7 +8,7 @@ import { deviceWithinPlan, overPlanLimit } from '@/lib/billing'
 import { dashboardForDevice, getLiveDashboards, recordLimitSample } from '@/lib/data'
 import { authenticateDevice } from '@/lib/device-auth'
 import { readJsonCapped } from '@/lib/rate-limit'
-import { LIMITS_STALE_MS } from '@/lib/usage/limits'
+import { LIMITS_STALE_MS, reportedWindows, toDate } from '@/lib/usage/limits'
 
 // Decimals allowed: collectors keep one decimal of Anthropic's utilization so
 // the group split (which multiplies by group count) doesn't amplify rounding.
@@ -43,14 +43,6 @@ const LimitsSchema = type({
 		.atMostLength(16)
 		.or('null'),
 })
-
-function toDate(v: string | null | undefined): Date | null {
-	if (!v) {
-		return null
-	}
-	const d = new Date(v)
-	return Number.isNaN(d.getTime()) ? null : d
-}
 
 /**
  * The calling device's own group slice, for surfacing usage outside the
@@ -148,12 +140,10 @@ async function POST(req: Request) {
 
 	const set = {
 		limitSource: b.source,
-		fiveHourPct: b.fiveHourPct ?? null,
-		sevenDayPct: b.sevenDayPct ?? null,
-		fiveHourResetsAt: toDate(b.fiveHourResetsAt),
-		sevenDayResetsAt: toDate(b.sevenDayResetsAt),
 		limitsReportedAt: now,
 		updatedAt: now,
+		// Only the windows this report actually carried — see reportedWindows.
+		...reportedWindows(b),
 		// Only overwrite the stored per-model limits when the collector sent a
 		// non-empty set. The per-model caps come from a flaky best-effort OAuth
 		// endpoint that returns [] on any timeout/hiccup; an empty array must not
@@ -171,16 +161,30 @@ async function POST(req: Request) {
 			}),
 	}
 	// Percentages are Anthropic's and Anthropic reports them per subscription, so
-	// they are stored per account. A device that can't name its login (API key, or
-	// a collector older than this) keeps writing to the ext_id = NULL bucket,
-	// which is exactly where its history already lives.
+	// they are stored per account.
 	const identity = b.account ?? null
+	// A report that can't name its login stays on the account this device is
+	// already bound to: `~/.claude.json` is briefly unreadable while Claude Code
+	// rewrites it, and falling into the ext_id = NULL bucket on that one read
+	// would pull the device out of its identified account — taking that account's
+	// card off the dashboard with it, since a view needs a live device. API-key
+	// devices and pre-multi-account collectors are bound to the bucket already,
+	// which is exactly where their history lives, so they stay there.
+	const boundExtId =
+		identity === null && device.claudeAccountId !== null
+			? await db
+					.select({ extId: claudeAccounts.extId })
+					.from(claudeAccounts)
+					.where(and(eq(claudeAccounts.id, device.claudeAccountId), eq(claudeAccounts.userId, device.userId)))
+					.limit(1)
+					.then(r => r[0]?.extId ?? null)
+			: null
 	const [account] = await db
 		.insert(claudeAccounts)
 		.values({
 			id: randomUUID(),
 			userId: device.userId,
-			extId: identity?.extId ?? null,
+			extId: identity?.extId ?? boundExtId,
 			email: identity?.email ?? null,
 			orgName: identity?.org ?? null,
 			...set,
@@ -201,8 +205,8 @@ async function POST(req: Request) {
 		// Keep a per-window record of the reported utilization: Claude only reports
 		// the open window, so this is the past-windows card's only ground truth
 		// once a window closes.
-		recordLimitSample(account, '5h', b.fiveHourPct, set.fiveHourResetsAt),
-		recordLimitSample(account, '7d', b.sevenDayPct, set.sevenDayResetsAt),
+		recordLimitSample(account, '5h', b.fiveHourPct, set.fiveHourResetsAt ?? null),
+		recordLimitSample(account, '7d', b.sevenDayPct, set.sevenDayResetsAt ?? null),
 		// Touch the device so the Devices list shows an accurate last-seen time, and
 		// bind it to the account whose usage it is now producing.
 		db.update(devices).set({ claudeAccountId: account.id, lastSeenAt: now }).where(eq(devices.id, device.id)),

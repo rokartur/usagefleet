@@ -12,3 +12,35 @@
  * if that combination ever needs to work.
  */
 export const LIMITS_STALE_MS = 15 * 60 * 1000
+
+/** An ISO string from a collector, or null when it is absent or unparseable. */
+export function toDate(v: string | null | undefined): Date | null {
+	if (!v) {
+		return null
+	}
+	const d = new Date(v)
+	return Number.isNaN(d.getTime()) ? null : d
+}
+
+/** The window fields of a limits report, as the collector sends them. */
+interface WindowReport {
+	fiveHourPct?: number | null
+	sevenDayPct?: number | null
+	fiveHourResetsAt?: string | null
+	sevenDayResetsAt?: string | null
+}
+
+/**
+ * The limit columns a report is allowed to write. Anthropic's oauth/usage
+ * endpoint drops a window on any hiccup and the collector still reports the one
+ * it did get, so a window is only overwritten when this report carried it —
+ * storing the null would read as 0% on the dashboard until the next cycle,
+ * while the last-known-good value is still roughly true. Same last-known-good
+ * rule the per-model limits already follow.
+ */
+export function reportedWindows(b: WindowReport) {
+	return {
+		...(b.fiveHourPct != null && { fiveHourPct: b.fiveHourPct, fiveHourResetsAt: toDate(b.fiveHourResetsAt) }),
+		...(b.sevenDayPct != null && { sevenDayPct: b.sevenDayPct, sevenDayResetsAt: toDate(b.sevenDayResetsAt) }),
+	}
+}
