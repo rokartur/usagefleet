@@ -1,12 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { AutoRefresh } from '@/components/AutoRefresh'
+import { ProjectTable } from '@/components/dashboard/ProjectTable'
 import { UsageExplorer } from '@/components/dashboard/UsageExplorer'
 import { WindowHistory } from '@/components/dashboard/WindowHistory'
 import { LiveDashboard } from '@/components/LiveDashboard'
 import {
 	getHistory,
 	getLiveDashboards,
+	getProjectUsage,
 	getWindowHistory,
 	listAccountViews,
 	listDevices,
@@ -20,10 +22,11 @@ const dashboardData = createServerFn().handler(async () => {
 	// One set of numbers per Anthropic account the fleet reports on: the
 	// percentages are Anthropic's and Anthropic meters each subscription
 	// separately.
-	const [dashboards, history, views] = await Promise.all([
+	const [dashboards, history, views, projects] = await Promise.all([
 		getLiveDashboards(user.id),
 		getHistory(user.id),
 		listAccountViews(user.id),
+		getProjectUsage(user.id, now),
 	])
 	const accounts = await Promise.all(
 		dashboards.map(async dash => ({
@@ -37,7 +40,7 @@ const dashboardData = createServerFn().handler(async () => {
 	// Only a never-reported account sees the setup rail, so this extra query costs
 	// nothing once data is flowing.
 	const setup = accounts.some(a => a.dash.connected) ? null : await setupState(user.id)
-	return { accounts, history, setup }
+	return { accounts, history, projects, setup }
 })
 
 /** Newest active device (the one just added, usually) and whether any device
@@ -56,7 +59,7 @@ export const Route = createFileRoute('/_dash/dashboard')({
 })
 
 function DashboardPage() {
-	const { accounts, history, setup } = Route.useLoaderData()
+	const { accounts, history, projects, setup } = Route.useLoaderData()
 	const multi = accounts.length > 1
 	return (
 		<>
@@ -74,6 +77,7 @@ function DashboardPage() {
 					/>
 				) : null,
 			)}
+			{projects.length > 0 && <ProjectTable projects={projects} />}
 			{history.rows.length > 0 && <UsageExplorer history={history} />}
 		</>
 	)

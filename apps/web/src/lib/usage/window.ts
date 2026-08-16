@@ -1,5 +1,11 @@
 import type { UsageRecord } from './types'
 
+/** How far back the per-project table looks. Fixed rather than user-picked: it
+ *  bounds the scan, and "what am I working on lately" needs no date picker.
+ *  Lives here, not beside the query, because the table renders the number and a
+ *  component may not import the server-only data layer. */
+export const PROJECT_DAYS = 30
+
 /**
  * Start of the current weekly window: the most recent occurrence of
  * `weekday`@`hourUtc` (UTC) at or before `now`. weekday: 0=Sun..6=Sat.

@@ -85,6 +85,15 @@ the running peak per `(claude_account, window, window_start)` on every limits po
 groups using the bucketed aggregates — real recorded utilization, not a
 reconstruction from token counts.
 
+## Projects table
+
+`getProjectUsage()` groups the same in-SQL fold by `(cwd × model)` over a fixed
+30-day window, then sums the models away per directory so each project carries
+one cost. The working directory is the only project identity the JSONL logs
+carry, so two checkouts of the same repo are two projects, and a message logged
+without a `cwd` lands in one "Unknown" row. Nothing here is limit-shaped: the
+table is tokens and estimated cost, per user, across every account.
+
 ## When you change any of this
 
 `usage.test.ts` and `daily-agg.test.ts` pin the fold and the aggregate sums;

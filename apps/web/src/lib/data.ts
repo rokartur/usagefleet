@@ -16,6 +16,7 @@ import {
 	modelLabel,
 	monthKey,
 	pastWindowStarts,
+	PROJECT_DAYS,
 	refreshPrices,
 	sumAgg,
 	sumRecords,
@@ -910,6 +911,101 @@ export async function getHistory(userId: string): Promise<HistoryDTO> {
 		groups: groupRows.map(g => ({ color: g.color, id: g.id, name: g.name })),
 		rows: rows.map(r => ({ ...r, costUsd: costForTokens(r, r.model, ttl) })),
 	}
+}
+
+/** One project's usage over the {@link PROJECT_DAYS} window. The "project" is
+ *  the working directory Claude Code recorded on the message, since that is the
+ *  only project identity the JSONL logs carry. */
+export interface ProjectUsage {
+	/** Absolute cwd as reported, or null when the log had none. */
+	path: string | null
+	billableTokens: number
+	totalTokens: number
+	costUsd: number
+	/** Newest event in the window, ISO. */
+	lastActive: string
+}
+
+/**
+ * Per-project token totals and cost for the last {@link PROJECT_DAYS} days,
+ * costliest first.
+ *
+ * Same in-SQL fold as {@link loadDailyAggregates} (streamed segments collapse to
+ * the largest row per logical message), grouped by (cwd × model) because
+ * pricing is per model; the models are then summed away per project here.
+ */
+export async function getProjectUsage(userId: string, now = new Date()): Promise<ProjectUsage[]> {
+	const since = new Date(now.getTime() - PROJECT_DAYS * 24 * 60 * 60 * 1000)
+	await refreshPrices()
+	const settings = await ensureSettings(userId)
+	const result = await db.execute(sql`
+    WITH folded AS (
+      SELECT DISTINCT ON (${FOLD_KEY})
+        ${usageEvents.ts} AS ts,
+        ${usageEvents.cwd} AS cwd,
+        ${usageEvents.model} AS model,
+        ${usageEvents.inputTokens} AS input_tokens,
+        ${usageEvents.outputTokens} AS output_tokens,
+        ${usageEvents.cacheCreationTokens} AS cache_creation_tokens,
+        ${usageEvents.cacheReadTokens} AS cache_read_tokens
+      FROM ${usageEvents}
+      WHERE ${usageEvents.userId} = ${userId}
+        AND ${usageEvents.ts} >= ${since.toISOString()}::timestamptz
+      ORDER BY ${FOLD_KEY}, ${ROW_TOTAL} DESC, ${usageEvents.ts} ASC
+    )
+    SELECT
+      folded.cwd AS cwd,
+      folded.model AS model,
+      max(folded.ts) AS last_ts,
+      sum(folded.input_tokens)::bigint AS input,
+      sum(folded.output_tokens)::bigint AS output,
+      sum(folded.cache_creation_tokens)::bigint AS cache_creation,
+      sum(folded.cache_read_tokens)::bigint AS cache_read
+    FROM folded
+    GROUP BY 1, 2
+    HAVING (
+      sum(folded.input_tokens) + sum(folded.output_tokens) +
+      sum(folded.cache_creation_tokens) + sum(folded.cache_read_tokens)
+    ) > 0
+  `)
+
+	const rows = result as unknown as {
+		cwd: string | null
+		model: string | null
+		last_ts: string | Date
+		input: string
+		output: string
+		cache_creation: string
+		cache_read: string
+	}[]
+	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
+	const byPath = new Map<string, ProjectUsage>()
+	for (const r of rows) {
+		const totals = {
+			cacheCreationTokens: Number(r.cache_creation),
+			cacheReadTokens: Number(r.cache_read),
+			inputTokens: Number(r.input),
+			outputTokens: Number(r.output),
+			totalTokens: Number(r.input) + Number(r.output) + Number(r.cache_creation) + Number(r.cache_read),
+		} satisfies TokenTotals
+		const lastActive = new Date(r.last_ts).toISOString()
+		const cur = byPath.get(r.cwd ?? '')
+		if (cur) {
+			cur.billableTokens += billableTokens(totals)
+			cur.totalTokens += totals.totalTokens
+			cur.costUsd += costForTokens(totals, r.model, ttl)
+			cur.lastActive = lastActive > cur.lastActive ? lastActive : cur.lastActive
+		} else {
+			byPath.set(r.cwd ?? '', {
+				billableTokens: billableTokens(totals),
+				costUsd: costForTokens(totals, r.model, ttl),
+				lastActive,
+				path: r.cwd,
+				totalTokens: totals.totalTokens,
+			})
+		}
+	}
+	return [...byPath.values()].toSorted((a, b) => b.costUsd - a.costUsd)
 }
 
 /** DTO form of a per-model limit (resetsAt → ISO). */
