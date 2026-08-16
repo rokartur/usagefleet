@@ -98,16 +98,19 @@ async function GET(req: Request) {
 	// why a frozen percentage would otherwise refuse prompts forever.
 	const fresh = dash.reportedAt !== null && Date.now() - dash.reportedAt.getTime() <= LIMITS_STALE_MS
 
-	// Per-group enforcement switches. Both windows are measured against the
-	// group's equal budget slice, so 100% means "ate my share", not "the
-	// account is out" — a group only blocks itself, never its siblings.
-	const blockedWindow = fresh
-		? group?.blockOnSessionLimit && sessionPct >= 100
-			? 'session'
-			: group?.blockOnWeeklyLimit && weeklyPct >= 100
-				? 'weekly'
-				: null
-		: null
+	// Per-group enforcement switches, gated by the device's own blocking toggle
+	// — a machine switched off on the devices page is never refused, whatever
+	// its group says. Both windows are measured against the group's equal budget
+	// slice, so 100% means "ate my share", not "the account is out" — a group
+	// only blocks itself, never its siblings.
+	const blockedWindow =
+		fresh && device.blockingEnabled
+			? group?.blockOnSessionLimit && sessionPct >= 100
+				? 'session'
+				: group?.blockOnWeeklyLimit && weeklyPct >= 100
+					? 'weekly'
+					: null
+			: null
 	const resetsAt = blockedWindow === 'session' ? dash.fiveHourResetsAt : dash.sevenDayResetsAt
 
 	return Response.json(

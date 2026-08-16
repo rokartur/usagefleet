@@ -3,7 +3,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { MonitorSmartphoneIcon } from 'lucide-react'
 import { AddDeviceForm } from '@/components/AddDeviceForm'
 import { AutoRefresh } from '@/components/AutoRefresh'
-import { DeviceGroupSelect, RevokeDeviceButton } from '@/components/devices/DeviceActions'
+import { DeviceBlockingToggle, DeviceGroupSelect, RevokeDeviceButton } from '@/components/devices/DeviceActions'
 import { Badge } from '@/components/ui/badge'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { accountPlan } from '@/lib/billing'
@@ -149,6 +149,13 @@ function DevicesPage() {
 										>
 											{formatRelative(d.lastSeenAt)}
 										</span>
+										{!d.revoked && (
+											<DeviceBlockingToggle
+												deviceId={d.id}
+												deviceName={d.name}
+												enabled={d.blockingEnabled}
+											/>
+										)}
 										<DeviceGroupSelect
 											deviceId={d.id}
 											deviceName={d.name}

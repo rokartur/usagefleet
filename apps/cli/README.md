@@ -88,7 +88,9 @@ WinRT toast via `powershell.exe`.
 
 A group can be set to **refuse new prompts** once it has burned its budget slice
 (1/N of the account limit) for a window — a switch per window on the Groups
-page, both off by default. `usagefleet login` registers a Claude Code `UserPromptSubmit` hook in
+page, both off by default. Each device also has its own blocking toggle on the
+Devices page: switched off, that machine is never refused, whatever its group
+says. `usagefleet login` registers a Claude Code `UserPromptSubmit` hook in
 `~/.claude/settings.json` (removed by `uninstall`, refreshed rather than stacked
 on re-install, and skipped entirely with `USAGEFLEET_HOOK=0`):
 

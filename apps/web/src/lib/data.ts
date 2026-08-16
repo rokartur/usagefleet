@@ -1261,6 +1261,7 @@ export async function listDevices(userId: string) {
 	return (
 		db
 			.select({
+				blockingEnabled: devices.blockingEnabled,
 				collectorVersion: devices.collectorVersion,
 				createdAt: devices.createdAt,
 				groupId: devices.groupId,

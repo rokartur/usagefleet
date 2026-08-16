@@ -3,7 +3,8 @@ import { Ban } from 'lucide-react'
 import { ActionForm } from '@/components/ActionForm'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { assignDeviceGroup, revokeDevice } from '@/lib/actions'
+import { Switch } from '@/components/ui/switch'
+import { assignDeviceGroup, revokeDevice, setDeviceBlocking } from '@/lib/actions'
 
 /** Moves a device between groups on change — no separate Save button. */
 export function DeviceGroupSelect({
@@ -50,6 +51,51 @@ export function DeviceGroupSelect({
 					))}
 				</SelectContent>
 			</Select>
+		</ActionForm>
+	)
+}
+
+/** Per-device guard kill switch: off = `usagefleet guard` never refuses a
+ *  prompt on this machine, even when its group's blocking switches are on. */
+export function DeviceBlockingToggle({
+	deviceId,
+	deviceName,
+	enabled,
+}: {
+	deviceId: string
+	deviceName: string
+	enabled: boolean
+}) {
+	const form = useRef<HTMLFormElement>(null)
+	const [checked, setChecked] = useState(enabled)
+
+	// Submit after the state lands in the hidden input, same as the group select.
+	useEffect(() => {
+		if (checked !== enabled) {
+			form.current?.requestSubmit()
+		}
+	}, [checked, enabled])
+
+	return (
+		<ActionForm
+			ref={form}
+			action={setDeviceBlocking}
+			loadingMessage={`Updating ${deviceName}…`}
+			successMessage={checked ? `${deviceName} can be blocked` : `${deviceName} exempt from blocking`}
+			errorMessage={`Couldn't update ${deviceName}. Please try again.`}
+		>
+			<input type='hidden' name='deviceId' value={deviceId} />
+			{checked && <input type='hidden' name='enabled' value='on' />}
+			{/* The switch carries its own accessible name; the text is a visual cue. */}
+			<span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
+				blocking
+				<Switch
+					size='sm'
+					checked={checked}
+					onCheckedChange={setChecked}
+					aria-label={`Blocking for ${deviceName}`}
+				/>
+			</span>
 		</ActionForm>
 	)
 }

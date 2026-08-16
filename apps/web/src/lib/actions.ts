@@ -181,6 +181,20 @@ export const assignDeviceGroup = createServerFn({ method: 'POST' })
 			.where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
 	})
 
+/** Per-device kill switch for `usagefleet guard`: off = that machine is never
+ *  refused a prompt, even when its group's blocking switches are on. */
+export const setDeviceBlocking = createServerFn({ method: 'POST' })
+	.inputValidator((formData: FormData) => formData)
+	.handler(async ({ data: formData }) => {
+		const user = await requireUser()
+		const deviceId = String(formData.get('deviceId'))
+		// Unchecked switches aren't submitted, so absence means "off".
+		await db
+			.update(devices)
+			.set({ blockingEnabled: formData.get('enabled') === 'on' })
+			.where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
+	})
+
 /** Creates a device + its API token. Returns the plaintext token ONCE. */
 export const createDevice = createServerFn({ method: 'POST' })
 	.inputValidator((data: unknown) => {

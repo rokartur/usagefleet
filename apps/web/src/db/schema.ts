@@ -92,6 +92,9 @@ export const devices = pgTable(
 		// limits posts. NULL until the first one lands. Usage is attributed to the
 		// account the device is on *now*, exactly like groupId — moving a machine
 		// rewrites its history.
+		// Per-device kill switch for `usagefleet guard`: when false this machine is
+		// never refused a prompt, even when its group's blocking switches are on.
+		blockingEnabled: boolean('blocking_enabled').notNull().default(true),
 		claudeAccountId: text('claude_account_id').references(() => claudeAccounts.id, {
 			onDelete: 'set null',
 		}),

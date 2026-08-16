@@ -121,7 +121,8 @@ handlers, and on the `402` path so a parked device still shows as alive.
   `{ group, sessionPct, weeklyPct, blocked, blockedWindow, blockedUntil,
   reportedAt }`; the guard reads `blocked` to decide and `blockedWindow` /
   `blockedUntil` to word the refusal. `blocked` is true only when the device's
-  group has the matching switch on, that window is at 100% of the group's budget
+  own blocking toggle is on (devices page, per machine), its group has the
+  matching switch on, that window is at 100% of the group's budget
   slice, and the last reported utilization is younger than `LIMITS_STALE_MS`
   (15 min). A stale reading never blocks: the limits leg can die while upload
   keeps working, and nothing decays the stored percentage.
