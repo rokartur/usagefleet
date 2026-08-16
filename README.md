@@ -4,6 +4,7 @@
 
 <p align="center">
 	<a href="https://www.npmjs.com/package/@usagefleet/cli"><img src="https://img.shields.io/npm/v/@usagefleet/cli?style=flat-square&color=000&labelColor=000&logo=npm&logoColor=fff" alt="npm"></a>
+	<a href="https://www.npmjs.com/package/@usagefleet/cli"><img src="https://img.shields.io/npm/dm/@usagefleet/cli?style=flat-square&color=000&labelColor=000" alt="npm downloads"></a>
 	<a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-000?style=flat-square&labelColor=000" alt="GPL-3.0-or-later"></a>
 </p>
 
