@@ -119,3 +119,17 @@ jobs:
           files: apps/cli/usagefleet-cli-${{ steps.meta.outputs.version }}.tgz
           make_latest: true
           generate_release_notes: true
+
+      # The bump above only existed inside the runner. Commit the manifest back
+      # so the repo states the version that is actually on npm. Only
+      # package.json: src/release.ts stays "dev" in git on purpose. A push made
+      # with GITHUB_TOKEN does not trigger workflows, so this cannot loop.
+      - name: Commit the version bump
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git commit -m "chore(cli): v$VERSION" -- package.json
+          git push origin HEAD:main
+        working-directory: apps/cli
