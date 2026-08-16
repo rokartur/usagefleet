@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { DEFAULT_ENDPOINT, loadConfig, resolvePiDirs } from './config.js'
+import { loadConfig, resolvePiDirs } from './config.js'
 
 const realEnv = { ...process.env }
 afterEach(() => {
@@ -14,42 +14,22 @@ function withStore(store: Record<string, unknown>): void {
 	const path = join(mkdtempSync(join(tmpdir(), 'uf-config-')), 'config.json')
 	writeFileSync(path, JSON.stringify(store))
 	process.env.USAGEFLEET_CONFIG = path
-	delete process.env.USAGEFLEET_ENDPOINT
 	delete process.env.USAGEFLEET_TOKEN
 }
 
 describe(loadConfig, () => {
-	// `install --token` writes no endpoint, so setup on the hosted service is a
-	// token and nothing else.
-	it('falls back to the hosted endpoint when none is configured', () => {
-		withStore({ token: 'uf_x' })
-		expect(loadConfig().endpoint).toBe(DEFAULT_ENDPOINT)
-	})
-
-	it('keeps a self-hosted endpoint from the config file', () => {
-		withStore({ endpoint: 'https://track.example.com/', token: 'uf_x' })
-		expect(loadConfig().endpoint).toBe('https://track.example.com')
-	})
-
 	it('still requires a token', () => {
 		withStore({})
 		expect(() => loadConfig()).toThrow(/USAGEFLEET_TOKEN/)
 	})
 
-	// `install --endpoint/--token` reach loadConfig by setting these vars, so env
-	// outranking the file is what makes an explicit flag win over a stale store.
-	// Flip this precedence and `install --token <new>` silently keeps the old one.
+	// `login <token>` reaches loadConfig by setting this var, so env outranking the
+	// file is what makes an explicit token win over a stale store. Flip this
+	// precedence and `login <new>` silently keeps the old one.
 	it('prefers env over the config file', () => {
-		withStore({ endpoint: 'https://old.example.com', token: 'uf_old' })
-		process.env.USAGEFLEET_ENDPOINT = 'https://new.example.com'
+		withStore({ token: 'uf_old' })
 		process.env.USAGEFLEET_TOKEN = 'uf_new'
-		expect(loadConfig()).toMatchObject({ endpoint: 'https://new.example.com', token: 'uf_new' })
-	})
-
-	it('rejects a non-https endpoint before it can carry the token', () => {
-		withStore({ token: 'uf_x' })
-		process.env.USAGEFLEET_ENDPOINT = 'http://track.example.com'
-		expect(() => loadConfig()).toThrow(/must be https/)
+		expect(loadConfig()).toMatchObject({ token: 'uf_new' })
 	})
 })
 

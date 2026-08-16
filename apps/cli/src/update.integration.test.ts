@@ -48,7 +48,7 @@ describe('checkForUpdate', () => {
 		)
 		expect(spawn).toHaveBeenLastCalledWith(
 			process.execPath,
-			[SELF, 'install'],
+			[SELF, 'login'],
 			expect.objectContaining({ detached: true }),
 		)
 	})

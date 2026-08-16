@@ -35,7 +35,7 @@ N groups), so "62%" means that group used 62% of its budget — not 62% of yours
 
 ```bash
 npm i -g @usagefleet/cli
-usagefleet install --token uf_xxx
+usagefleet login uf_xxx
 ```
 
 The dashboard fills in within a minute. Same two commands on macOS, Linux and

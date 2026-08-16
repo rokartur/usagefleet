@@ -6,7 +6,6 @@ import { postLimits, uploadBatch } from './uploader.js'
 const cfg: Config = {
 	batchSize: 100,
 	desktopDir: null,
-	endpoint: 'https://x.test',
 	piDirs: [],
 	projectsDir: '',
 	storePath: '',

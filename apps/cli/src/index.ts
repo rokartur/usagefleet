@@ -3,7 +3,7 @@ import { detectClaudeCreds } from './claude-creds.js'
 import { reportLimitsOnce, runOnce } from './collector.js'
 import { commands, completionScript, installCompletions, removeCompletions, shells } from './completion.js'
 import type { Shell } from './completion.js'
-import { loadConfig } from './config.js'
+import { ENDPOINT, loadConfig } from './config.js'
 import { runGuard } from './guard.js'
 import { loadNotifyConfig } from './notifier.js'
 import { sendNotification } from './notify.js'
@@ -120,7 +120,7 @@ async function cmdWatch(): Promise<void> {
 	let lastUpdateAt = 0
 	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs].filter((d): d is string => !!d)
 	console.log(header(`watching every ${interval / 1000}s`))
-	console.log(hint(`${watching.map(tilde).join(' · ')} → ${host(cfg.endpoint)}`))
+	console.log(hint(`${watching.map(tilde).join(' · ')} → ${host(ENDPOINT)}`))
 	console.log('')
 	let stopping = false
 	let timer: ReturnType<typeof setTimeout> | null = null
@@ -209,7 +209,7 @@ async function cmdStatus(): Promise<void> {
 			: stateLine(
 					'bad',
 					'service',
-					`${svc.state} ${dim(svc.state === 'stopped' ? '· check the log' : '· run `usagefleet install`')}`,
+					`${svc.state} ${dim(svc.state === 'stopped' ? '· check the log' : '· run `usagefleet login`')}`,
 				),
 	)
 	console.log(
@@ -232,7 +232,7 @@ async function cmdStatus(): Promise<void> {
 	)
 
 	console.log('')
-	console.log(row('endpoint', host(cfg.endpoint)))
+	console.log(row('endpoint', host(ENDPOINT)))
 	console.log(row('device', `${state.deviceId} · token ${cfg.token.slice(0, 8)}…`))
 	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs].filter((d): d is string => !!d)
 	for (const [i, dir] of watching.entries()) {
@@ -250,23 +250,29 @@ function limitHealth(fiveHour: number | null, sevenDay: number | null): 'ok' | '
 	return worst >= 95 ? 'bad' : worst >= 80 ? 'warn' : 'ok'
 }
 
-/** Setup in one command: persist the flags (when given), then install the
+/** Setup in one command: `usagefleet login <device-token>`, then install the
  *  background service, which refuses to install without a resolvable token.
- *  The write merges over the existing store, so re-running install rotates the
- *  token without resetting tail offsets. Endpoint only matters when
- *  self-hosting; unset keeps whatever is configured. */
-async function cmdInstall(): Promise<void> {
-	// Apply the flags to the env loadConfig() reads rather than writing them to the
-	// store, so there is exactly one precedence chain and install() persists its
-	// single winner. Writing to the store first inverted the precedence: loadConfig
-	// prefers the env, so a stale USAGEFLEET_TOKEN in the install shell beat the
-	// flag and got written back over it, silently voiding token rotation. It also
-	// means a rejected value never reaches disk.
-	const endpoint = flag('endpoint')
-	const token = flag('token')
-	if (endpoint) {
-		process.env.USAGEFLEET_ENDPOINT = endpoint
+ *  The write merges over the existing store, so re-running login rotates the
+ *  token without resetting tail offsets. Omitting the token re-runs setup with
+ *  whatever is already configured, which is what self-update does. */
+async function cmdLogin(): Promise<void> {
+	// Rejected loudly rather than ignored: a collector that used to report to a
+	// self-hosted server would otherwise start shipping this device's usage to the
+	// hosted one on the next self-update, silently.
+	if (process.argv.some(a => a === '--endpoint' || a.startsWith('--endpoint='))) {
+		console.error(fail('endpoint', 'no longer configurable · this collector reports to usagefleet.com'))
+		return process.exit(1)
 	}
+
+	// Positional, with the retired `--token` flag still accepted: it is printed by
+	// every collector older than the rename and pasted into provisioning scripts.
+	// Apply it to the env loadConfig() reads rather than writing it to the store,
+	// so there is exactly one precedence chain and install() persists its single
+	// winner. Writing to the store first inverted the precedence: loadConfig
+	// prefers the env, so a stale USAGEFLEET_TOKEN in the login shell beat the
+	// argument and got written back over it, silently voiding token rotation. It
+	// also means a rejected value never reaches disk.
+	const token = process.argv.slice(3).find(a => !a.startsWith('-')) ?? flag('token')
 	if (token) {
 		process.env.USAGEFLEET_TOKEN = token
 	}
@@ -274,7 +280,7 @@ async function cmdInstall(): Promise<void> {
 	install()
 
 	// After the service, so a completion problem can never fail the part that
-	// matters. Self-update re-runs `install`, which keeps completions in step with
+	// matters. Self-update re-runs `login`, which keeps completions in step with
 	// new commands without the user doing anything.
 	try {
 		for (const { shell, path, rc } of installCompletions()) {
@@ -301,7 +307,6 @@ function print(rows: [string, string][]): void {
  *  it must work before a token exists, when the config is what you're fixing. */
 function cmdConfig(): void {
 	const env: [string, string][] = [
-		['USAGEFLEET_ENDPOINT', 'server base URL (self-hosting only)'],
 		['USAGEFLEET_TOKEN', 'device token from the Devices page'],
 		['USAGEFLEET_PROJECTS', 'override ~/.claude/projects'],
 		['USAGEFLEET_DESKTOP', 'override the Claude Desktop dir ("off" disables)'],
@@ -400,10 +405,13 @@ async function main(): Promise<void> {
 			console.log(RELEASE_VERSION)
 			return
 		}
-		// `init` was the separate config step; it now just does the whole setup.
+		// `install` (and `init` before it) named this step until it became `login`.
+		// Both still dispatch: they are pasted into scripts and printed by every
+		// collector old enough to predate the rename.
+		case 'login':
 		case 'init':
 		case 'install': {
-			return cmdInstall()
+			return cmdLogin()
 		}
 		case 'uninstall': {
 			const { uninstall } = await import('./service.js')

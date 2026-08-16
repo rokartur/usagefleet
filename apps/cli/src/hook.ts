@@ -111,7 +111,7 @@ function editSettings(transform: (s: ClaudeSettings) => ClaudeSettings, onWrite:
 /**
  * Register `usagefleet guard` as a Claude Code UserPromptSubmit hook, so a
  * group with blocking enabled actually refuses prompts. Called by
- * `usagefleet install`; set USAGEFLEET_HOOK=0 to keep settings.json
+ * `usagefleet login`; set USAGEFLEET_HOOK=0 to keep settings.json
  * untouched.
  */
 export function installPromptHook(program: string[]): void {

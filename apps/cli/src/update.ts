@@ -107,10 +107,10 @@ export async function checkForUpdate(log: Log, force = false): Promise<string | 
 		return null
 	}
 
-	// Detached: `install` rewrites the service definition and restarts it, which
+	// Detached: `login` rewrites the service definition and restarts it, which
 	// kills this process tree. npm replaced the file behind `self`, so this is
 	// already the new version.
-	spawn(process.execPath, [self, 'install'], { detached: true, stdio: 'ignore' }).unref()
+	spawn(process.execPath, [self, 'login'], { detached: true, stdio: 'ignore' }).unref()
 	log('ok', `installed ${latest} · restarting service`)
 	return latest
 }

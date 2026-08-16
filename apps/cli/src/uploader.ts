@@ -1,4 +1,5 @@
 import type { LimitsReport } from './claude-limits.js'
+import { ENDPOINT } from './config.js'
 import type { BatchPayload, Config } from './types.js'
 
 const MAX_ATTEMPTS = 6
@@ -39,7 +40,7 @@ export async function uploadBatch(payload: BatchPayload, cfg: Config): Promise<U
 	for (let attempt = 0; attempt <= MAX_ATTEMPTS; attempt++) {
 		let res: Response | null = null
 		try {
-			res = await fetch(`${cfg.endpoint}/api/v1/usage`, {
+			res = await fetch(`${ENDPOINT}/api/v1/usage`, {
 				body: JSON.stringify(payload),
 				headers: {
 					'content-type': 'application/json',
@@ -116,7 +117,7 @@ function retryAfterMs(header: string | null | undefined, fallback: number): numb
  *  reading is worth less than the next cycle's fresh one. */
 export async function postLimits(report: LimitsReport, cfg: Config): Promise<'ok' | UploadFailure> {
 	try {
-		const res = await fetch(`${cfg.endpoint}/api/v1/limits`, {
+		const res = await fetch(`${ENDPOINT}/api/v1/limits`, {
 			body: JSON.stringify(report),
 			headers: {
 				'content-type': 'application/json',

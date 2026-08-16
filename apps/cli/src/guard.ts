@@ -1,4 +1,4 @@
-import { loadConfig } from './config.js'
+import { ENDPOINT, loadConfig } from './config.js'
 import type { Config } from './types.js'
 
 /** Hooks run on the interactive path — a slow/hung server must not stall a
@@ -57,7 +57,7 @@ export async function runGuard(): Promise<number> {
 
 	let view: GuardView
 	try {
-		const res = await fetch(`${cfg.endpoint}/api/v1/limits`, {
+		const res = await fetch(`${ENDPOINT}/api/v1/limits`, {
 			headers: { 'x-api-key': cfg.token },
 			signal: AbortSignal.timeout(TIMEOUT_MS),
 		})

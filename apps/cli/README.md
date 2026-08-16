@@ -12,15 +12,17 @@ then, on that machine:
 
 ```bash
 npm i -g @usagefleet/cli
-usagefleet install --token uf_xxx
+usagefleet login uf_xxx
 ```
 
 Same two commands on macOS, Linux and Windows (in PowerShell chain them with
-`;` — 5.1 has no `&&`). `install` sets the collector to start at login and
-writes `~/.config/usagefleet/config.json` (mode `600`). The dashboard fills in
-within a minute.
+`;` — 5.1 has no `&&`). `login` pairs the device, sets the collector to start
+with your session and writes `~/.config/usagefleet/config.json` (mode `600`).
+The dashboard fills in within a minute.
 
-Running your own server? Add `--endpoint https://track.example.com`.
+`login` takes the token and nothing else. The collector reports to
+`usagefleet.com` and there is no way to redirect it: the request carries your
+device token and a log of what this machine is working on.
 
 If `npm i -g` fails with EACCES your global prefix is root-owned: use a Node
 version manager (nvm, fnm, volta) or `npm config set prefix ~/.local` with
@@ -38,12 +40,12 @@ usagefleet guard          # exit 2 if this device's group is over a blocking lim
 usagefleet notify-test    # fire a sample desktop notification
 usagefleet update         # upgrade now (it also self-updates every 6h)
 usagefleet config         # config file location + every env override
-usagefleet install        # (re)install the background service, idempotent
+usagefleet login <token>  # pair this device + (re)install the service, idempotent
 usagefleet uninstall      # remove it
 usagefleet completion zsh # print a shell completion script (zsh, fish)
 ```
 
-`install` sets up completions for you, for each shell you actually use — zsh
+`login` sets up completions for you, for each shell you actually use — zsh
 gets `~/.zsh/completions/_usagefleet` plus an `fpath` block appended to
 `.zshrc`, fish gets `~/.config/fish/completions/usagefleet.fish`. Restart the
 shell once. `uninstall` removes both again, and self-update keeps them current.
@@ -85,7 +87,7 @@ WinRT toast via `powershell.exe`.
 
 A group can be set to **refuse new prompts** once it has burned its budget slice
 (1/N of the account limit) for a window — a switch per window on the Groups
-page, both off by default. `usagefleet install` registers a Claude Code `UserPromptSubmit` hook in
+page, both off by default. `usagefleet login` registers a Claude Code `UserPromptSubmit` hook in
 `~/.claude/settings.json` (removed by `uninstall`, refreshed rather than stacked
 on re-install, and skipped entirely with `USAGEFLEET_HOOK=0`):
 
@@ -109,13 +111,12 @@ finishes.
 `~/.config/usagefleet/config.json` (honours `XDG_CONFIG_HOME`) holds everything
 the CLI persists: your settings plus two machine-managed sections, `state` (tail
 offsets) and `notify` (which thresholds already fired). Delete it to start
-clean. Re-running `install` merges, so rotating a token doesn't reset offsets.
+clean. Re-running `login` merges, so rotating a token doesn't reset offsets.
 
 Env vars override the file:
 
 | Variable | Meaning |
 |----------|---------|
-| `USAGEFLEET_ENDPOINT` | server base URL (default `https://usagefleet.com`). Must be `https://`, loopback may be `http://` |
 | `USAGEFLEET_TOKEN` | device token |
 | `USAGEFLEET_PROJECTS` | override `~/.claude/projects` |
 | `USAGEFLEET_DESKTOP` | override the Claude Desktop sessions dir; `off` to skip it |
@@ -131,7 +132,7 @@ Env vars override the file:
 | `USAGEFLEET_HOOK` | `0` keeps the prompt-blocking hook out of `~/.claude/settings.json` |
 | `CLAUDE_CONFIG_DIR` | Claude Code's own knob: which login to watch (default `~/.claude`) |
 
-When run as a service, `install` bakes every `USAGEFLEET_*` value currently set
+When run as a service, `login` bakes every `USAGEFLEET_*` value currently set
 (plus `ANTHROPIC_API_KEY` and `CLAUDE_CONFIG_DIR`) into the launchd/systemd
 unit, written mode `600`.
 
@@ -145,7 +146,7 @@ own device token and its own state:
 CLAUDE_CONFIG_DIR=~/.claude-work \
   USAGEFLEET_CONFIG=~/.config/usagefleet/work.json \
   USAGEFLEET_PROJECTS=~/.claude-work/projects \
-  usagefleet install --token uf_...
+  usagefleet login uf_...
 ```
 
 Each reports its own account, and the dashboard keeps their limits apart. With a
@@ -154,11 +155,11 @@ to the default login.
 
 ## Background service
 
-`install` is idempotent and reload-safe: re-running it rewrites the service
+`login` is idempotent and reload-safe: re-running it rewrites the service
 definition and restarts it, so it doubles as the update step. It launches an
 absolute `node` plus the installed package path, so an empty service PATH is
 fine — but removing that Node version (`nvm uninstall`) stops the collector
-until you re-run `usagefleet install` under the new one.
+until you re-run `usagefleet login` under the new one.
 
 - **macOS** — a LaunchAgent (`~/Library/LaunchAgents`, RunAtLoad + KeepAlive),
   booted immediately. Logs in `~/Library/Logs/usagefleet/`. Plist is mode `600`:
@@ -175,12 +176,12 @@ until you re-run `usagefleet install` under the new one.
 > the login Keychain for the real limit % may be denied to a non-interactive
 > agent — the collector logs a clear hint. Either approve `/usr/bin/security`
 > access to the `Claude Code-credentials` item once, or set `ANTHROPIC_API_KEY`
-> before `usagefleet install` so limits use the API key.
+> before `usagefleet login` so limits use the API key.
 
 ## Updates
 
 `watch` checks the npm registry at startup and every 6 hours; on a new version
-it runs `npm install -g @usagefleet/cli@<version>` and re-runs `install` to
+it runs `npm install -g @usagefleet/cli@<version>` and re-runs `login` to
 restart the service on it. `usagefleet update` does the same on demand. npm is
 called through the absolute path next to the running `node`, because a
 launchd/systemd service gets a minimal PATH.

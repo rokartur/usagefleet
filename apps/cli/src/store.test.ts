@@ -32,6 +32,8 @@ describe('store', () => {
 	it('folds the three legacy files into one, keeping token and offsets', () => {
 		writeFileSync(
 			join(home, '.usagefleet.json'),
+			// `endpoint` is a field the store no longer has: old files still carry it,
+			// and dropping an unknown key must not take the token with it.
 			JSON.stringify({
 				endpoint: 'https://a.test',
 				projectsDir: '/p',
@@ -74,7 +76,7 @@ describe('store', () => {
 			s.state.files['/a.jsonl'] = { inode: 1, offset: 10 }
 		})
 
-		// Someone ran `usagefleet install` after the service loaded its copy.
+		// Someone ran `usagefleet login` after the service loaded its copy.
 		updateStore(path, s => {
 			s.token = 'uf_rotated'
 		})

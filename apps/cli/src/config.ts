@@ -5,25 +5,19 @@ import type { Config } from './types.js'
 /** Matches the server's BatchSchema `.max(1000)`. */
 const MAX_BATCH = 1000
 
-/** The hosted service. Only self-hosted deployments have to name an endpoint,
- *  so setup on the hosted one is a token and nothing else. */
-export const DEFAULT_ENDPOINT = 'https://usagefleet.com'
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
+/** The only server a collector talks to. Not configurable: the request carries
+ *  a device token and a log of what this machine is working on, so there is one
+ *  https destination and no way to redirect it. */
+export const ENDPOINT = 'https://usagefleet.com'
 
 /** Resolve config from env first, then the stored settings (see store.ts). */
 export function loadConfig(): Config {
 	const file = readStore()
 	// Use `||` (not `??`) so an empty-string env var falls back to the config
 	// file — launchd/systemd units may inject empty USAGEFLEET_* values.
-	const endpoint = (process.env.USAGEFLEET_ENDPOINT || file.endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '')
 	const token = process.env.USAGEFLEET_TOKEN || file.token || ''
 	if (!token) {
 		throw new Error('USAGEFLEET_TOKEN is not set')
-	}
-	if (!isSecureEndpoint(endpoint)) {
-		throw new Error(
-			`endpoint must be https (got ${endpoint}). It carries the device token on every request. Set --endpoint or USAGEFLEET_ENDPOINT.`,
-		)
 	}
 	// Guard batch size: "0" (infinite loop), NaN (silent drop), fractional → 100.
 	// Clamped to the server's own 1000-record cap, since a larger batch is
@@ -33,7 +27,6 @@ export function loadConfig(): Config {
 	return {
 		batchSize,
 		desktopDir: resolveOptionalDir(process.env.USAGEFLEET_DESKTOP, file.desktopDir, defaultDesktopSessionsDir()),
-		endpoint,
 		piDirs: resolvePiDirs(process.env.USAGEFLEET_PI, file.piDir),
 		projectsDir: process.env.USAGEFLEET_PROJECTS || file.projectsDir || defaultProjectsDir(),
 		storePath: storePath(),
@@ -61,22 +54,4 @@ function resolveOptionalDir(env: string | undefined, fromFile: string | undefine
 		return null
 	}
 	return env || fromFile || fallback
-}
-
-/**
- * The endpoint must be https: it carries the device token on every request, and
- * the payload is a log of what this machine is working on. Loopback is exempt so
- * local development keeps working.
- */
-export function isSecureEndpoint(endpoint: string): boolean {
-	let url: URL
-	try {
-		url = new URL(endpoint)
-	} catch {
-		return false
-	}
-	if (url.protocol === 'https:') {
-		return true
-	}
-	return url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname)
 }

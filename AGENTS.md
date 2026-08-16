@@ -1,6 +1,6 @@
 # UsageFleet — agent guide
 
-Self-hosted tracker for one Claude subscription used on many desktops. A CLI
+Hosted tracker for one Claude subscription used on many desktops. A CLI
 collector tails local Claude JSONL logs and reports both raw token usage and
 Anthropic's own rate-limit utilization; the web app splits those official
 percentages across device groups.
@@ -40,6 +40,10 @@ Break one of these and the product silently reports wrong numbers or leaks acces
 - **A group's percentage is its budget slice**, i.e. share × the number of groups
   with a device on that account: with two such groups, one at half the account
   reads 100%. Uncapped past 100% on purpose.
+- **The collector reports to one server and cannot be redirected.** `ENDPOINT` in
+  `apps/cli/src/config.ts` is a constant; there is no flag, env var or stored
+  field. `login` exits non-zero on `--endpoint` rather than ignoring it, because
+  a silent fallback would ship a self-hoster's usage to the hosted service.
 - **Device tokens are stored as SHA-256 only** (`lib/device-token.ts`), shown once
   at creation. Every collector endpoint re-checks the plan
   (`deviceWithinPlan` → 402) because a downgrade parks devices without revoking.

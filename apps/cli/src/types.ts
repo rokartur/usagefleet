@@ -78,7 +78,6 @@ export interface LimitsMark {
  */
 export interface Store {
 	version: 1
-	endpoint?: string
 	token?: string
 	projectsDir?: string
 	desktopDir?: string
@@ -90,7 +89,6 @@ export interface Store {
 }
 
 export interface Config {
-	endpoint: string
 	token: string
 	/** The single JSON file backing every persisted value (see store.ts). */
 	storePath: string

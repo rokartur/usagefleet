@@ -9,7 +9,8 @@ import { writeFileAtomic } from './atomic-write.js'
  *
  *  `watch` is deliberately absent: it is the entrypoint the installed service
  *  runs, not something to type. It still dispatches — every plist and unit on
- *  disk names it — it just isn't advertised. */
+ *  disk names it — it just isn't advertised. So are `install`/`init`, the former
+ *  names of `login`, kept dispatching for commands already pasted into scripts. */
 export const commands: readonly { name: string; args?: string; meaning: string }[] = [
 	{ name: 'run', meaning: 'scan once, upload usage + report limits' },
 	{ name: 'limits', meaning: 'report only your real 5h/weekly usage' },
@@ -19,7 +20,7 @@ export const commands: readonly { name: string; args?: string; meaning: string }
 	{ name: 'status', meaning: 'service health, limits, resolved config' },
 	{ name: 'config', meaning: 'config file location and env overrides' },
 	{ name: 'completion', args: '<zsh|fish>', meaning: 'print a shell completion script' },
-	{ name: 'install', args: '--token <t>', meaning: 'configure + install the service and prompt guard' },
+	{ name: 'login', args: '<token>', meaning: 'pair this device, install the service and prompt guard' },
 	{ name: 'uninstall', meaning: 'remove the service and the guard' },
 ]
 

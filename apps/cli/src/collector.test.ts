@@ -37,7 +37,6 @@ function fixture(count: number): { cfg: Config; logPath: string } {
 		cfg: {
 			batchSize: 100,
 			desktopDir: null,
-			endpoint: 'https://x.test',
 			piDirs: [],
 			projectsDir: projects,
 			storePath: join(dir, 'config.json'),

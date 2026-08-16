@@ -6,22 +6,23 @@ process per machine. User-facing usage lives in
 
 ## Commands
 
-`index.ts` dispatches: `init`/`install` (interactive setup + autostart),
+`index.ts` dispatches: `login` (pairing, interactive setup + autostart),
 `run` (one cycle), `watch` (the daemon loop), `limits` (one limits report),
 `guard` (the prompt hook), `status`, `config` (file path + env reference),
 `update`, `notify-test`, `uninstall`, `completion` (zsh/fish scripts).
 
 The command list itself lives in `completion.ts` and drives both `help` and the
-generated completion scripts — add a command there, not in two places. Two
+generated completion scripts — add a command there, not in two places. Some
 entrypoints are deliberately missing from it, so they dispatch without being
 advertised: `watch`, which is what the installed service runs rather than
-something to type, and `--version`/`-v`, since bare `usagefleet` already prints
-the release in its header.
+something to type, `--version`/`-v`, since bare `usagefleet` already prints
+the release in its header, and `install`/`init`, the former names of `login`,
+which keep working for commands already pasted into scripts.
 
-`install` also writes the completion scripts to where each shell loads them
+`login` also writes the completion scripts to where each shell loads them
 (`installCompletions`), appending an `fpath` block to `.zshrc` when zsh needs
 one. It runs after the service so a completion failure can never fail the
-install, and self-update re-runs `install`, which keeps completions in step with
+install, and self-update re-runs `login`, which keeps completions in step with
 new commands.
 
 ## The watch loop
@@ -119,9 +120,16 @@ notification marks. Every write goes through `atomic-write.ts` — tmp file →
 fsync → rename → fsync dir, with a per-pid tmp name so a manual `run` alongside
 the installed service can't publish a corrupt half-write.
 
-Env overrides everything in the file: `USAGEFLEET_TOKEN`, `_ENDPOINT`,
-`_PROJECTS`, `_DESKTOP`, `_PI`, `_BATCH`, `_INTERVAL`, `_LIMITS_INTERVAL`,
-`_UPDATE`, `_UPDATE_INTERVAL`, `_NOTIFY`, `_NOTIFY_THRESHOLDS`, `_HOOK`.
+Env overrides everything in the file: `USAGEFLEET_TOKEN`, `_PROJECTS`,
+`_DESKTOP`, `_PI`, `_BATCH`, `_INTERVAL`, `_LIMITS_INTERVAL`, `_UPDATE`,
+`_UPDATE_INTERVAL`, `_NOTIFY`, `_NOTIFY_THRESHOLDS`, `_HOOK`.
+
+The server is not among them. `ENDPOINT` in `config.ts` is a constant
+(`https://usagefleet.com`): the request carries a device token and a log of what
+the machine is working on, so there is one https destination and no flag, env
+var or stored field that can redirect it. `login` refuses outright if it sees
+`--endpoint`, rather than ignoring it and shipping a self-hoster's usage to the
+hosted service on the first self-update.
 
 ## Autostart (`service.ts`)
 

@@ -5,6 +5,7 @@ import { detectClaudeAccount } from './claude-account.js'
 import { detectClaudeCreds, macKeychainDenied } from './claude-creds.js'
 import { fetchLimits } from './claude-limits.js'
 import type { LimitsReport } from './claude-limits.js'
+import { ENDPOINT } from './config.js'
 import { maybeNotify } from './notifier.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
@@ -123,14 +124,14 @@ export async function runOnce(
 			// remaining files would 401 identically, so stop this cycle and surface.
 			log(
 				'warn',
-				'auth rejected · device token invalid or revoked · re-run `usagefleet install --token <t>` with a fresh token',
+				'auth rejected · device token invalid or revoked · re-run `usagefleet login --token <t>` with a fresh token',
 			)
 			result.failed = true
 			break
 		} else if (outcome === 'plan') {
 			// The device sits outside the account's device limit (402). Every other
 			// file gets the same answer, so stop and say what unblocks it once.
-			log('warn', planWall(cfg.endpoint))
+			log('warn', planWall())
 			result.failed = true
 			break
 		} else if (outcome === 'invalid') {
@@ -156,7 +157,7 @@ export async function runOnce(
 	// One durable write per cycle rather than one per file: the store is fsynced
 	// on every save, and a crash mid-cycle only costs a re-upload the server
 	// dedups. Only our own section is replaced, so a token written by a
-	// concurrent `usagefleet install` survives.
+	// concurrent `usagefleet login` survives.
 	if (pruneMissingFiles(state, files) || advanced) {
 		updateStore(cfg.storePath, store => {
 			store.state.files = state.files
@@ -254,8 +255,8 @@ function pruneMissingFiles(state: { files: Record<string, unknown> }, scanned: {
 
 /** The one thing that unblocks a device parked outside the account's device limit.
  *  Shared by both upload legs so the wording cannot drift between them. */
-function planWall(endpoint: string): string {
-	return `device outside your plan's device limit · free a slot or upgrade at ${endpoint}/devices · nothing is lost, uploads resume once it fits`
+function planWall(): string {
+	return `device outside your plan's device limit · free a slot or upgrade at ${ENDPOINT}/devices · nothing is lost, uploads resume once it fits`
 }
 
 /**
@@ -304,11 +305,11 @@ export async function reportLimitsOnce(
 	const account = report.source === 'sub' ? detectClaudeAccount() : null
 	const outcome = await postLimits({ ...report, account }, cfg)
 	if (outcome === 'plan') {
-		log('warn', planWall(cfg.endpoint))
+		log('warn', planWall())
 	} else if (outcome === 'auth') {
 		log(
 			'warn',
-			'limits rejected · device token invalid or revoked · re-run `usagefleet install --token <device-token>`',
+			'limits rejected · device token invalid or revoked · re-run `usagefleet login --token <device-token>`',
 		)
 	} else if (outcome === 'invalid') {
 		log('warn', 'limits rejected as malformed · this is a bug, please report it')

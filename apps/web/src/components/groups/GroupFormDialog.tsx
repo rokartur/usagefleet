@@ -183,8 +183,8 @@ export function GroupFormDialog({
 								defaultChecked={group?.blockOnWeeklyLimit}
 							/>
 							<FieldDescription>
-								Enforced by the collector&apos;s prompt hook, installed by{' '}
-								<code>usagefleet install</code>.
+								Enforced by the collector&apos;s prompt hook, installed by <code>usagefleet login</code>
+								.
 							</FieldDescription>
 						</FieldSet>
 					</FieldGroup>

@@ -50,7 +50,6 @@ export function freshWindow(): WindowNotifyState {
 function normalize(raw: Partial<Store>): Store {
 	return {
 		desktopDir: raw.desktopDir,
-		endpoint: raw.endpoint,
 		limits: raw.limits,
 		notify: {
 			fiveHour: { ...freshWindow(), ...raw.notify?.fiveHour },
@@ -94,7 +93,7 @@ export function readStore(path: string = storePath()): Store {
 
 /**
  * Read-modify-write the store atomically. Re-reading inside the call is what
- * lets `usagefleet install` change the token while the service is mid-cycle: the
+ * lets `usagefleet login` change the token while the service is mid-cycle: the
  * service's next save picks up the new token instead of overwriting it with the
  * copy it loaded minutes ago.
  *
