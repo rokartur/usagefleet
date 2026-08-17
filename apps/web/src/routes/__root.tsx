@@ -52,13 +52,7 @@ export const Route = createRootRoute({
 			{ name: 'twitter:image', content: `${siteUrl()}/og.png` },
 		],
 		links: [
-			{ rel: 'icon', href: '/favicon.ico', sizes: '48x48' },
-			{
-				rel: 'icon',
-				href: '/favicon.svg',
-				type: 'image/svg+xml',
-				sizes: 'any',
-			},
+			{ rel: 'icon', href: '/favicon.ico', sizes: '16x16 32x32 48x48' },
 			{ rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
 			// Starts the font fetch with the stylesheet instead of after it, so text
 			// paints in Inter rather than swapping out of the fallback mid-load.
