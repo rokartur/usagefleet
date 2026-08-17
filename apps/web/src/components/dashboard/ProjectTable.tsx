@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { IconEye, IconEyeOff } from '@tabler/icons-react'
 import { type } from 'arktype'
+import { RelativeTime } from '@/components/RelativeTime'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Num, Section } from '@/components/usage-ui'
 import type { ProjectUsage } from '@/lib/data'
-import { formatRelative, formatTokens, formatUsd } from '@/lib/format'
+import { formatTokens, formatUsd } from '@/lib/format'
 import { PROJECT_DAYS } from '@/lib/usage'
 
 /** Which projects are hidden and whether names are folded. Per browser, not per
@@ -251,7 +252,7 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 									<Num value={p.costUsd} format={formatUsd} />
 								</TableCell>
 								<TableCell className='text-right whitespace-nowrap text-muted-foreground'>
-									{formatRelative(p.lastActive)}
+									<RelativeTime date={p.lastActive} />
 								</TableCell>
 								<TableCell className='py-0 text-right'>
 									<Button

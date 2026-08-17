@@ -5,12 +5,13 @@ import { MonitorSmartphoneIcon } from 'lucide-react'
 import { AddDeviceForm } from '@/components/AddDeviceForm'
 import { AutoRefresh } from '@/components/AutoRefresh'
 import { DeviceBlockingToggle, DeviceGroupSelect, RevokeDeviceButton } from '@/components/devices/DeviceActions'
+import { RelativeTime } from '@/components/RelativeTime'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { accountPlan } from '@/lib/billing'
 import { backfillUngroupedDevices, listDevices, listGroups } from '@/lib/data'
-import { OS_LABEL, formatRelative } from '@/lib/format'
+import { OS_LABEL } from '@/lib/format'
 import { planLabel } from '@/lib/plans'
 import { requireUser } from '@/lib/session'
 
@@ -159,7 +160,7 @@ function DevicesPage() {
 													: 'text-sm text-amber-600 dark:text-amber-500'
 											}
 										>
-											{formatRelative(d.lastSeenAt)}
+											<RelativeTime date={d.lastSeenAt} />
 										</span>
 										{!d.revoked && (
 											<DeviceBlockingToggle

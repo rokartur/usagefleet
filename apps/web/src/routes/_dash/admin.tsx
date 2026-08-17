@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { desc, eq, inArray, sql } from 'drizzle-orm'
 import { ActionForm } from '@/components/ActionForm'
+import { RelativeTime } from '@/components/RelativeTime'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,7 +11,6 @@ import { db } from '@/db'
 import { devices, subscription, user, userSettings } from '@/db/schema'
 import { ENTITLING_STATUSES } from '@/lib/billing'
 import { ensureSettings } from '@/lib/data'
-import { formatRelative } from '@/lib/format'
 import { FREE_DEVICES, isPaidPlan, PLANS, parseFreeDeviceLimit, planDevices, planLabel } from '@/lib/plans'
 import type { PlanId } from '@/lib/plans'
 import { requireAdmin } from '@/lib/session'
@@ -119,7 +119,9 @@ function AdminPage() {
 								)}
 								{a.username && <p className='text-xs text-muted-foreground'>{a.username}</p>}
 							</TableCell>
-							<TableCell className='text-muted-foreground'>{formatRelative(a.createdAt)}</TableCell>
+							<TableCell className='text-muted-foreground'>
+								<RelativeTime date={a.createdAt} />
+							</TableCell>
 							<TableCell>
 								<Badge variant={a.plan === 'free' ? 'outline' : 'secondary'} className='font-normal'>
 									{planLabel(a.plan)}

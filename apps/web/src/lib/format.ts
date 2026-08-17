@@ -19,6 +19,9 @@ export function formatUsd(n: number): string {
 	return `$${n.toFixed(2)}`
 }
 
+/** Reads the wall clock, so it cannot be rendered on both sides of hydration:
+ *  the server and the hydration pass seconds later can straddle a minute
+ *  boundary. Reach for `<RelativeTime>` when the result goes into the DOM. */
 export function formatRelative(d: Date | string | null): string {
 	if (!d) {
 		return 'never'
