@@ -1,28 +1,13 @@
 import type { ReactNode } from 'react'
-import { Link } from '@tanstack/react-router'
 import { SiteFooter } from '@/components/site-footer'
-import { buttonVariants } from '@/components/ui/button'
-import { UsageFleetMark } from '@/components/usage-fleet-mark'
+import { SiteHeader } from '@/components/site-header'
 
 /** Shell for the two legal pages: same header and footer as the landing page,
  *  one measure-capped column, no motion. Prose, not product. */
 export function LegalPage({ title, updated, children }: { title: string; updated: string; children: ReactNode }) {
 	return (
 		<div className='flex-1 bg-background text-foreground'>
-			<header className='sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md'>
-				<div className='mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-6'>
-					<Link
-						to='/'
-						className='flex items-center gap-2 font-semibold tracking-tight transition-opacity hover:opacity-70'
-					>
-						<UsageFleetMark className='size-5' />
-						UsageFleet
-					</Link>
-					<Link to='/' className={buttonVariants({ variant: 'outline' })}>
-						Back to site
-					</Link>
-				</div>
-			</header>
+			<SiteHeader />
 
 			<div className='mx-auto w-full max-w-7xl px-6'>
 				<article className='max-w-[74ch] py-16'>
