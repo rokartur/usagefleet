@@ -46,7 +46,11 @@ apportioning a percentage.
   collector began reporting the real numbers.
 - **Weekly window**: Anthropic's too — anchored on the reported `resets_at`
   minus 7 days, clamped to at most 7 days ending now so a stale reset can't
-  widen the split window. The `user_settings` weekday/hour survive only as the
+  widen the split window. A reset more than one whole window ahead is discarded
+  as not this window's: `resets_at` is device-reported and range-checked nowhere
+  on the way in, and taken literally it would open the window in the future,
+  leaving it empty so the account's whole percentage would read as unattributed
+  (`windowStartOf`). The `user_settings` weekday/hour survive only as the
   past-windows grid fallback (`weekWindowStart` in `window.ts`) for an account
   that has never reported a weekly reset.
 - **Past windows** (`windowSpans`): the recorded utilization samples ARE the
@@ -72,24 +76,79 @@ signed into (`devices.claude_account_id`, stamped from its limits posts), the
 same way its usage already follows it between groups. Devices that never report
 a login fold into the unidentified bucket, or into the only account there is.
 
-`splitByShare()` (`lib/data.ts`) apportions one official percentage across groups:
+`splitByShare()` (`lib/data.ts`) apportions one official percentage across
+groups by **delta attribution**: every limits post that moved a window's pct
+appends a timestamped change point (`limit_change_point`, written by
+`recordLimitChangePoint`, pruned past the longest window), and each *rise*
+between consecutive readings is split by the estimated cost of the folded
+events inside that interval (`riseWeights`). A percentage point is charged to
+whoever was active when it was burned, not smeared over the whole window — the
+group that worked all night keeps its 30% even when another group out-spends it
+in the morning. Details that matter:
 
-1. filter folded events to the window,
-2. bucket by key, sum each bucket's estimated cost,
-3. `exactPct = officialPct × (bucketCost / totalCost)` — kept unrounded.
+- The window opens at 0% by definition; a synthetic final reading at
+  (`now`, official pct) carries any rise not yet recorded. With no change
+  points at all this collapses to one interval = the classic whole-window cost
+  split, so the fallback is the algorithm's own degenerate case.
+- Only **rises** are recorded. Anthropic's utilization does not fall inside a
+  window, so a fall means two devices on one account read the endpoint moments
+  apart and their posts landed out of order (`at` is receipt time). Storing that
+  dip would make the recovery back to the true value read as an extra rise,
+  inflating the denominator and diluting every real group. A reset needs no row:
+  the write compares only against the current window's points, and `riseWeights`
+  anchors each window at 0.
+- Event timestamps come off the device's clock, change points off ours. Ingest
+  measures the difference from the `sentAt` the collector stamps at upload and
+  shifts the batch onto server time (`lib/usage/clock.ts`), so a drifting
+  machine's rows land in the interval that actually caused the rise instead of
+  handing it to a neighbour. A single reading is drift *plus* transport, and the
+  collector stamps `sentAt` once per batch and reuses it across retries, so a
+  retried upload looks minutes behind. Both inflations are one-directional and
+  transient while a clock offset is persistent, so the device keeps the
+  **minimum** over an hour-long window (`devices.clock_offset_ms`), the same
+  reason NTP filters on minimum delay. Inside a window the held value can only
+  fall, so the window is re-armed once it ages out; that bound is what limits how
+  long a clock that moved the other way (an NTP step after a resume) keeps being
+  corrected by a stale offset. Unmeasurable
+  drift (collector too old to send `sentAt`, offset too large to be a clock)
+  holds the last known value and the future-clamp stays as the guard.
+- Readings closer than 5 minutes merge into one interval, on both the write and
+  the read side. The bucket has to stay wider than the delay between an event's
+  timestamp and the moment its tokens reach Anthropic's meter — a long streamed
+  response plus their accounting lag — or a rise lands one bucket before its
+  cause. That delay is not observable from here, so 5 minutes is a deliberately
+  loose bound rather than a tuned one. It is the attribution resolution: a 5h
+  window holds at most 60 buckets, and inside a bucket we are back to splitting
+  by cost.
+- A rise over an interval with no priceable events goes to the sentinel
+  `UNATTRIBUTED` key — usage from before the collector ran or from a device
+  outside the fleet — and shows as an "Unattributed" row instead of being
+  silently redistributed to the groups. Slivers under half a point are dropped
+  as timing noise, from the denominator too, so the real groups still sum to the
+  official pct. That row is **not a group**: it holds no budget slice, so it is
+  displayed as a plain account share and never goes through `groupBudgetPct()`.
+- Only identified accounts get change points. The `ext_id = NULL` bucket can
+  hold several logins at once, whose interleaved readings would look like one
+  account sawtoothing and invent rises; those accounts keep the cost split,
+  which reads no series shape.
+- Weights are normalized to the official pct, which stays authoritative even
+  after a downward correction; concurrent activity inside one interval still
+  splits by cost, which is as far as Anthropic's aggregate number can be taken.
 
 `groupBudgetPct()` then scales a share into what the UI shows:
 `round(exactPct × groupCount)`, where `groupCount` counts the groups holding a
 live (non-revoked) device on *this* account — a group that never touches a
 subscription cannot eat its budget, and a group whose only device was revoked
-stops claiming a slice (its historical events still weigh in the split). Every such group is budgeted an equal slice of the account, so
-**with two groups, a group sitting at half the account reads 100%**.
+stops claiming a slice (its historical events still weigh in the split). Every
+such group is budgeted an equal slice of the account, so **with two groups, a
+group sitting at half the account reads 100%**.
 Deliberately uncapped: past 100% that group is eating another's slice, which is
 the thing worth seeing. Rounding happens once, at the end — rounding the share
 first would multiply the error by the group count.
 
-Per-model limits (e.g. the Fable weekly cap) get the same treatment, with the
-window length parsed from the header key (`5h`, `7d`, …).
+Per-model limits (e.g. the Fable weekly cap) get the plain whole-window cost
+split — no change points are recorded for them — with the window length parsed
+from the header key (`5h`, `7d`, …).
 
 ## Past windows card
 
@@ -100,6 +159,11 @@ the running peak per `(claude_account, window, window_start)` on every limits po
 each closed window across groups — real recorded utilization on real
 boundaries, not a reconstruction from token counts. Windows nobody sampled
 show tokens only, on grid-guessed (possibly clipped) spans.
+
+This card also splits by **whole-window cost**, not by delta attribution: a
+closed window has one recorded peak, not a series, so there are no rises to
+allocate. The two tables can therefore disagree on the same window — that is
+the method difference, not a bug.
 
 These percentages are **account shares, not budget slices**: the card's group
 rows carry `accountPct`, so a group at half the account reads 50% here while the
@@ -134,7 +198,9 @@ table is tokens and estimated cost, per user, across every account.
 
 `usage.test.ts` and `daily-agg.test.ts` pin the fold and the aggregate sums;
 `data.test.ts` pins the past-window construction, `groupBudgetPct` and
-`splitByShare` — i.e. the budget-slice rule above and the cost-weighted split
-that feeds it, including the window bounds, the fold and the zero-cost case. Run
+`splitByShare` — i.e. the budget-slice rule above, the delta attribution
+(rise-per-interval, UNATTRIBUTED, the reading merge, the no-points fallback)
+and the cost weighting that feeds it, including the window bounds, the fold
+and the zero-cost case. Run
 `bun run test` in `apps/web`. Keep new math in `lib/usage/` as a pure function
 with a test; routes and components consume it.

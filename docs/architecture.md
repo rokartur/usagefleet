@@ -86,6 +86,15 @@ Data access is layered so pages stay thin:
 - `limit_sample` — peak utilization per `(claude_account, window, window_start)`.
   Claude only reports the *open* window, so this is the only record of how full a
   closed one got; the past-windows card reads it instead of guessing.
+- `usage_event` timestamps are stamped by the reporting machine, so ingest
+  shifts each batch onto server time before any window or attribution decision,
+  using the minimum `receivedAt - sentAt` over an hour-long window held on
+  `devices.clock_offset_ms` / `clock_offset_at` (`lib/usage/clock.ts`).
+- `limit_change_point` — one row per reading that *raised* a window's official
+  pct, per `(claude_account, window, at)`, thinned to the 5-minute resolution
+  the split reads at and pruned past the longest window on write. The live group
+  split attributes each rise to the groups active in its interval (delta
+  attribution — see `usage-math.md`). Identified accounts only.
 
 ## Ingest API contract
 
@@ -96,8 +105,11 @@ no body. A device outside the plan gets `402` from all three, which the guard
 treats as open like any other non-OK. `last_seen_at` is touched by the two POST
 handlers, and on the `402` path so a parked device still shows as alive.
 
-- `POST /api/v1/usage` — `{ records: [...] }`, ≤1000 per batch. Responds with
-  accepted/duplicate/skipped counts. At-least-once by design: the collector only
+- `POST /api/v1/usage` — `{ records: [...], sentAt }`, ≤1000 per batch. Responds
+  with accepted/duplicate/skipped counts. `sentAt` is the collector's own clock
+  at send time and is load-bearing: the server derives the device's clock offset
+  from it (see the `usage_event` note above), so it must keep being stamped per
+  batch. At-least-once by design: the collector only
   commits a file offset after the server acknowledges, and the unique index
   absorbs the replay. Records older than `devices.created_at` are dropped
   (`skipped`): a fresh collector tails the machine's whole log history, and usage
@@ -116,7 +128,9 @@ handlers, and on the `402` path so a parked device still shows as alive.
 - `POST /api/v1/limits` — the parsed limits reading (oauth/usage for
   subscriptions, rate-limit headers for API keys), plus the optional
   `account` the collector read from `~/.claude.json`. Upserts `claude_account`,
-  stamps the device with it, and upserts the peak into `limit_sample`.
+  stamps the device with it, upserts the peak into `limit_sample`, and — unless
+  the account is the unidentified `ext_id = NULL` bucket — appends a
+  `limit_change_point` per window whose pct rose.
 - `GET /api/v1/limits` — what `usagefleet guard` asks before a prompt. Returns
   `{ group, sessionPct, weeklyPct, blocked, blockedWindow, blockedUntil,
   reportedAt }`; the guard reads `blocked` to decide and `blockedWindow` /

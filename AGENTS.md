@@ -34,8 +34,13 @@ Break one of these and the product silently reports wrong numbers or leaks acces
   scoped per user so no account can poison another's rows.
 - **The headline 5h/weekly percentages are Anthropic's, not ours.** The collector
   reads them from Anthropic's oauth/usage endpoint (response headers on API
-  keys); the server only *splits* them per group, by each group's share of
-  estimated cost. Token counts are display-only.
+  keys); the server only *splits* them per group. The split is **delta
+  attribution**: `limit_change_point` records readings whose pct rose (thinned to
+  one per 5 min, identified accounts only), and each rise goes to the groups
+  whose events fall in that interval, weighted by cost inside it. Cost share over
+  the whole window is the fallback when an account has no points, and stays the
+  method for per-model limits and the past-windows card. Token counts are
+  display-only.
 - **Everything limit-shaped is per Anthropic account, not per user.** Anthropic
   meters each subscription separately, so percentages live on `claude_account`
   (keyed by the `accountUuid` the collector reads from `~/.claude.json`) and a

@@ -436,6 +436,7 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO[]; set
 		<p className='max-w-2xl text-[11px] text-muted-foreground'>
 			Headline percentages are Claude&apos;s own account utilization. Per-group percentages are budget-relative:
 			the group&apos;s usage against its equal slice of the limit, so 100% means it has eaten its slice.
+			Unattributed is account usage no reporting device explains, shown as a plain account share.
 		</p>
 	)
 

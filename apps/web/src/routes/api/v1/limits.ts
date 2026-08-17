@@ -5,7 +5,7 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { claudeAccounts, devices, groups } from '@/db/schema'
 import { deviceWithinPlan, overPlanLimit } from '@/lib/billing'
-import { dashboardForDevice, getLiveDashboards, recordLimitSample } from '@/lib/data'
+import { dashboardForDevice, getLiveDashboards, recordLimitChangePoint, recordLimitSample } from '@/lib/data'
 import { authenticateDevice } from '@/lib/device-auth'
 import { readJsonCapped } from '@/lib/rate-limit'
 import { LIMITS_STALE_MS, reportedWindows, toDate } from '@/lib/usage/limits'
@@ -199,7 +199,7 @@ async function POST(req: Request) {
 				...(identity?.org ? { orgName: identity.org } : {}),
 			},
 		})
-		.returning({ id: claudeAccounts.id, userId: claudeAccounts.userId })
+		.returning({ extId: claudeAccounts.extId, id: claudeAccounts.id, userId: claudeAccounts.userId })
 
 	await Promise.all([
 		// Keep a per-window record of the reported utilization: Claude only reports
@@ -207,6 +207,12 @@ async function POST(req: Request) {
 		// once a window closes.
 		recordLimitSample(account, '5h', b.fiveHourPct, set.fiveHourResetsAt ?? null),
 		recordLimitSample(account, '7d', b.sevenDayPct, set.sevenDayResetsAt ?? null),
+		// And a timestamped change point per window when the pct rose — the raw
+		// material for delta attribution in the group split. The reset time scopes
+		// the comparison to the current window; identified accounts only, enforced
+		// inside.
+		recordLimitChangePoint(account, '5h', b.fiveHourPct, now, set.fiveHourResetsAt ?? null),
+		recordLimitChangePoint(account, '7d', b.sevenDayPct, now, set.sevenDayResetsAt ?? null),
 		// Touch the device so the Devices list shows an accurate last-seen time, and
 		// bind it to the account whose usage it is now producing.
 		db.update(devices).set({ claudeAccountId: account.id, lastSeenAt: now }).where(eq(devices.id, device.id)),

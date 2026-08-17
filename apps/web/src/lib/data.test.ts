@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildPastWindows, groupBudgetPct, splitByShare } from './data'
+import { buildPastWindows, groupBudgetPct, shouldRecordPoint, splitByShare, UNATTRIBUTED, windowStartOf } from './data'
 import type { WindowAggRow } from './data'
 import type { UsageRecord } from './usage'
 
@@ -148,6 +148,171 @@ describe(splitByShare, () => {
 	it('keys loose devices under null rather than dropping them', () => {
 		const s = split([ev(null, 'claude-sonnet-4', 1_000_000)], 30)
 		expect(s.get(null)?.exactPct).toBeCloseTo(30, 6)
+	})
+
+	const pt = (at: string, pct: number) => ({ at: new Date(at), pct })
+
+	it('attributes each recorded rise to the groups active in its interval', () => {
+		// b's events cost 9× a's, but the readings say the pct rose 30 while only a
+		// worked and 20 while only b did — time beats cost.
+		const s = splitByShare(
+			[
+				ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:30:00Z')),
+				ev('b', 'claude-sonnet-4', 9_000_000, new Date('2026-06-18T13:30:00Z')),
+			],
+			WIN_START,
+			NOW,
+			50,
+			'5m',
+			[pt('2026-06-18T11:00:00Z', 30), pt('2026-06-18T14:00:00Z', 50)],
+		)
+		expect(s.get('a')?.exactPct).toBeCloseTo(30, 6)
+		expect(s.get('b')?.exactPct).toBeCloseTo(20, 6)
+	})
+
+	it('parks a rise no monitored event can explain under UNATTRIBUTED', () => {
+		// The account hit 40% before the only monitored event existed; the synthetic
+		// final reading tops the rest up to the official 50.
+		const s = splitByShare(
+			[ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T13:00:00Z'))],
+			WIN_START,
+			NOW,
+			50,
+			'5m',
+			[pt('2026-06-18T11:00:00Z', 40)],
+		)
+		expect(s.get(UNATTRIBUTED)?.exactPct).toBeCloseTo(40, 6)
+		expect(s.get('a')?.exactPct).toBeCloseTo(10, 6)
+	})
+
+	it('degrades to the whole-window cost split when no readings exist', () => {
+		// Empty points → one synthetic interval spanning the window → the classic
+		// cost weighting (opus input costs 5× sonnet).
+		const s = splitByShare(
+			[ev('a', 'claude-opus-4', 1_000_000), ev('b', 'claude-sonnet-4', 1_000_000)],
+			WIN_START,
+			NOW,
+			60,
+			'5m',
+			[],
+		)
+		expect(s.get('a')?.exactPct).toBeCloseTo(50, 6)
+		expect(s.get('b')?.exactPct).toBeCloseTo(10, 6)
+		expect(s.get(UNATTRIBUTED)).toBeUndefined()
+	})
+
+	it('merges readings closer than five minutes into one attribution interval', () => {
+		// Readings land every minute during a's burst; unmerged, the 10:30→10:31 and
+		// 10:32→10:36 rises would find no event inside their hairline intervals and
+		// leak to UNATTRIBUTED. Merged, a's one event carries the whole 10:30→10:36
+		// rise; only the pre-event climb to 5 stays unattributed.
+		const s = splitByShare(
+			[ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:31:30Z'))],
+			WIN_START,
+			NOW,
+			20,
+			'5m',
+			[
+				pt('2026-06-18T10:30:00Z', 5),
+				pt('2026-06-18T10:31:00Z', 10),
+				pt('2026-06-18T10:32:00Z', 15),
+				pt('2026-06-18T10:36:00Z', 20),
+			],
+		)
+		expect(s.get('a')?.exactPct).toBeCloseTo(15, 6)
+		expect(s.get(UNATTRIBUTED)?.exactPct).toBeCloseTo(5, 6)
+	})
+
+	it('gives a falling interval no weight and keeps its events out of the next one', () => {
+		// The account corrected 40 → 10 before climbing back to 30. b worked only
+		// during that fall, so it explains nothing; a and c share the two real rises
+		// (40 and 20) normalized onto the official 30.
+		const s = splitByShare(
+			[
+				ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:30:00Z')),
+				ev('b', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T11:30:00Z')),
+				ev('c', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T12:30:00Z')),
+			],
+			WIN_START,
+			NOW,
+			30,
+			'5m',
+			[pt('2026-06-18T11:00:00Z', 40), pt('2026-06-18T12:00:00Z', 10), pt('2026-06-18T13:00:00Z', 30)],
+		)
+		expect(s.get('a')?.exactPct).toBeCloseTo(20, 6)
+		expect(s.get('c')?.exactPct).toBeCloseTo(10, 6)
+		expect(s.get('b')?.exactPct).toBe(0)
+	})
+
+	it('drops an unattributed sliver from the split and from the denominator', () => {
+		// A 0.2pp climb before a's first event is timing noise, not a device off the
+		// fleet. Dropping it must not leave the real groups summing to 39.8.
+		const s = splitByShare(
+			[ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:30:00Z'))],
+			WIN_START,
+			NOW,
+			40,
+			'5m',
+			[pt('2026-06-18T10:06:00Z', 0.2), pt('2026-06-18T11:00:00Z', 40)],
+		)
+		expect(s.get(UNATTRIBUTED)).toBeUndefined()
+		expect(s.get('a')?.exactPct).toBeCloseTo(40, 6)
+	})
+})
+
+describe(windowStartOf, () => {
+	const NOON = new Date('2026-06-18T12:00:00Z')
+	const HOUR = 60 * 60 * 1000
+
+	it('starts the window one length before the reported reset', () => {
+		expect(windowStartOf(new Date('2026-06-18T14:00:00Z'), NOON, 5 * HOUR)).toStrictEqual(
+			new Date('2026-06-18T09:00:00Z'),
+		)
+	})
+
+	it('falls back to the rolling window when the reset is stale or missing', () => {
+		// A reset already in the past means the collector has not reported since the
+		// window turned over. Taking it literally would start the window before the
+		// current one, weighing events from a window that already closed.
+		expect(windowStartOf(new Date('2026-06-18T09:00:00Z'), NOON, 5 * HOUR)).toStrictEqual(
+			new Date('2026-06-18T07:00:00Z'),
+		)
+		expect(windowStartOf(null, NOON, 5 * HOUR)).toStrictEqual(new Date('2026-06-18T07:00:00Z'))
+	})
+
+	it('rejects a reset further ahead than one whole window', () => {
+		// resetsAt is device-reported and range-checked nowhere on the way in. Taken
+		// literally it would open the window in the future, leaving it empty, and the
+		// account's entire percentage would read as unattributed.
+		expect(windowStartOf(new Date('2026-06-19T12:00:00Z'), NOON, 5 * HOUR)).toStrictEqual(
+			new Date('2026-06-18T07:00:00Z'),
+		)
+		// Exactly one window ahead is the legitimate boundary: a window that just
+		// opened, so it must survive.
+		expect(windowStartOf(new Date('2026-06-18T17:00:00Z'), NOON, 5 * HOUR)).toStrictEqual(NOON)
+	})
+})
+
+describe(shouldRecordPoint, () => {
+	const prev = { at: new Date('2026-06-18T11:00:00Z'), pct: 40 }
+	const after = (mins: number) => new Date(prev.at.getTime() + mins * 60_000)
+
+	it("records the window's first reading whatever it says", () => {
+		// After a reset the caller scopes prev to the new window, so this is how the
+		// floor gets in despite being far below the previous window's peak.
+		expect(shouldRecordPoint(undefined, 2, after(0))).toBeTruthy()
+	})
+
+	it('refuses a fall, so an out-of-order post cannot fabricate a rise', () => {
+		// Two devices read Anthropic moments apart and their posts land reversed.
+		// Storing the dip would make the recovery back to 40 read as a second rise.
+		expect(shouldRecordPoint(prev, 39.8, after(10))).toBeFalsy()
+		expect(shouldRecordPoint(prev, 40, after(10))).toBeFalsy()
+	})
+
+	it('thins rises to the resolution the split reads at', () => {
+		expect(shouldRecordPoint(prev, 45, after(4))).toBeFalsy()
+		expect(shouldRecordPoint(prev, 45, after(5))).toBeTruthy()
 	})
 })
 

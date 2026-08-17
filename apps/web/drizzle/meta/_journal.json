@@ -141,6 +141,20 @@
       "when": 1786908320363,
       "tag": "0019_wonderful_thunderbolts",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786958120956,
+      "tag": "0020_messy_radioactive_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786961446483,
+      "tag": "0021_handy_tempest",
+      "breakpoints": true
     }
   ]
 }

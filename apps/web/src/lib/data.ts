@@ -1,8 +1,16 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, gte, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm'
 import type { SQL } from 'drizzle-orm'
 import { db } from '@/db'
-import { claudeAccounts, devices, groups, limitSamples, usageEvents, userSettings } from '@/db/schema'
+import {
+	claudeAccounts,
+	devices,
+	groups,
+	limitChangePoints,
+	limitSamples,
+	usageEvents,
+	userSettings,
+} from '@/db/schema'
 import type { ClaudeAccount as ClaudeAccountRow, LimitWindow, StoredModelLimit } from '@/db/schema'
 import { createPromiseCache } from '@/lib/promise-cache'
 import {
@@ -340,11 +348,144 @@ function windowDurationMs(window: string): number | null {
 export const groupBudgetPct = (share: { exactPct: number } | undefined, groupCount: number) =>
 	Math.round((share?.exactPct ?? 0) * groupCount)
 
-/** Split an official account-wide percentage across an arbitrary key (group or
- *  device) by each key's share of estimated cost (API list prices) within the
- *  window — weights buckets (output 5×, cache write 1.25×, cache read 0.1×) and
- *  models (Fable > Opus > Sonnet > Haiku) like Anthropic's cost-based limit
- *  accounting. Token fields stay billable/total for display. */
+/** A recorded reading of the official percentage at an instant. The rise
+ *  between two readings is what delta attribution splits. */
+export interface PctPoint {
+	at: Date
+	pct: number
+}
+
+/** Sentinel share key for official-percentage rises no monitored event can
+ *  explain: usage from before the collector ran, or from a device outside the
+ *  fleet (phone, unenrolled machine). Group ids are uuids, so no collision. */
+export const UNATTRIBUTED = '__unattributed__'
+
+/** Readings closer together than this merge into one attribution interval.
+ *  Device clock drift is corrected at ingest (lib/usage/clock.ts), but an
+ *  event's tokens still reach Anthropic's meter *after* its timestamp — a long
+ *  streamed response plus their own accounting delay — so an interval has to be
+ *  comfortably wider than that lag or rises land one bucket off their cause.
+ *  The lag is not observable from here; this is a deliberately loose bound, and
+ *  it only costs accuracy where two groups work inside the same interval. */
+const MIN_RISE_INTERVAL_MS = 5 * 60 * 1000
+
+/** Start of a window of exactly `len` ending at `now`. `resetsAt` is whatever
+ *  the collector reported, and it is range-checked nowhere on the way in, so
+ *  two ways of being wrong are handled here: stale (already past) clamps to the
+ *  rolling window, and further ahead than one whole window means it is not this
+ *  window's reset at all, which would otherwise produce a window starting in the
+ *  future — empty, so the entire account pct would read as unattributed. */
+export function windowStartOf(resetsAt: Date | null, now: Date, len: number): Date {
+	const usable = resetsAt && resetsAt.getTime() <= now.getTime() + len ? resetsAt.getTime() - len : 0
+	return new Date(Math.max(usable, now.getTime() - len))
+}
+
+/** Whether a reading opens a new change point, given the last one stored for the
+ *  same window (undefined when it is the window's first).
+ *
+ *  Only rises are recorded. Anthropic's utilization does not fall inside a
+ *  window, so a fall means two devices on this account read the endpoint moments
+ *  apart and their posts landed out of order (the timestamp is receipt time).
+ *  Storing that dip would make the recovery back to the true value read as an
+ *  extra rise, inflating the denominator and diluting every real group. A reset
+ *  needs no row: the caller scopes `prev` to the current window and riseWeights
+ *  anchors each window at 0. The tolerance covers `real`-column float32
+ *  round-tripping; readings carry one decimal.
+ *
+ *  Rises are then thinned to the resolution the split reads at, since every
+ *  device posts limits each minute and splitByShare merges anything closer than
+ *  MIN_RISE_INTERVAL_MS anyway. */
+export function shouldRecordPoint(prev: { at: Date; pct: number } | undefined, pct: number, at: Date): boolean {
+	if (!prev) {
+		return true
+	}
+	if (pct - prev.pct < 0.05) {
+		return false
+	}
+	return at.getTime() - prev.at.getTime() >= MIN_RISE_INTERVAL_MS
+}
+
+/**
+ * Weight per share key from recorded rises of the official percentage: each
+ * rise between two readings is split by the cost of the events inside that
+ * interval, so a percentage point is charged to whoever was active when it was
+ * actually burned instead of being smeared over the whole window by cost. A
+ * rise over an interval with no priceable events goes to {@link UNATTRIBUTED}.
+ *
+ * The window opens at 0% by definition, which anchors the first rise; a final
+ * synthetic reading at (`now`, `targetPct`) carries any rise the account row
+ * already shows but no change point recorded yet — which also makes the
+ * no-points case degrade to exactly the whole-window cost split.
+ *
+ * Returns null when there is no rise to weigh; callers then fall back to the
+ * plain cost split.
+ */
+function riseWeights(
+	timeline: { ts: number; key: string | null; cost: number }[],
+	points: PctPoint[],
+	windowStart: Date,
+	now: Date,
+	targetPct: number,
+): Map<string | null, number> | null {
+	const startMs = windowStart.getTime()
+	const nowMs = now.getTime()
+	let last = { at: startMs, pct: 0 }
+	const bounds = [last]
+	for (const p of points
+		.filter(p => p.at.getTime() > startMs && p.at.getTime() <= nowMs)
+		.toSorted((a, b) => a.at.getTime() - b.at.getTime())) {
+		// Thinning: a reading inside the minimum interval is dropped and its rise
+		// carries forward to the next kept reading (or the synthetic final one).
+		if (p.at.getTime() - last.at >= MIN_RISE_INTERVAL_MS) {
+			last = { at: p.at.getTime(), pct: p.pct }
+			bounds.push(last)
+		}
+	}
+	if (targetPct > last.pct) {
+		// The tail rise the account row already shows but no reading recorded yet.
+		// Inside the merge interval it extends the last interval rather than opening
+		// the hairline one the thinning above exists to prevent — safe to move the
+		// bound here because this happens once, so it cannot chain.
+		if (bounds.length > 1 && nowMs - last.at < MIN_RISE_INTERVAL_MS) {
+			last.at = nowMs
+			last.pct = targetPct
+		} else {
+			bounds.push({ at: nowMs, pct: targetPct })
+		}
+	}
+	const events = timeline.toSorted((a, b) => a.ts - b.ts)
+	const weights = new Map<string | null, number>()
+	let totalRise = 0
+	let i = 0
+	for (let b = 1; b < bounds.length; b++) {
+		const end = bounds[b].at
+		const rise = bounds[b].pct - bounds[b - 1].pct
+		// Events are consumed even when the rise is <= 0 (a downward correction):
+		// they explain no rise and must not leak into the next interval.
+		const from = i
+		while (i < events.length && events[i].ts <= end) {
+			i += 1
+		}
+		if (rise <= 0) {
+			continue
+		}
+		totalRise += rise
+		let costSum = 0
+		for (let e = from; e < i; e++) {
+			costSum += events[e].cost
+		}
+		if (costSum === 0) {
+			weights.set(UNATTRIBUTED, (weights.get(UNATTRIBUTED) ?? 0) + rise)
+			continue
+		}
+		for (let e = from; e < i; e++) {
+			const { cost, key } = events[e]
+			weights.set(key, (weights.get(key) ?? 0) + rise * (cost / costSum))
+		}
+	}
+	return totalRise > 0 ? weights : null
+}
+
 interface ShareEntry {
 	/** This key's share of the official pct, unrounded — scaled to a budget pct
 	 *  before display, so rounding happens once, at the end. */
@@ -355,12 +496,25 @@ interface ShareEntry {
 	models: ModelUsage[]
 }
 
+/** Split an official account-wide percentage across an arbitrary key (group or
+ *  device). With recorded {@link PctPoint}s, each rise is attributed to the
+ *  keys active in its interval ({@link riseWeights}); without them (or with no
+ *  rise), the whole percentage is split by each key's share of estimated cost
+ *  (API list prices) within the window — weighting buckets (output 5×, cache
+ *  write 1.25×, cache read 0.1×) and models (Fable > Opus > Sonnet > Haiku)
+ *  like Anthropic's cost-based limit accounting. Token fields stay
+ *  billable/total for display.
+ *
+ *  The returned map may carry an extra {@link UNATTRIBUTED} entry — a share of
+ *  the account with no group behind it. It is not a group: it holds no budget
+ *  slice, so it must not go through {@link groupBudgetPct}. */
 export function splitByShare(
 	events: UsageRecord[],
 	windowStart: Date,
 	now: Date,
 	officialPct: number,
 	ttl: CacheTtl,
+	points?: PctPoint[],
 ): Map<string | null, ShareEntry> {
 	const byKey = new Map<string | null, UsageRecord[]>()
 	for (const e of filterByWindow(events, windowStart, now)) {
@@ -376,6 +530,9 @@ export function splitByShare(
 	const totalByKey = new Map<string | null, number>()
 	const costByKey = new Map<string | null, number>()
 	const modelsByKey = new Map<string | null, ModelUsage[]>()
+	// Per-message cost with its timestamp, across all keys — what riseWeights
+	// slices into attribution intervals.
+	const timeline: { ts: number; key: string | null; cost: number }[] = []
 	let totalCost = 0
 	for (const [k, evs] of byKey) {
 		// Kept even though loadRecentEvents already folds in SQL: this is an exported
@@ -386,24 +543,53 @@ export function splitByShare(
 		const totals = sumTokens(folded)
 		tokensByKey.set(k, billableTokens(totals))
 		totalByKey.set(k, totals.totalTokens)
-		const cost = folded.reduce((s, e) => s + costUsd(e, ttl), 0)
+		let cost = 0
+		for (const e of folded) {
+			const c = costUsd(e, ttl)
+			cost += c
+			timeline.push({ cost: c, key: k, ts: e.ts.getTime() })
+		}
 		costByKey.set(k, cost)
 		// `folded`, not `evs`: modelBreakdown folds internally anyway, so handing it
 		// the raw list just refolds what the line above already did.
 		modelsByKey.set(k, modelBreakdown(folded))
 		totalCost += cost
 	}
-	const models = (k: string | null) => modelsByKey.get(k) ?? []
-	const out = new Map<string | null, ShareEntry>()
-
 	const target = Math.max(0, officialPct)
+	const rise = points ? riseWeights(timeline, points, windowStart, now, target) : null
+	// Weights sum to the total recorded rise; normalizing to `target` keeps the
+	// official percentage authoritative even after a downward correction.
+	let totalWeight = 0
+	if (rise) {
+		for (const w of rise.values()) {
+			totalWeight += w
+		}
+		// A sliver under half a point is timing noise, not a device off the fleet —
+		// dropped from the denominator too, so the real keys still sum to `target`.
+		const sliver = rise.get(UNATTRIBUTED) ?? 0
+		if (sliver > 0 && target * (sliver / totalWeight) < 0.5) {
+			rise.delete(UNATTRIBUTED)
+			totalWeight -= sliver
+		}
+	}
+	const shareOf = (k: string | null) => {
+		if (rise && totalWeight > 0) {
+			return target * ((rise.get(k) ?? 0) / totalWeight)
+		}
+		return totalCost > 0 ? target * ((costByKey.get(k) ?? 0) / totalCost) : 0
+	}
+
+	const out = new Map<string | null, ShareEntry>()
 	for (const [k, tok] of tokensByKey) {
 		out.set(k, {
-			exactPct: totalCost > 0 ? target * ((costByKey.get(k) ?? 0) / totalCost) : 0,
-			models: models(k),
+			exactPct: shareOf(k),
+			models: modelsByKey.get(k) ?? [],
 			tokens: tok,
 			totalTokens: totalByKey.get(k) ?? 0,
 		})
+	}
+	if (rise?.has(UNATTRIBUTED)) {
+		out.set(UNATTRIBUTED, { exactPct: shareOf(UNATTRIBUTED), models: [], tokens: 0, totalTokens: 0 })
 	}
 	return out
 }
@@ -519,20 +705,8 @@ async function loadLiveDashboard(
 		}
 	}
 
-	// Clamp each window to exactly its nominal duration ending at `now`, so a
-	// stale resets_at can never widen the split window beyond 5h / 7d.
-	const fiveStart = new Date(
-		Math.max(
-			(base.fiveHourResetsAt ?? new Date(now.getTime() - FIVE_H_MS)).getTime() - FIVE_H_MS,
-			now.getTime() - FIVE_H_MS,
-		),
-	)
-	const weekStart = new Date(
-		Math.max(
-			(base.sevenDayResetsAt ?? new Date(now.getTime() - SEVEN_D_MS)).getTime() - SEVEN_D_MS,
-			now.getTime() - SEVEN_D_MS,
-		),
-	)
+	const fiveStart = windowStartOf(base.fiveHourResetsAt, now, FIVE_H_MS)
+	const weekStart = windowStartOf(base.sevenDayResetsAt, now, SEVEN_D_MS)
 
 	// Per-model limit windows (e.g. Fable weekly), clamped the same way. Entries
 	// with no reported pct can't be split — drop them up front.
@@ -542,16 +716,27 @@ async function loadLiveDashboard(
 			const dur = windowDurationMs(m.window) ?? SEVEN_D_MS
 			const parsed = m.resetsAt ? new Date(m.resetsAt) : null
 			const resetsAt = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null
-			const start = new Date(
-				Math.max((resetsAt ?? new Date(now.getTime() - dur)).getTime() - dur, now.getTime() - dur),
-			)
-			return { entry: m, resetsAt, start }
+			return { entry: m, resetsAt, start: windowStartOf(resetsAt, now, dur) }
 		})
 
 	// The shared flight loads a superset window (see getLiveDashboards); every
 	// consumer below filters to its exact window, so the wider bound only costs
-	// scan range, never correctness.
-	const [allEvents, groupRows, allAggRows, deviceRows] = await shared()
+	// scan range, never correctness. The change points ride alongside: they are
+	// per account, so they can't live in the shared flight. Bound at the earlier
+	// of the two window starts — fresh after a weekly reset `weekStart` is only
+	// minutes old while `fiveStart` is hours back, so bounding on the weekly one
+	// would silently truncate the 5h series. riseWeights clips each split to its
+	// own window anyway.
+	const pointsFrom = new Date(Math.min(weekStart.getTime(), fiveStart.getTime()))
+	const [[allEvents, groupRows, allAggRows, deviceRows], pointRows] = await Promise.all([
+		shared(),
+		db
+			.select({ at: limitChangePoints.at, pct: limitChangePoints.pct, window: limitChangePoints.window })
+			.from(limitChangePoints)
+			.where(and(eq(limitChangePoints.claudeAccountId, acct.id), gte(limitChangePoints.at, pointsFrom)))
+			.orderBy(asc(limitChangePoints.at)),
+	])
+	const pointsFor = (w: LimitWindow) => pointRows.filter(p => p.window === w)
 
 	// Usage belongs to the account its device is signed into *now*, the same way
 	// it already follows a device between groups.
@@ -574,23 +759,30 @@ async function loadLiveDashboard(
 		new Set(myDevices.filter(d => !d.revoked && d.groupId !== null).map(d => d.groupId)).size,
 	)
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
-	const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, ttl)
-	const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct, ttl)
+	const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, ttl, pointsFor('5h'))
+	const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct, ttl, pointsFor('7d'))
 
 	const keys = new Set<string | null>([...sessionSplit.keys(), ...weeklySplit.keys()])
-	const nameFor = (id: string | null) =>
-		id === null ? 'Ungrouped' : (groupRows.find(g => g.id === id)?.name ?? 'Unknown')
-	const colorFor = (id: string | null) =>
-		id === null ? '#94a3b8' : (groupRows.find(g => g.id === id)?.color ?? '#94a3b8')
+	const labelFor = (id: string | null) => {
+		if (id === UNATTRIBUTED) {
+			return { color: '#64748b', name: 'Unattributed' }
+		}
+		const g = id === null ? undefined : groupRows.find(g => g.id === id)
+		return { color: g?.color ?? '#94a3b8', name: id === null ? 'Ungrouped' : (g?.name ?? 'Unknown') }
+	}
+	// Unattributed is not a group and holds no budget slice, so it stays on the
+	// account scale; scaling it by the group count would show a 15% remainder as
+	// 60% on a four-group account and push the split bar past the real total.
+	const budgetPctFor = (id: string | null, s: ShareEntry | undefined) =>
+		id === UNATTRIBUTED ? Math.round(s?.exactPct ?? 0) : groupBudgetPct(s, budgetShares)
 
 	const groupUsages: LiveGroupUsage[] = [...keys].map(id => ({
 		groupId: id,
-		name: nameFor(id),
-		color: colorFor(id),
+		...labelFor(id),
 		// Usage against the group's equal slice of the account limit: a group
 		// filling its share reads 100% while the account is at 50%.
-		sessionBudgetPct: groupBudgetPct(sessionSplit.get(id), budgetShares),
-		weeklyBudgetPct: groupBudgetPct(weeklySplit.get(id), budgetShares),
+		sessionBudgetPct: budgetPctFor(id, sessionSplit.get(id)),
+		weeklyBudgetPct: budgetPctFor(id, weeklySplit.get(id)),
 		sessionTokens: sessionSplit.get(id)?.tokens ?? 0,
 		weeklyTokens: weeklySplit.get(id)?.tokens ?? 0,
 		sessionTotalTokens: sessionSplit.get(id)?.totalTokens ?? 0,
@@ -608,10 +800,11 @@ async function loadLiveDashboard(
 		const familyEvents = events.filter(e => (e.model ?? '').toLowerCase().includes(entry.model))
 		const split = splitByShare(familyEvents, start, now, entry.pct, ttl)
 		const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(([id, s]) => ({
-			budgetPct: groupBudgetPct(s, budgetShares),
-			color: colorFor(id),
+			// Via budgetPctFor, not groupBudgetPct: this call passes no points today so
+			// the sentinel cannot appear, but the rule should not depend on that.
+			budgetPct: budgetPctFor(id, s),
 			groupId: id,
-			name: nameFor(id),
+			...labelFor(id),
 			tokens: s.tokens,
 		}))
 		groupRowsFor.sort((a, b) => b.tokens - a.tokens)
@@ -875,6 +1068,59 @@ export async function recordLimitSample(
 			},
 			target: [limitSamples.claudeAccountId, limitSamples.window, limitSamples.windowStart],
 		})
+}
+
+/** Append a change point when the reported percentage moved since the last one
+ *  — the timestamps are what let {@link splitByShare} attribute each rise to
+ *  the groups active when it happened. See {@link shouldRecordPoint} for which
+ *  readings earn a row; old points are pruned on write, so the table stays
+ *  bounded without a job. */
+export async function recordLimitChangePoint(
+	account: { extId: string | null; id: string; userId: string },
+	window: LimitWindow,
+	pct: number | null | undefined,
+	at: Date,
+	resetsAt: Date | null,
+): Promise<void> {
+	// The ext_id = NULL bucket can hold several logins at once (API keys, older
+	// collectors). Two of them reporting different utilizations would look like one
+	// account sawtoothing, inventing rises to attribute, so those accounts keep the
+	// plain cost split — which reads no series shape. Enforced here rather than at
+	// the call site so the rule cannot be forgotten by the next caller.
+	if (pct == null || account.extId === null) {
+		return
+	}
+	// Compare only against this window's own points, so the first reading after a
+	// reset always lands even though it is lower than the previous window's peak.
+	const windowStart = windowStartOf(resetsAt, at, window === '5h' ? FIVE_H_MS : SEVEN_D_MS)
+	const [prev] = await db
+		.select({ at: limitChangePoints.at, pct: limitChangePoints.pct })
+		.from(limitChangePoints)
+		.where(
+			and(
+				eq(limitChangePoints.claudeAccountId, account.id),
+				eq(limitChangePoints.window, window),
+				gte(limitChangePoints.at, windowStart),
+			),
+		)
+		.orderBy(desc(limitChangePoints.at))
+		.limit(1)
+	if (!shouldRecordPoint(prev, pct, at)) {
+		return
+	}
+	await db
+		.insert(limitChangePoints)
+		.values({ at, claudeAccountId: account.id, pct, userId: account.userId, window })
+		.onConflictDoNothing()
+	// Nothing reads past the longest window (7d) plus a day of clamp slack.
+	await db
+		.delete(limitChangePoints)
+		.where(
+			and(
+				eq(limitChangePoints.claudeAccountId, account.id),
+				lt(limitChangePoints.at, new Date(at.getTime() - SEVEN_D_MS - 24 * HOUR_MS)),
+			),
+		)
 }
 
 /** Every recorded utilization sample for one account+window at or after

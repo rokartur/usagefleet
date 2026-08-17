@@ -36,7 +36,11 @@ Every `USAGEFLEET_INTERVAL` seconds (default 15) `runOnce()`:
 2. `tailer.ts` reads each file from its stored byte offset (≤16 MB per file per
    cycle), `parser.ts` turns lines into `UsageRecord`s.
 3. `uploader.ts` posts them in batches of ≤1000 (the server's `BatchSchema` cap)
-   with retry + backoff.
+   with retry + backoff. Each batch carries `sentAt`, this machine's clock at
+   send time; the server measures its own receipt time against it to correct the
+   device's clock drift, without which usage lands in the wrong attribution
+   interval. It is stamped once per batch, so a retried upload reports the first
+   attempt's time — the server compensates by keeping the minimum over a window.
 4. The new offset is committed **only after** the server acknowledges — hence
    at-least-once delivery and the server-side dedup on `(userId, uuid)`.
 5. Offsets for files that no longer exist are pruned, so a long-lived install

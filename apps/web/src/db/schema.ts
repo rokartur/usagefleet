@@ -98,6 +98,15 @@ export const devices = pgTable(
 		claudeAccountId: text('claude_account_id').references(() => claudeAccounts.id, {
 			onDelete: 'set null',
 		}),
+		// Start of the window the offset below is the minimum over. Re-armed once it
+		// ages out, so a clock that keeps drifting is tracked rather than pinned to
+		// its first good reading.
+		clockOffsetAt: timestamp('clock_offset_at', { withTimezone: true }),
+		// How far this machine's clock sits behind ours, in ms, positive when behind.
+		// NULL until an upload carries a usable `sentAt`. See lib/usage/clock.ts:
+		// event timestamps come off this clock and limit change points off ours, so
+		// delta attribution needs the two on one timeline.
+		clockOffsetMs: integer('clock_offset_ms'),
 		collectorVersion: text('collector_version'),
 		// createdAt / lastSeenAt are tz-naive and compared against absolute instants
 		// at ingest (usage.ts drops records older than createdAt) — correct while
@@ -256,6 +265,28 @@ export const limitSamples = pgTable(
 	],
 )
 
+// Every reading that moved a window's official percentage, one row per change.
+// The timestamps let the group split attribute each *rise* to the groups active
+// when it happened (delta attribution in splitByShare) instead of smearing the
+// whole percentage over the window by cost. Appended by the collector's limits
+// post only when the pct actually moved; rows older than the longest window are
+// pruned on write. Per Anthropic account, like everything limit-shaped.
+export const limitChangePoints = pgTable(
+	'limit_change_point',
+	{
+		at: timestamp('at', { withTimezone: true }).notNull(),
+		claudeAccountId: text('claude_account_id')
+			.notNull()
+			.references(() => claudeAccounts.id, { onDelete: 'cascade' }),
+		pct: real('pct').notNull(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		window: text('window').$type<LimitWindow>().notNull(),
+	},
+	t => [primaryKey({ columns: [t.claudeAccountId, t.window, t.at] })],
+)
+
 export const groupsRelations = relations(groups, ({ many, one }) => ({
 	devices: many(devices),
 	owner: one(user, { fields: [groups.ownerId], references: [user.id] }),
@@ -280,4 +311,5 @@ export type Group = typeof groups.$inferSelect
 export type UsageEvent = typeof usageEvents.$inferSelect
 export type UserSettings = typeof userSettings.$inferSelect
 export type LimitSample = typeof limitSamples.$inferSelect
+export type LimitChangePoint = typeof limitChangePoints.$inferSelect
 export type ClaudeAccount = typeof claudeAccounts.$inferSelect
