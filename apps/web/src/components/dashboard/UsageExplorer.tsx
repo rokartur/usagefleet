@@ -150,7 +150,9 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 	const [picking, setPicking] = useState(false)
 
 	const groupName = new Map(history.groups.map(g => [g.id, g.name]))
-	const deviceName = new Map(history.devices.map(d => [d.id, d.name]))
+	// Revoked machines still own their history, and a name gets reused when one is
+	// re-enrolled, so the suffix is what tells the two entries apart.
+	const deviceName = new Map(history.devices.map(d => [d.id, d.revoked ? `${d.name} (revoked)` : d.name]))
 	const label = (d: Dim, key: string): string => {
 		switch (d) {
 			case 'group': {

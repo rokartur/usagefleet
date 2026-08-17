@@ -1019,7 +1019,9 @@ export interface HistoryRow extends DailyAggRow {
 export interface HistoryDTO {
 	rows: HistoryRow[]
 	groups: { id: string; name: string; color: string }[]
-	devices: { id: string; name: string; groupId: string | null }[]
+	// Revoked devices keep their history, so the explorer still lists them — and
+	// says so, since two machines can share a name across a re-enrol.
+	devices: { id: string; name: string; groupId: string | null; revoked: boolean }[]
 }
 
 /**
@@ -1044,7 +1046,7 @@ export async function getHistory(userId: string): Promise<HistoryDTO> {
 		cachedDailyRows(userId),
 		db.select().from(groups).where(eq(groups.ownerId, userId)),
 		db
-			.select({ groupId: devices.groupId, id: devices.id, name: devices.name })
+			.select({ groupId: devices.groupId, id: devices.id, name: devices.name, revoked: devices.revoked })
 			.from(devices)
 			.where(eq(devices.userId, userId)),
 	])

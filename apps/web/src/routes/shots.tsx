@@ -155,11 +155,12 @@ const windows: WindowHistoryDTO = {
 }
 
 const DEVICES = [
-	{ groupId: 'g-laptops', id: 'd1', name: 'macbook-pro' },
-	{ groupId: 'g-laptops', id: 'd2', name: 'thinkpad' },
-	{ groupId: 'g-desktops', id: 'd3', name: 'studio' },
-	{ groupId: 'g-desktops', id: 'd4', name: 'win-tower' },
-	{ groupId: 'g-server', id: 'd5', name: 'nuc' },
+	{ groupId: 'g-laptops', id: 'd1', name: 'macbook-pro', revoked: false },
+	{ groupId: 'g-laptops', id: 'd2', name: 'thinkpad', revoked: false },
+	{ groupId: 'g-desktops', id: 'd3', name: 'studio', revoked: false },
+	{ groupId: 'g-desktops', id: 'd4', name: 'win-tower', revoked: false },
+	// A retired machine that still owns history — the explorer marks it.
+	{ groupId: 'g-server', id: 'd5', name: 'nuc', revoked: true },
 ]
 const MODELS = ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5']
 const SOURCES = ['cli', 'cli', 'desktop', 'pi']
