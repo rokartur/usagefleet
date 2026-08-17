@@ -1064,6 +1064,9 @@ export async function getHistory(userId: string): Promise<HistoryDTO> {
 export interface ProjectUsage {
 	/** Absolute cwd as reported, or null when the log had none. */
 	path: string | null
+	/** Groups whose devices produced this usage, costliest first — a checkout
+	 *  cloned on two machines shows up under both. */
+	groups: { name: string; color: string }[]
 	billableTokens: number
 	totalTokens: number
 	costUsd: number
@@ -1076,18 +1079,23 @@ export interface ProjectUsage {
  * costliest first.
  *
  * Same in-SQL fold as {@link loadDailyAggregates} (streamed segments collapse to
- * the largest row per logical message), grouped by (cwd × model) because
- * pricing is per model; the models are then summed away per project here.
+ * the largest row per logical message), grouped by (cwd × model × group) because
+ * pricing is per model; the models are then summed away per project here, the
+ * groups only ranked.
  */
 export async function getProjectUsage(userId: string, now = new Date()): Promise<ProjectUsage[]> {
 	const since = new Date(now.getTime() - PROJECT_DAYS * 24 * 60 * 60 * 1000)
 	await refreshPrices()
-	const settings = await ensureSettings(userId)
+	const [settings, groupRows] = await Promise.all([
+		ensureSettings(userId),
+		db.select().from(groups).where(eq(groups.ownerId, userId)),
+	])
 	const result = await db.execute(sql`
     WITH folded AS (
       SELECT DISTINCT ON (${FOLD_KEY})
         ${usageEvents.ts} AS ts,
         ${usageEvents.cwd} AS cwd,
+        d.group_id AS group_id,
         ${usageEvents.model} AS model,
         ${usageEvents.inputTokens} AS input_tokens,
         ${usageEvents.outputTokens} AS output_tokens,
@@ -1096,12 +1104,14 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
         ${usageEvents.cacheCreation1hTokens} AS cache_creation_1h,
         ${usageEvents.cacheReadTokens} AS cache_read_tokens
       FROM ${usageEvents}
+      JOIN ${devices} d ON d.id = ${usageEvents.deviceId}
       WHERE ${usageEvents.userId} = ${userId}
         AND ${usageEvents.ts} >= ${since.toISOString()}::timestamptz
       ORDER BY ${FOLD_KEY}, ${ROW_TOTAL} DESC, ${usageEvents.ts} ASC
     )
     SELECT
       folded.cwd AS cwd,
+      folded.group_id AS group_id,
       folded.model AS model,
       max(folded.ts) AS last_ts,
       sum(folded.input_tokens)::bigint AS input,
@@ -1111,7 +1121,7 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
       sum(coalesce(folded.cache_creation_1h, 0))::bigint AS cache_creation_1h,
       sum(folded.cache_read_tokens)::bigint AS cache_read
     FROM folded
-    GROUP BY 1, 2
+    GROUP BY 1, 2, 3
     HAVING (
       sum(folded.input_tokens) + sum(folded.output_tokens) +
       sum(folded.cache_creation_tokens) + sum(folded.cache_read_tokens)
@@ -1120,6 +1130,7 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
 
 	const rows = result as unknown as {
 		cwd: string | null
+		group_id: string | null
 		model: string | null
 		last_ts: string | Date
 		input: string
@@ -1131,6 +1142,8 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
 	}[]
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	const byPath = new Map<string, ProjectUsage>()
+	// Cost per (project × group), so the dots can be ranked by who spent most.
+	const groupCost = new Map<string, Map<string | null, number>>()
 	for (const r of rows) {
 		const totals = {
 			cacheCreation1hTokens: Number(r.cache_creation_1h),
@@ -1142,21 +1155,35 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
 			totalTokens: Number(r.input) + Number(r.output) + Number(r.cache_creation) + Number(r.cache_read),
 		}
 		const lastActive = new Date(r.last_ts).toISOString()
-		const cur = byPath.get(r.cwd ?? '')
+		const key = r.cwd ?? ''
+		const cost = costForTokens(totals, r.model, ttl)
+		const cur = byPath.get(key)
 		if (cur) {
 			cur.billableTokens += billableTokens(totals)
 			cur.totalTokens += totals.totalTokens
-			cur.costUsd += costForTokens(totals, r.model, ttl)
+			cur.costUsd += cost
 			cur.lastActive = lastActive > cur.lastActive ? lastActive : cur.lastActive
 		} else {
-			byPath.set(r.cwd ?? '', {
+			byPath.set(key, {
 				billableTokens: billableTokens(totals),
-				costUsd: costForTokens(totals, r.model, ttl),
+				costUsd: cost,
+				groups: [],
 				lastActive,
 				path: r.cwd,
 				totalTokens: totals.totalTokens,
 			})
 		}
+		const byGroup = groupCost.get(key) ?? new Map<string | null, number>()
+		byGroup.set(r.group_id, (byGroup.get(r.group_id) ?? 0) + cost)
+		groupCost.set(key, byGroup)
+	}
+	for (const [key, project] of byPath) {
+		project.groups = [...(groupCost.get(key) ?? [])]
+			.toSorted((a, b) => b[1] - a[1])
+			.map(([id]) => {
+				const g = id === null ? undefined : groupRows.find(x => x.id === id)
+				return { color: g?.color ?? '#94a3b8', name: id === null ? 'Ungrouped' : (g?.name ?? 'Unknown') }
+			})
 	}
 	return [...byPath.values()].toSorted((a, b) => b.costUsd - a.costUsd)
 }

@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { splitPath } from './ProjectTable'
+import type { ProjectUsage } from '@/lib/data'
+import { splitPath, toRows } from './ProjectTable'
+
+const project = (path: string | null, costUsd: number, group: string, lastActive = '2026-01-01T00:00:00.000Z') =>
+	({
+		billableTokens: costUsd * 10,
+		costUsd,
+		groups: [{ color: '#fff', name: group }],
+		lastActive,
+		path,
+		totalTokens: costUsd * 20,
+	}) satisfies ProjectUsage
 
 describe(splitPath, () => {
 	it('folds the home directory on every OS', () => {
@@ -24,5 +35,36 @@ describe(splitPath, () => {
 
 	it('buckets logs without a working directory', () => {
 		expect(splitPath(null).name).toBe('No project')
+	})
+})
+
+describe(toRows, () => {
+	const projects = [
+		project('/Users/artur/Developer/vapp', 30, 'laptops', '2026-01-02T00:00:00.000Z'),
+		project('/Users/artur/work/vapp', 12, 'desktops'),
+		project('/Users/artur/Developer/usagefleet', 20, 'laptops'),
+	]
+
+	it('keeps one row per path when merging is off', () => {
+		expect(toRows(projects, false).map(r => r.paths)).toStrictEqual(projects.map(p => [p.path]))
+	})
+
+	it('folds same-name folders, sums them and re-sorts by cost', () => {
+		const rows = toRows(projects, true)
+		expect(rows.map(r => splitPath(r.path).name)).toStrictEqual(['vapp', 'usagefleet'])
+		const vapp = rows[0]
+		expect(vapp.costUsd).toBe(42)
+		expect(vapp.billableTokens).toBe(420)
+		expect(vapp.paths).toStrictEqual(['/Users/artur/Developer/vapp', '/Users/artur/work/vapp'])
+		expect(vapp.groups.map(g => g.name)).toStrictEqual(['laptops', 'desktops'])
+		// The most recent of the folded paths, not the first one seen.
+		expect(vapp.lastActive).toBe('2026-01-02T00:00:00.000Z')
+	})
+
+	it('leaves the source rows untouched', () => {
+		toRows(projects, true)
+		expect(projects[0]).toStrictEqual(
+			project('/Users/artur/Developer/vapp', 30, 'laptops', '2026-01-02T00:00:00.000Z'),
+		)
 	})
 })
