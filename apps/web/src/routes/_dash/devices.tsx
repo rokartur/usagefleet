@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { MonitorSmartphoneIcon } from 'lucide-react'
@@ -5,6 +6,7 @@ import { AddDeviceForm } from '@/components/AddDeviceForm'
 import { AutoRefresh } from '@/components/AutoRefresh'
 import { DeviceBlockingToggle, DeviceGroupSelect, RevokeDeviceButton } from '@/components/devices/DeviceActions'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { accountPlan } from '@/lib/billing'
 import { backfillUngroupedDevices, listDevices, listGroups } from '@/lib/data'
@@ -27,6 +29,7 @@ export const Route = createFileRoute('/_dash/devices')({
 
 function DevicesPage() {
 	const { devices, groups, plan } = Route.useLoaderData()
+	const [showRevoked, setShowRevoked] = useState(false)
 	// Revoked devices don't hold a slot — must match createDevice's count.
 	const activeDevices = devices.filter(d => !d.revoked)
 	const active = activeDevices.length
@@ -41,8 +44,8 @@ function DevicesPage() {
 			.map(d => d.id),
 	)
 	const groupOptions = groups.map(g => ({ id: g.id, name: g.name }))
-	// Revoked devices stay listed, but sink below the live ones in their section.
-	const ordered = devices.toSorted((a, b) => Number(a.revoked) - Number(b.revoked))
+	// Revoked devices are hidden until asked for, and sink below the live ones.
+	const ordered = showRevoked ? devices.toSorted((a, b) => Number(a.revoked) - Number(b.revoked)) : activeDevices
 	// One section per group (empty ones included), then anything still ungrouped.
 	const sections = [
 		...groups.map(g => ({
@@ -78,8 +81,15 @@ function DevicesPage() {
 						</span>
 					)}
 				</p>
-				{/* When there are none, the empty state below carries the button. */}
-				{devices.length > 0 && <AddDeviceForm groups={groupOptions} atCap={atCap} />}
+				<div className='flex items-center gap-2'>
+					{devices.length > active && (
+						<Button variant='ghost' size='sm' onClick={() => setShowRevoked(!showRevoked)}>
+							{showRevoked ? 'Hide' : 'Show'} {devices.length - active} revoked
+						</Button>
+					)}
+					{/* When there are none, the empty state below carries the button. */}
+					{devices.length > 0 && <AddDeviceForm groups={groupOptions} atCap={atCap} />}
+				</div>
 			</div>
 
 			{devices.length === 0 ? (
@@ -108,7 +118,7 @@ function DevicesPage() {
 							<span className='size-2 rounded-full' style={{ backgroundColor: s.color }} aria-hidden />
 							{s.name}
 							{/* Counts active devices only, like the page header — revoked
-                  ones stay listed but don't hold a slot. */}
+                  ones don't hold a slot, and are hidden unless asked for. */}
 							<span className='font-normal text-muted-foreground'>
 								{s.items.filter(d => !d.revoked).length} active
 							</span>
