@@ -14,9 +14,9 @@ import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
 import { billableTokens, LIMITS_STALE_MS } from '@/lib/usage'
 import { cn } from '@/lib/utils'
 
-/** Percentages are Anthropic's own utilization, capped for display: past 100%
- *  the number stops being informative and the bar is already full. */
-const pctText = (n: number) => `${Math.round(Math.min(100, n))}%`
+/** Percentages are Anthropic's own utilization, shown uncapped: an overrun
+ *  ("105%") is the interesting case, even though the bar stops at full. */
+const pctText = (n: number) => `${Math.round(n)}%`
 
 /** Display label for a limit-window key: "5h" → "5-hour", "7d" → "weekly". */
 function windowLabel(window: string): string {

@@ -812,7 +812,9 @@ async function loadLiveDashboard(
 			groups: groupRowsFor,
 			label: modelLabel(entry.model),
 			model: entry.model,
-			pct: Math.min(100, Math.max(0, entry.pct)),
+			// Not capped at 100: Anthropic keeps counting past a model cap and
+			// "105%" is the number worth seeing. Floor at 0 only.
+			pct: Math.max(0, entry.pct),
 			resetsAt,
 			window: entry.window,
 		}
