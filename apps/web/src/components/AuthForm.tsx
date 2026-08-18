@@ -80,6 +80,11 @@ export function AuthForm({
 			)
 			return
 		}
+		// Retired matches keep their loader data, so signing into a second account
+		// would re-render the previous one's dashboard while the new loader runs in
+		// the background. Dropping them makes the next route load blocking, i.e. the
+		// pending skeleton instead of another account's numbers.
+		router.clearCache()
 		// The session cookie only exists after the call above, so every loader that
 		// asked "is anyone signed in?" has to run again before navigating.
 		await router.invalidate()
