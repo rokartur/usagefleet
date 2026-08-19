@@ -2,8 +2,11 @@ import { versionParts } from './models'
 import type { TokenCounts, UsageRecord } from './types'
 
 /** USD per 1M tokens. Public Claude API list prices from
- *  https://platform.claude.com/docs/en/about-claude/pricing — used only for the
- *  optional $ column, not for limit math.
+ *  https://platform.claude.com/docs/en/about-claude/pricing — the $ column, and
+ *  the starting point for limit math: a split weighs each key by list-price cost
+ *  unless the account fitted its own multipliers on top (see `calibration.ts`).
+ *  A subscription's limit meter is not billed at these prices and is measurably
+ *  not proportional to them, so a raw dollar figure is a proxy, never the meter.
  *
  *  `cacheWrite` is the 1-hour write rate (2× base input), used only when a user
  *  opts into 1h caching. The default 5m rate is derived as 1.25× base input.

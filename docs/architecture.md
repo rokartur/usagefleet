@@ -75,7 +75,9 @@ Data access is layered so pages stay thin:
   multi-account); `NULLS NOT DISTINCT` keeps it to one per user. Holds the
   latest reported utilization (`five_hour_pct`, `seven_day_pct`, resets,
   `model_limits` jsonb) — Anthropic meters each subscription separately, so this
-  is per account and not per user.
+  is per account and not per user. `calibration` jsonb holds this account's
+  fitted token-bucket weights and meter lag when its own history beats list
+  prices on held-out data, and null when it does not (see `usage-math.md`).
 - `usage_event` — one raw JSONL segment. Unique on `(user_id, uuid)`; indexed on
   `(user_id, ts)` and `(device_id, ts)`. Never aggregate without folding.
 - `user_settings` — plan preset, token limits, week reset weekday/hour (a grid
@@ -91,9 +93,12 @@ Data access is layered so pages stay thin:
   using the minimum `receivedAt - sentAt` over an hour-long window held on
   `devices.clock_offset_ms` / `clock_offset_at` (`lib/usage/clock.ts`).
 - `limit_change_point` — one row per reading that *raised* a window's official
-  pct, per `(claude_account, window, at)`, thinned to the 5-minute resolution
-  the split reads at and pruned past the longest window on write. The live group
-  split attributes each rise to the groups active in its interval (delta
+  pct, per `(claude_account, window, model, at)` — `model` is `''` for a whole
+  window and the model id for a per-model limit. Nothing is thinned on write:
+  this is the full-resolution log, and readings closer together than one poll
+  cycle are merged at read time instead (`mergePoints`), so the fit and the split
+  can walk the same series. Pruned past the longest window on write. The live
+  group split attributes each rise to the groups active in its interval (delta
   attribution — see `usage-math.md`). Identified accounts only.
 
 ## Ingest API contract

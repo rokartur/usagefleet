@@ -15,12 +15,15 @@ import type { ClaudeAccount as ClaudeAccountRow, LimitWindow, PointWindow, Store
 import { createPromiseCache } from '@/lib/promise-cache'
 import {
 	billableTokens,
+	costBuckets,
 	costForTokens,
 	costUsd,
 	EMPTY_TOTALS,
 	filterByWindow,
 	fitCalibration,
 	foldEvents,
+	MERGE_INTERVAL_MS,
+	mergePoints,
 	modelBreakdown,
 	modelLabel,
 	monthKey,
@@ -31,7 +34,16 @@ import {
 	weightedCost,
 	windowSpans,
 } from '@/lib/usage'
-import type { CacheTtl, Calibration, DailyAggRow, ModelUsage, TokenTotals, UsageRecord, WindowSpan } from '@/lib/usage'
+import type {
+	BucketWeights,
+	CacheTtl,
+	Calibration,
+	DailyAggRow,
+	ModelUsage,
+	TokenTotals,
+	UsageRecord,
+	WindowSpan,
+} from '@/lib/usage'
 
 // The logical-message fold key: (messageId, requestId) when present, else the
 // row's own uuid. Prefixed so a uuid can never collide with a messageId pair.
@@ -366,20 +378,6 @@ export const UNATTRIBUTED = '__unattributed__'
 /** Grid a limit sample's window start is snapped to — see recordLimitSample. */
 const SAMPLE_GRID_MS = 5 * 60 * 1000
 
-/** Readings closer together than this merge into one attribution interval.
- *  Every device polls Anthropic once a minute and posts what it read, so two
- *  readings inside one minute are the same moment seen by two machines and the
- *  boundary between them is noise, not information.
- *
- *  This used to be five minutes, to absorb an unmeasured delay between an
- *  event's timestamp and Anthropic's meter. Measured on real accounts, that
- *  delay is under a minute — while the five-minute bound was dropping ~25% of
- *  all recorded rises and, worse, merging idle intervals into active ones,
- *  which hid off-fleet usage that should have read as {@link UNATTRIBUTED}.
- *  What remains of the delay is fitted per account instead
- *  ({@link Calibration.lagMs}), which is falsifiable where a constant is not. */
-const MERGE_INTERVAL_MS = 60 * 1000
-
 /** Start of a window of exactly `len` ending at `now`. `resetsAt` is whatever
  *  the collector reported, and it is range-checked nowhere on the way in, so
  *  two ways of being wrong are handled here: stale (already past) clamps to the
@@ -445,15 +443,15 @@ function riseWeights(
 	const nowMs = now.getTime()
 	let last = { at: startMs, pct: 0 }
 	const bounds = [last]
-	for (const p of points
-		.filter(p => p.at.getTime() > startMs && p.at.getTime() <= nowMs)
-		.toSorted((a, b) => a.at.getTime() - b.at.getTime())) {
-		// Merging: a reading inside the minimum interval is dropped and its rise
-		// carries forward to the next kept reading (or the synthetic final one).
-		if (p.at.getTime() - last.at >= MERGE_INTERVAL_MS) {
-			last = { at: p.at.getTime(), pct: p.pct }
-			bounds.push(last)
-		}
+	// A merged-away reading's rise carries forward to the next kept reading (or to
+	// the synthetic final one below).
+	const kept = mergePoints(
+		points.filter(p => p.at.getTime() > startMs && p.at.getTime() <= nowMs),
+		startMs,
+	)
+	for (const p of kept) {
+		last = { at: p.at.getTime(), pct: p.pct }
+		bounds.push(last)
 	}
 	if (targetPct > last.pct) {
 		// The tail rise the account row already shows but no reading recorded yet.
@@ -476,6 +474,11 @@ function riseWeights(
 		const rise = bounds[b].pct - bounds[b - 1].pct
 		// Events are consumed even when the rise is <= 0 (a downward correction):
 		// they explain no rise and must not leak into the next interval.
+		// `lagMs` cuts both ends of the timeline and both are meant: work from before
+		// the reset counted against the previous window no matter when the meter
+		// caught up, and work inside the last `lagMs` has not reached the meter yet,
+		// so no recorded rise can be its. Both still count in the cost-share fallback
+		// and in the token totals.
 		const from = i
 		while (i < events.length && events[i].ts + lagMs <= end) {
 			i += 1
@@ -564,7 +567,7 @@ export function splitByShare(
 		totalByKey.set(k, totals.totalTokens)
 		let cost = 0
 		for (const e of folded) {
-			const c = calibration ? weightedCost(e, ttl, calibration.weights) : costUsd(e, ttl)
+			const c = calibration ? weightedCost(costBuckets(e, e.model, ttl), calibration.weights) : costUsd(e, ttl)
 			cost += c
 			timeline.push({ cost: c, key: k, ts: e.ts.getTime() })
 		}
@@ -1234,6 +1237,10 @@ export async function recalibrateAccount(
 			)
 			.orderBy(asc(limitChangePoints.at)),
 		loadRecentEvents(account.userId, cutoff, account.id),
+		// Same reason the dashboard loader waits on it: the fit prices every event.
+		// Fitting off the hardcoded fallback tiers would bake one price list into the
+		// weights and then apply them against another.
+		refreshPrices(),
 	])
 	const ttl: CacheTtl = settings?.cacheWriteTtl === '1h' ? '1h' : '5m'
 	// Null on a failed fit is a result, not an error: it clears a calibration that
@@ -1273,12 +1280,18 @@ async function loadWindowSamples(
  *  The window's recorded utilization is split across groups by cost share, so
  *  the group cells sum to the window's account-wide percentage. Windows with no
  *  activity are dropped; windows with activity but no recorded utilization show
- *  tokens only (accountPct null). */
+ *  tokens only (accountPct null).
+ *
+ *  Cost share, not delta attribution: these windows are aggregated per span in
+ *  SQL, so the per-event timeline a rise needs is long gone. `weights` still
+ *  applies — the account's own price list is what makes a share correct, and a
+ *  history card built on list prices would contradict the live card beside it. */
 export function buildPastWindows(
 	rows: WindowAggRow[],
 	spans: WindowSpan[],
 	ttl: CacheTtl,
 	label: (id: string | null) => { name: string; color: string },
+	weights?: BucketWeights,
 ): PastWindow[] {
 	const byBin = new Map<number, WindowAggRow[]>()
 	for (const row of rows) {
@@ -1298,7 +1311,9 @@ export function buildPastWindows(
 			let totalCost = 0
 			for (const c of cells) {
 				const cur = byGroup.get(c.groupId) ?? { cost: 0, tokens: 0 }
-				const cost = costForTokens(c.totals, c.model, ttl)
+				const cost = weights
+					? weightedCost(costBuckets(c.totals, c.model, ttl), weights)
+					: costForTokens(c.totals, c.model, ttl)
 				cur.tokens += billableTokens(c.totals)
 				cur.cost += cost
 				totalCost += cost
@@ -1368,9 +1383,12 @@ export async function getWindowHistory(view: AccountView, now: Date): Promise<Wi
 	}
 
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
+	// The same weights the live card splits by, so one window cannot read two ways
+	// depending on which card shows it.
+	const weights = view.account?.calibration?.weights
 	return {
-		sessions: buildPastWindows(sessionRows, sessionSpans, ttl, label),
-		weeks: buildPastWindows(weekRows, weekSpans, ttl, label),
+		sessions: buildPastWindows(sessionRows, sessionSpans, ttl, label, weights),
+		weeks: buildPastWindows(weekRows, weekSpans, ttl, label, weights),
 	}
 }
 

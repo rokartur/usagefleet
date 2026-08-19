@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildPastWindows, groupBudgetPct, shouldRecordPoint, splitByShare, UNATTRIBUTED, windowStartOf } from './data'
 import type { WindowAggRow } from './data'
-import type { UsageRecord } from './usage'
+import type { BucketWeights, Calibration, UsageRecord } from './usage'
 
 const STRIDE = 5 * 60 * 60 * 1000
 const START = new Date('2026-06-18T10:00:00Z')
@@ -19,6 +19,24 @@ const cell = (groupId: string | null, model: string, billable: number): WindowAg
 		outputTokens: 0,
 		totalTokens: billable,
 	},
+})
+
+const bucketCell = (groupId: string | null, totals: Partial<WindowAggRow['totals']>): WindowAggRow => ({
+	...cell(groupId, 'claude-sonnet-4', 0),
+	totals: { ...cell(groupId, 'claude-sonnet-4', 0).totals, ...totals },
+})
+
+/** What every real fit finds: list prices overcharge cache reads by more than
+ *  an order of magnitude against output. */
+const CHEAP_CACHE_READS: BucketWeights = { cacheRead: 0.05, cacheWrite: 1, input: 1, output: 1 }
+
+const calibrated = (over: Partial<Calibration> = {}): Calibration => ({
+	at: '2026-06-18T00:00:00.000Z',
+	baselineMape: 40,
+	lagMs: 0,
+	mape: 10,
+	weights: CHEAP_CACHE_READS,
+	...over,
 })
 
 const label = (id: string | null) => ({
@@ -59,6 +77,19 @@ describe(buildPastWindows, () => {
 
 	it('drops windows with no activity', () => {
 		expect(build([], 40)).toStrictEqual([])
+	})
+
+	it('splits by the same fitted weights the live card uses', () => {
+		// 1M sonnet output and 50M cache reads cost the same $15 at list price, so
+		// list prices call this window an even split. The account's own history says
+		// cache reads barely move the meter — and the history card cannot contradict
+		// the live card sitting above it on the same window.
+		const rows = [bucketCell('a', { outputTokens: 1_000_000 }), bucketCell('b', { cacheReadTokens: 50_000_000 })]
+		const spans = [{ end: START.getTime() + STRIDE, pct: 60, start: START.getTime() }]
+		expect(buildPastWindows(rows, spans, '1h', label)[0].groups.map(g => g.accountPct)).toStrictEqual([30, 30])
+		const [w] = buildPastWindows(rows, spans, '1h', label, CHEAP_CACHE_READS)
+		expect(w.groups.find(g => g.groupId === 'a')?.accountPct).toBe(57)
+		expect(w.groups.find(g => g.groupId === 'b')?.accountPct).toBe(3)
 	})
 })
 
@@ -279,6 +310,37 @@ describe(splitByShare, () => {
 		)
 		expect(s.get(UNATTRIBUTED)).toBeUndefined()
 		expect(s.get('a')?.exactPct).toBeCloseTo(40, 6)
+	})
+
+	it('re-prices events with the fitted weights instead of list prices', () => {
+		// 1M sonnet output and 50M cache reads both cost $15 at list price, so list
+		// prices split the account down the middle. The account's own rises say cache
+		// reads move the meter 20× less than that, which all but erases b's half.
+		const events = [
+			{ ...ev('a', 'claude-sonnet-4', 0), outputTokens: 1_000_000 },
+			{ ...ev('b', 'claude-sonnet-4', 0), cacheReadTokens: 50_000_000 },
+		]
+		expect(splitByShare(events, WIN_START, NOW, 60, '5m').get('b')?.exactPct).toBeCloseTo(30, 6)
+		const s = splitByShare(events, WIN_START, NOW, 60, '5m', undefined, calibrated())
+		expect(s.get('a')?.exactPct).toBeCloseTo((60 * 15) / 15.75, 6)
+		expect(s.get('b')?.exactPct).toBeCloseTo((60 * 0.75) / 15.75, 6)
+	})
+
+	it('shifts events by the fitted meter lag before matching them to a rise', () => {
+		// a stopped a minute before the reading, b started a minute after it, and the
+		// whole 20pp climb surfaced two minutes later still. Taken at face value the
+		// climb belongs to b; shifted by the delay this account actually shows, it is
+		// a's — which is the entire point of fitting the lag.
+		const events = [
+			ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:59:00Z')),
+			ev('b', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T11:01:00Z')),
+		]
+		const points = [pt('2026-06-18T11:00:00Z', 0), pt('2026-06-18T11:02:00Z', 20)]
+		const noLag = splitByShare(events, WIN_START, NOW, 20, '5m', points)
+		expect(noLag.get('b')?.exactPct).toBeCloseTo(20, 6)
+		const lagged = splitByShare(events, WIN_START, NOW, 20, '5m', points, calibrated({ lagMs: 120_000 }))
+		expect(lagged.get('a')?.exactPct).toBeCloseTo(20, 6)
+		expect(lagged.get('b')?.exactPct).toBe(0)
 	})
 
 	it('caps a backlogged device at the rises of the intervals it worked in', () => {

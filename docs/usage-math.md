@@ -171,6 +171,11 @@ What keeps this honest:
 - Intervals no event falls in are excluded from the fit. Asking the weights to
   explain a rise from nothing is how a fit learns garbage; that rise is
   `UNATTRIBUTED` at read time and stays that way.
+- The fit walks the merged series, through the same `mergePoints()` the split
+  uses. Change points are stored at full resolution, so several devices reporting
+  the same climb seconds apart leave sub-poll intervals in the raw log — fitting
+  on those would certify a sampling production never sees, and the held-out gate
+  could not catch it because train and test would share the bias.
 - Only ratios between buckets reach the split, since weights are normalized to
   the official pct like any other cost. The absolute scale (pct per dollar) is
   fitted too, and is what a forecast would need, but nothing reads it yet.
@@ -186,9 +191,11 @@ Deliberately uncapped: past 100% that group is eating another's slice, which is
 the thing worth seeing. Rounding happens once, at the end — rounding the share
 first would multiply the error by the group count.
 
-Per-model limits (e.g. the Fable weekly cap) get the plain whole-window cost
-split — no change points are recorded for them — with the window length parsed
-from the header key (`5h`, `7d`, …).
+Per-model limits (e.g. the Fable weekly cap) get their own change-point series,
+keyed by model id instead of `''`, and the same delta attribution as a whole
+window — without it a device uploading a backlog could rewrite a model's entire
+window on cost alone. The window length is parsed from the header key (`5h`,
+`7d`, …). Cost share remains the fallback when a model's series has no rises.
 
 ## Past windows card
 
@@ -203,7 +210,9 @@ show tokens only, on grid-guessed (possibly clipped) spans.
 This card also splits by **whole-window cost**, not by delta attribution: a
 closed window has one recorded peak, not a series, so there are no rises to
 allocate. The two tables can therefore disagree on the same window — that is
-the method difference, not a bug.
+the method difference, not a bug. The *prices* behind that cost are the same
+ones the live card uses, calibration included: the method may differ, the
+account's price list may not.
 
 These percentages are **account shares, not budget slices**: the card's group
 rows carry `accountPct`, so a group at half the account reads 50% here while the

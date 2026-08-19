@@ -13,6 +13,44 @@
  */
 export const LIMITS_STALE_MS = 15 * 60 * 1000
 
+/**
+ * Readings landing closer together than this are one reading. Every device polls
+ * Anthropic once a minute and posts what it read, so two readings inside one
+ * minute are the same moment seen by two machines and the boundary between them
+ * is noise, not information.
+ *
+ * This used to be five minutes, to absorb an unmeasured delay between an event's
+ * timestamp and Anthropic's meter. Measured on real accounts that delay is under
+ * a minute — while the five-minute bound was dropping ~25% of all recorded rises
+ * and, worse, merging idle intervals into active ones, which hid off-fleet usage
+ * that should have read as unattributed. What remains of the delay is fitted per
+ * account instead (`Calibration.lagMs`), which is falsifiable where a constant is
+ * not.
+ */
+export const MERGE_INTERVAL_MS = 60 * 1000
+
+/**
+ * Collapse readings that fall within one {@link MERGE_INTERVAL_MS} of the last
+ * kept one; a dropped reading's rise carries forward to the next kept one.
+ *
+ * Shared on purpose: the split and the fit that certifies it must walk the same
+ * series, or the held-out gate scores a sampling that never reaches production.
+ *
+ * `since` anchors the first interval — pass a window start to merge the first
+ * reading against it, or leave it at 0 to always keep the earliest reading.
+ */
+export function mergePoints<T extends { at: Date }>(points: T[], since = 0): T[] {
+	const out: T[] = []
+	let last = since
+	for (const p of points.toSorted((a, b) => a.at.getTime() - b.at.getTime())) {
+		if (p.at.getTime() - last >= MERGE_INTERVAL_MS) {
+			out.push(p)
+			last = p.at.getTime()
+		}
+	}
+	return out
+}
+
 /** An ISO string from a collector, or null when it is absent or unparseable. */
 export function toDate(v: string | null | undefined): Date | null {
 	if (!v) {

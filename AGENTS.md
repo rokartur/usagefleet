@@ -38,16 +38,19 @@ Break one of these and the product silently reports wrong numbers or leaks acces
   attribution**: `limit_change_point` records every reading whose pct rose
   (identified accounts only; readings under a minute apart merge at read time),
   and each rise goes to the groups whose events fall in that interval, weighted
-  by cost inside it. Cost share over the whole window is the fallback when an
-  account has no points, and stays the method for the past-windows card. Token
-  counts are display-only.
+  by cost inside it. Per-model limits get their own series, keyed by model id.
+  Cost share over the whole window is the fallback when an account has no points,
+  and stays the method for the past-windows card. Token counts are display-only.
 - **List prices are a fallback, not the model.** Where an account has enough
   history, `lib/usage/calibration.ts` fits what Anthropic's meter actually
   charges per token bucket (cache reads move it ~16× less than their price
   implies) and stores it on `claude_account.calibration`. A fit is only kept
   when it beats list prices on the held-out slice it was not fitted to — that
   gate is the invariant. Never ship weights without it: a fleet whose rises come
-  from machines outside it will happily fit noise.
+  from machines outside it will happily fit noise. The gate only means something
+  if the fit reads the series the split reads, so both go through `mergePoints()`
+  and both apply `lagMs`; every consumer of a split (live cards *and* the
+  past-windows card) uses the same weights, or one window reads two ways.
 - **Everything limit-shaped is per Anthropic account, not per user.** Anthropic
   meters each subscription separately, so percentages live on `claude_account`
   (keyed by the `accountUuid` the collector reads from `~/.claude.json`) and a

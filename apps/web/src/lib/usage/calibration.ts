@@ -1,3 +1,4 @@
+import { mergePoints } from './limits'
 import { costBuckets } from './pricing'
 import type { CacheTtl, CostBuckets } from './pricing'
 import type { UsageRecord } from './types'
@@ -16,8 +17,9 @@ export type BucketWeights = CostBuckets
 export interface Calibration {
 	/** When this fit ran (ISO), so the caller can re-run it on a schedule. */
 	at: string
-	/** Held-out error of the list-price split, for comparison and for the
-	 *  admin panel: the gain is only meaningful next to what it replaced. */
+	/** Held-out error of the list-price split. Stored rather than derived later
+	 *  because it cannot be: the rises it was measured against roll off within a
+	 *  week, and {@link mape} alone does not say whether the fit was worth it. */
 	baselineMape: number
 	/** How long an event's tokens take to show up in Anthropic's meter. Events
 	 *  are shifted by this before being bucketed into attribution intervals.
@@ -26,8 +28,6 @@ export interface Calibration {
 	lagMs: number
 	/** Held-out mean absolute percentage error of the fitted weights. */
 	mape: number
-	/** Attribution intervals the fit ran on. */
-	samples: number
 	weights: BucketWeights
 }
 
@@ -59,11 +59,12 @@ const TRAIN_FRACTION = 0.7
  *  than fixed, because pct-per-dollar depends on the plan. */
 const MAX_BUCKET_MULTIPLE = 20
 
-/** Cost of one record under fitted weights, in the same "percentage points"
- *  unit the fit was solved in. Only ratios between records matter to the
- *  split, so the unit is free — but it keeps the number interpretable. */
-export function weightedCost(e: UsageRecord, ttl: CacheTtl, w: BucketWeights): number {
-	const b = costBuckets(e, e.model, ttl)
+/** Re-price one record's list-price buckets under fitted weights, in the same
+ *  "percentage points" unit the fit was solved in. Only ratios between records
+ *  matter to the split, so the unit is free — but it keeps the number
+ *  interpretable. Takes buckets rather than a record so the per-window
+ *  aggregates the history card works from can go through it too. */
+export function weightedCost(b: CostBuckets, w: BucketWeights): number {
 	return b.input * w.input + b.output * w.output + b.cacheWrite * w.cacheWrite + b.cacheRead * w.cacheRead
 }
 
@@ -121,21 +122,22 @@ const scalarFit = (samples: Sample[]) => {
 	return den > 0 ? samples.reduce((a, s) => a + total(s) * s.rise, 0) / den : 0
 }
 
-/** Pair each rise with the cost incurred since the previous reading, shifting
- *  event timestamps by `lagMs` first. Readings where the percentage fell are
- *  window resets: they open the next interval rather than closing one, because
- *  a rise measured across a reset is not a rise. Intervals no event falls in
- *  are dropped — they are usage from outside the fleet, and asking the weights
- *  to explain a rise from nothing is how a fit learns garbage. */
-function samplesFor(points: { at: Date; pct: number }[], events: UsageRecord[], ttl: CacheTtl, lagMs: number) {
-	const priced = events
-		.map(e => ({ b: costBuckets(e, e.model, ttl), ts: e.ts.getTime() + lagMs }))
-		.toSorted((a, b) => a.ts - b.ts)
+/** Pair each rise with the cost incurred since the previous reading. `lagMs`
+ *  is how long tokens take to reach Anthropic's meter, so the reading interval
+ *  [from, to] is matched against events in [from - lagMs, to - lagMs]; sliding
+ *  the two bounds is the same arithmetic as shifting every event forward, at a
+ *  quarter of the work when several lags are tried. Readings where the
+ *  percentage fell are window resets: they open the next interval rather than
+ *  closing one, because a rise measured across a reset is not a rise. Intervals
+ *  no event falls in are dropped — they are usage from outside the fleet, and
+ *  asking the weights to explain a rise from nothing is how a fit learns
+ *  garbage. */
+function samplesFor(points: { at: Date; pct: number }[], priced: { b: CostBuckets; ts: number }[], lagMs: number) {
 	const out: Sample[] = []
 	let cursor = 0
 	for (let i = 1; i < points.length; i++) {
-		const from = points[i - 1].at.getTime()
-		const to = points[i].at.getTime()
+		const from = points[i - 1].at.getTime() - lagMs
+		const to = points[i].at.getTime() - lagMs
 		while (cursor < priced.length && priced[cursor].ts <= from) {
 			cursor += 1
 		}
@@ -165,10 +167,10 @@ function samplesFor(points: { at: Date; pct: number }[], events: UsageRecord[], 
  *
  * The rises are Anthropic's own numbers and the events are what the fleet did
  * between them, so each interval is a labelled example of "this much usage
- * moved the meter this far". Weights and meter lag are chosen together by
- * error on the last {@link TRAIN_FRACTION} of the history, which the fit never
- * sees — the only evidence that a calibration is worth using rather than a
- * curve drawn through noise.
+ * moved the meter this far". Weights and meter lag are chosen together by error
+ * on a held-out tail the fit never sees — the first {@link TRAIN_FRACTION} of
+ * the history trains, the rest scores — which is the only evidence that a
+ * calibration is worth using rather than a curve drawn through noise.
  *
  * Returns null when there is not enough history, or when list prices already
  * do as well: the caller then keeps splitting by list price.
@@ -179,10 +181,22 @@ export function fitCalibration(
 	ttl: CacheTtl,
 	now = new Date(),
 ): Calibration | null {
-	const sorted = points.toSorted((a, b) => a.at.getTime() - b.at.getTime())
+	// The same merge the split applies, so the error measured here is the error
+	// of what actually ships rather than of a full-resolution series production
+	// never sees.
+	const merged = mergePoints(points)
+	// Priced once, outside the lag loop: the lag moves the interval bounds, not
+	// the events.
+	const priced = events
+		.map(e => ({ b: costBuckets(e, e.model, ttl), ts: e.ts.getTime() }))
+		.toSorted((a, b) => a.ts - b.ts)
 	let best: Calibration | null = null
+	// Each lag scores on its own held-out slice, so lags are ranked by their gain
+	// over list prices rather than by raw error; seeding the best gain with the
+	// gate makes "good enough to store" and "better than the last lag" one test.
+	let bestGain = REQUIRED_GAIN
 	for (const lagMs of LAGS_MS) {
-		const samples = samplesFor(sorted, events, ttl, lagMs)
+		const samples = samplesFor(merged, priced, lagMs)
 		if (samples.length < MIN_SAMPLES) {
 			continue
 		}
@@ -209,21 +223,19 @@ export function fitCalibration(
 			test.map(s => k * s.buckets.reduce((a, b) => a + b, 0)),
 			actual,
 		)
-		if (error > baseline * REQUIRED_GAIN || (best && error >= best.mape)) {
+		// A baseline that is already exact leaves nothing to gain and no ratio to
+		// rank by.
+		if (baseline <= 0 || error / baseline >= bestGain) {
 			continue
 		}
+		bestGain = error / baseline
+		const [input, output, cacheWrite, cacheRead] = fitted // BUCKETS order
 		best = {
 			at: now.toISOString(),
 			baselineMape: baseline,
 			lagMs,
 			mape: error,
-			samples: samples.length,
-			weights: {
-				cacheRead: fitted[BUCKETS.indexOf('cacheRead')],
-				cacheWrite: fitted[BUCKETS.indexOf('cacheWrite')],
-				input: fitted[BUCKETS.indexOf('input')],
-				output: fitted[BUCKETS.indexOf('output')],
-			},
+			weights: { cacheRead, cacheWrite, input, output },
 		}
 	}
 	return best
