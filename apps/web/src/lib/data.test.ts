@@ -258,6 +258,26 @@ describe(splitByShare, () => {
 		expect(s.get(UNATTRIBUTED)).toBeUndefined()
 		expect(s.get('a')?.exactPct).toBeCloseTo(40, 6)
 	})
+
+	it('caps a backlogged device at the rises of the intervals it worked in', () => {
+		// Why per-model limits record change points too: `late` uploads a day's worth
+		// of events at once, dwarfing `live` on cost. Whole-window cost share lets that
+		// backlog rewrite the entire window and flip who leads; delta attribution can
+		// only hand it the 10pp that actually accrued while it was working.
+		const events = [
+			ev('late', 'claude-sonnet-4', 9_000_000, new Date('2026-06-18T10:30:00Z')),
+			ev('live', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T13:30:00Z')),
+		]
+		const byCost = splitByShare(events, WIN_START, NOW, 50, '5m')
+		expect(byCost.get('late')?.exactPct).toBeCloseTo(45, 6)
+
+		const byRise = splitByShare(events, WIN_START, NOW, 50, '5m', [
+			pt('2026-06-18T11:00:00Z', 10),
+			pt('2026-06-18T14:00:00Z', 50),
+		])
+		expect(byRise.get('late')?.exactPct).toBeCloseTo(10, 6)
+		expect(byRise.get('live')?.exactPct).toBeCloseTo(40, 6)
+	})
 })
 
 describe(windowStartOf, () => {

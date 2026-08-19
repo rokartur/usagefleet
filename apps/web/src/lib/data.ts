@@ -11,7 +11,7 @@ import {
 	usageEvents,
 	userSettings,
 } from '@/db/schema'
-import type { ClaudeAccount as ClaudeAccountRow, LimitWindow, StoredModelLimit } from '@/db/schema'
+import type { ClaudeAccount as ClaudeAccountRow, LimitWindow, PointWindow, StoredModelLimit } from '@/db/schema'
 import { createPromiseCache } from '@/lib/promise-cache'
 import {
 	billableTokens,
@@ -723,20 +723,29 @@ async function loadLiveDashboard(
 	// consumer below filters to its exact window, so the wider bound only costs
 	// scan range, never correctness. The change points ride alongside: they are
 	// per account, so they can't live in the shared flight. Bound at the earlier
-	// of the two window starts — fresh after a weekly reset `weekStart` is only
+	// of the window starts — fresh after a weekly reset `weekStart` is only
 	// minutes old while `fiveStart` is hours back, so bounding on the weekly one
-	// would silently truncate the 5h series. riseWeights clips each split to its
-	// own window anyway.
-	const pointsFrom = new Date(Math.min(weekStart.getTime(), fiveStart.getTime()))
+	// would silently truncate the 5h series, and a per-model window can start
+	// earlier than both. riseWeights clips each split to its own window anyway.
+	const pointsFrom = new Date(
+		Math.min(weekStart.getTime(), fiveStart.getTime(), ...modelWindows.map(m => m.start.getTime())),
+	)
 	const [[allEvents, groupRows, allAggRows, deviceRows], pointRows] = await Promise.all([
 		shared(),
 		db
-			.select({ at: limitChangePoints.at, pct: limitChangePoints.pct, window: limitChangePoints.window })
+			.select({
+				at: limitChangePoints.at,
+				model: limitChangePoints.model,
+				pct: limitChangePoints.pct,
+				window: limitChangePoints.window,
+			})
 			.from(limitChangePoints)
 			.where(and(eq(limitChangePoints.claudeAccountId, acct.id), gte(limitChangePoints.at, pointsFrom)))
 			.orderBy(asc(limitChangePoints.at)),
 	])
-	const pointsFor = (w: LimitWindow) => pointRows.filter(p => p.window === w)
+	// The model filter is not optional: one table holds both series, so dropping it
+	// would feed a model family's rises into the account headline and back.
+	const pointsFor = (w: PointWindow, model = '') => pointRows.filter(p => p.window === w && p.model === model)
 
 	// Usage belongs to the account its device is signed into *now*, the same way
 	// it already follows a device between groups.
@@ -793,15 +802,16 @@ async function loadLiveDashboard(
 	}))
 	groupUsages.sort((a, b) => b.weeklyTokens - a.weeklyTokens)
 
-	// Per-model official limits: split each model cap across groups by that model
-	// family's local cost share within the limit's own window — the same cost
-	// split (and per-group budget scaling) as the session/weekly limits above.
+	// Per-model official limits: split each model cap across groups over the
+	// limit's own window, on that family's own change points — the same delta
+	// attribution (and per-group budget scaling) as the session/weekly limits
+	// above, falling back to plain cost share until a family has points.
 	const modelLimits: LiveModelLimit[] = modelWindows.map(({ entry, start, resetsAt }) => {
 		const familyEvents = events.filter(e => (e.model ?? '').toLowerCase().includes(entry.model))
-		const split = splitByShare(familyEvents, start, now, entry.pct, ttl)
+		const split = splitByShare(familyEvents, start, now, entry.pct, ttl, pointsFor(entry.window, entry.model))
 		const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(([id, s]) => ({
-			// Via budgetPctFor, not groupBudgetPct: this call passes no points today so
-			// the sentinel cannot appear, but the rule should not depend on that.
+			// Via budgetPctFor, not groupBudgetPct: delta attribution can emit the
+			// UNATTRIBUTED sentinel, which must never reach the budget scaling.
 			budgetPct: budgetPctFor(id, s),
 			groupId: id,
 			...labelFor(id),
@@ -1079,10 +1089,12 @@ export async function recordLimitSample(
  *  bounded without a job. */
 export async function recordLimitChangePoint(
 	account: { extId: string | null; id: string; userId: string },
-	window: LimitWindow,
+	window: PointWindow,
 	pct: number | null | undefined,
 	at: Date,
 	resetsAt: Date | null,
+	// '' is the account-wide series, a model family name its own cap's series.
+	model = '',
 ): Promise<void> {
 	// The ext_id = NULL bucket can hold several logins at once (API keys, older
 	// collectors). Two of them reporting different utilizations would look like one
@@ -1094,7 +1106,7 @@ export async function recordLimitChangePoint(
 	}
 	// Compare only against this window's own points, so the first reading after a
 	// reset always lands even though it is lower than the previous window's peak.
-	const windowStart = windowStartOf(resetsAt, at, window === '5h' ? FIVE_H_MS : SEVEN_D_MS)
+	const windowStart = windowStartOf(resetsAt, at, windowDurationMs(window) ?? SEVEN_D_MS)
 	const [prev] = await db
 		.select({ at: limitChangePoints.at, pct: limitChangePoints.pct })
 		.from(limitChangePoints)
@@ -1102,6 +1114,7 @@ export async function recordLimitChangePoint(
 			and(
 				eq(limitChangePoints.claudeAccountId, account.id),
 				eq(limitChangePoints.window, window),
+				eq(limitChangePoints.model, model),
 				gte(limitChangePoints.at, windowStart),
 			),
 		)
@@ -1112,9 +1125,11 @@ export async function recordLimitChangePoint(
 	}
 	await db
 		.insert(limitChangePoints)
-		.values({ at, claudeAccountId: account.id, pct, userId: account.userId, window })
+		.values({ at, claudeAccountId: account.id, model, pct, userId: account.userId, window })
 		.onConflictDoNothing()
-	// Nothing reads past the longest window (7d) plus a day of clamp slack.
+	// Nothing reads past the longest window (7d) plus a day of clamp slack. Not
+	// scoped to this series: every series ages out on the same bound, so whichever
+	// one recorded a point cleans up after all of them.
 	await db
 		.delete(limitChangePoints)
 		.where(

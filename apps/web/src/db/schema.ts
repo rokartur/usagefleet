@@ -238,6 +238,11 @@ export const userSettings = pgTable('user_settings', {
 /** Which limit window a sample belongs to, keyed like the rate-limit header. */
 export type LimitWindow = '5h' | '7d'
 
+/** A change point's window. Account-wide series use {@link LimitWindow}, but a
+ *  per-model cap carries whatever key Anthropic sent (`/^\d{1,3}[hdwm]$/`), so
+ *  this stays open — the union keeps the two known keys in autocomplete. */
+export type PointWindow = LimitWindow | (string & Record<never, never>)
+
 // Peak utilization Claude reported for ONE limit window, accumulated from the
 // collector's /api/v1/limits posts (one row per window, kept at its maximum).
 // Claude only reports the window that is currently open, so once a window
@@ -278,13 +283,20 @@ export const limitChangePoints = pgTable(
 		claudeAccountId: text('claude_account_id')
 			.notNull()
 			.references(() => claudeAccounts.id, { onDelete: 'cascade' }),
+		// '' is the account-wide series; anything else is one model family's own cap
+		// (StoredModelLimit.model). Both live here so a per-model row reuses the same
+		// append + prune path, but every read has to filter: mixing the two series
+		// would attribute a model's rises to the account headline. '' can only ever
+		// mean account-wide because the ingest schema makes a model name start with an
+		// alphanumeric — keep that bound if the regex is ever loosened.
+		model: text('model').notNull().default(''),
 		pct: real('pct').notNull(),
 		userId: text('user_id')
 			.notNull()
 			.references(() => user.id, { onDelete: 'cascade' }),
-		window: text('window').$type<LimitWindow>().notNull(),
+		window: text('window').$type<PointWindow>().notNull(),
 	},
-	t => [primaryKey({ columns: [t.claudeAccountId, t.window, t.at] })],
+	t => [primaryKey({ columns: [t.claudeAccountId, t.window, t.model, t.at] })],
 )
 
 export const groupsRelations = relations(groups, ({ many, one }) => ({

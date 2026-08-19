@@ -213,6 +213,14 @@ async function POST(req: Request) {
 		// inside.
 		recordLimitChangePoint(account, '5h', b.fiveHourPct, now, set.fiveHourResetsAt ?? null),
 		recordLimitChangePoint(account, '7d', b.sevenDayPct, now, set.sevenDayResetsAt ?? null),
+		// Per-model caps get their own series, so a model row's split survives a
+		// backlogged device: a late batch can only claim the rises of the intervals
+		// it actually falls in, instead of re-deriving the whole window's cost share.
+		// Driven off `set` so points are only appended for a report that was stored,
+		// never for the empty array a hiccuping OAuth endpoint returns.
+		...(set.modelLimits ?? []).map(m =>
+			recordLimitChangePoint(account, m.window, m.pct, now, toDate(m.resetsAt), m.model),
+		),
 		// Touch the device so the Devices list shows an accurate last-seen time, and
 		// bind it to the account whose usage it is now producing.
 		db.update(devices).set({ claudeAccountId: account.id, lastSeenAt: now }).where(eq(devices.id, device.id)),
