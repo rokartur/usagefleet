@@ -361,6 +361,10 @@ describe(splitByShare, () => {
 		])
 		expect(byRise.get('late')?.exactPct).toBeCloseTo(10, 6)
 		expect(byRise.get('live')?.exactPct).toBeCloseTo(40, 6)
+		// costPct keeps reading the plain cost share even while rises drive exactPct
+		// — it is the "by cost" second opinion the group table shows.
+		expect(byRise.get('late')?.costPct).toBeCloseTo(45, 6)
+		expect(byRise.get('live')?.costPct).toBeCloseTo(5, 6)
 	})
 })
 

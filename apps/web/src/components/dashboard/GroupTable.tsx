@@ -65,15 +65,32 @@ function ModelCompare({ session, weekly }: { session: ModelUsage[]; weekly: Mode
 
 const approxPct = (n: number) => `~${Math.round(n)}%`
 
-/** "~42% · 1.2M (3.4M total)" — a group's usage in one window. */
-function WindowCell({ pct, tokens, totalTokens }: { pct: number; tokens: number; totalTokens: number }) {
+/** "~42% · ~38% by cost · 1.2M (3.4M total)" — a group's usage in one window.
+ *  The cost figure appears only when it disagrees with the attributed one
+ *  (both arrive rounded); equal values would just repeat the number. */
+function WindowCell({
+	pct,
+	costPct,
+	tokens,
+	totalTokens,
+}: {
+	pct: number
+	costPct: number
+	tokens: number
+	totalTokens: number
+}) {
 	return (
 		<div className='flex min-w-48 items-center gap-3'>
 			<UsageBar pct={pct} className='w-20 shrink-0' />
 			<span className='tabular-nums'>
 				<Num value={pct} format={approxPct} className={cn('font-medium', overrun(pct))} />
 				<span className='text-muted-foreground'>
-					{' '}
+					{costPct !== pct && (
+						<>
+							{' '}
+							· <Num value={costPct} format={approxPct} /> by cost
+						</>
+					)}{' '}
 					· <Num value={tokens} format={formatTokens} /> (<Num value={totalTokens} format={formatTokens} />{' '}
 					total)
 				</span>
@@ -91,8 +108,9 @@ function WindowHead({ label }: { label: string }) {
 					{label}
 				</TooltipTrigger>
 				<TooltipContent>
-					Percentage of this group&apos;s own slice of the account limit; tokens are billable, with the
-					cache-read-inclusive total in brackets.
+					Percentage of this group&apos;s own slice of the account limit, attributed by when the official
+					meter rose; &quot;by cost&quot; is the same slice split by cost share alone, shown when the two
+					disagree. Tokens are billable, with the cache-read-inclusive total in brackets.
 				</TooltipContent>
 			</Tooltip>
 		</TableHead>
@@ -180,6 +198,7 @@ export function GroupTable({
 								<TableCell>
 									<WindowCell
 										pct={g.sessionBudgetPct}
+										costPct={g.sessionCostPct}
 										tokens={g.sessionTokens}
 										totalTokens={g.sessionTotalTokens}
 									/>
@@ -187,6 +206,7 @@ export function GroupTable({
 								<TableCell>
 									<WindowCell
 										pct={g.weeklyBudgetPct}
+										costPct={g.weeklyCostPct}
 										tokens={g.weeklyTokens}
 										totalTokens={g.weeklyTotalTokens}
 									/>

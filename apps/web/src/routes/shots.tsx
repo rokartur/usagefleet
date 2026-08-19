@@ -61,10 +61,13 @@ const group = (
 	models,
 	name: GROUPS[i].name,
 	sessionBudgetPct: sessionPct,
+	// Demo data: cost share agrees with attribution, so the by-cost figure hides.
+	sessionCostPct: sessionPct,
 	sessionModels,
 	sessionTokens: sessionBillable,
 	sessionTotalTokens: totals(sessionBillable).totalTokens,
 	weeklyBudgetPct: weeklyPct,
+	weeklyCostPct: weeklyPct,
 	weeklyTokens: weeklyBillable,
 	weeklyTotalTokens: totals(weeklyBillable).totalTokens,
 })

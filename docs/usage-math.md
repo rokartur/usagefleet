@@ -171,6 +171,11 @@ What keeps this honest:
 - Intervals no event falls in are excluded from the fit. Asking the weights to
   explain a rise from nothing is how a fit learns garbage; that rise is
   `UNATTRIBUTED` at read time and stays that way.
+- The fit prices the same events the split weighs: scoped by the account
+  view's own absorption rule, so a single-account fleet's unstamped devices
+  count in both or neither. A narrower set would fit weights on fewer dollars
+  than the split later prices, and the held-out gate could not object — train
+  and test would be missing the same events.
 - The fit walks the merged series, through the same `mergePoints()` the split
   uses. Change points are stored at full resolution, so several devices reporting
   the same climb seconds apart leave sub-poll intervals in the raw log — fitting
@@ -190,6 +195,10 @@ group sitting at half the account reads 100%**.
 Deliberately uncapped: past 100% that group is eating another's slice, which is
 the thing worth seeing. Rounding happens once, at the end — rounding the share
 first would multiply the error by the group count.
+
+The group table also carries the plain cost-share figure (“by cost”) beside the
+attributed one whenever the two disagree — the same split as if the account had
+no change points, kept visible as a second opinion on the attribution.
 
 Per-model limits (e.g. the Fable weekly cap) get their own change-point series,
 keyed by model id instead of `''`, and the same delta attribution as a whole

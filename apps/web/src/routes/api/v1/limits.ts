@@ -209,6 +209,8 @@ async function POST(req: Request) {
 			calibration: claudeAccounts.calibration,
 			extId: claudeAccounts.extId,
 			id: claudeAccounts.id,
+			// The change-point prune bound covers the longest per-model window.
+			modelLimits: claudeAccounts.modelLimits,
 			userId: claudeAccounts.userId,
 		})
 

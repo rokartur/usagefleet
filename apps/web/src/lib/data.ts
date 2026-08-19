@@ -47,7 +47,10 @@ import type {
 
 // The logical-message fold key: (messageId, requestId) when present, else the
 // row's own uuid. Prefixed so a uuid can never collide with a messageId pair.
-const FOLD_KEY = sql`CASE WHEN ${usageEvents.messageId} IS NOT NULL THEN 'm:' || ${usageEvents.messageId} || '::' || coalesce(${usageEvents.requestId}, '') ELSE 'u:' || ${usageEvents.uuid} END`
+// NULLIF mirrors foldEvents' truthiness check: ingest accepts messageId = '',
+// and without it every ''-keyed row would collapse into one folded message here
+// while the TS fold keys each by its own uuid.
+const FOLD_KEY = sql`CASE WHEN NULLIF(${usageEvents.messageId}, '') IS NOT NULL THEN 'm:' || ${usageEvents.messageId} || '::' || coalesce(${usageEvents.requestId}, '') ELSE 'u:' || ${usageEvents.uuid} END`
 // The first cast widens the whole addition to bigint. The ingest cap keeps new
 // rows well inside int4, but rows stored under the older, looser cap can still
 // overflow this sum — and it orders every DISTINCT ON, so one bad row would
@@ -97,7 +100,14 @@ export async function ensureSettings(userId: string) {
  *
  * Callers still fold; see the note at that call site for why.
  */
-export async function loadRecentEvents(userId: string, cutoff: Date, accountId?: string): Promise<UsageRecord[]> {
+export async function loadRecentEvents(
+	userId: string,
+	cutoff: Date,
+	// Scopes to one account's view with the same rule the live split applies
+	// (see accountFilterSql), absorption included — a narrower filter here would
+	// fit calibration on fewer events than the split weighs.
+	view?: { account: { id: string } | null; absorbsUnstamped: boolean },
+): Promise<UsageRecord[]> {
 	const result = await db.execute(sql`
     SELECT DISTINCT ON (${FOLD_KEY})
       ${usageEvents.uuid} AS uuid,
@@ -118,7 +128,7 @@ export async function loadRecentEvents(userId: string, cutoff: Date, accountId?:
     JOIN ${devices} d ON d.id = ${usageEvents.deviceId}
     WHERE ${usageEvents.userId} = ${userId}
       AND ${usageEvents.ts} >= ${cutoff.toISOString()}::timestamptz
-      ${accountId ? sql`AND d.claude_account_id = ${accountId}` : sql``}
+      ${view ? sql`AND ${accountFilterSql(view)}` : sql``}
     ORDER BY ${FOLD_KEY}, ${ROW_TOTAL} DESC, ${usageEvents.ts} ASC
   `)
 
@@ -258,6 +268,10 @@ export interface LiveGroupUsage {
 	 *  account limit) — the "am I eating the other group's half?" view. */
 	sessionBudgetPct: number
 	weeklyBudgetPct: number
+	/** The same budget-slice scale, split by cost share alone — the answer delta
+	 *  attribution would give with no recorded change points. */
+	sessionCostPct: number
+	weeklyCostPct: number
 	sessionTokens: number
 	weeklyTokens: number
 	/** All-bucket totals (incl. cache_read) — comparable with ccusage's Total. */
@@ -507,6 +521,9 @@ interface ShareEntry {
 	/** This key's share of the official pct, unrounded — scaled to a budget pct
 	 *  before display, so rounding happens once, at the end. */
 	exactPct: number
+	/** The same share by cost weighting alone — what exactPct degrades to without
+	 *  change points. Shown beside it as a second opinion when the two disagree. */
+	costPct: number
 	tokens: number
 	/** All-bucket total (incl. cache_read); display only, never used for splits. */
 	totalTokens: number
@@ -594,16 +611,14 @@ export function splitByShare(
 			totalWeight -= sliver
 		}
 	}
-	const shareOf = (k: string | null) => {
-		if (rise && totalWeight > 0) {
-			return target * ((rise.get(k) ?? 0) / totalWeight)
-		}
-		return totalCost > 0 ? target * ((costByKey.get(k) ?? 0) / totalCost) : 0
-	}
+	const costShareOf = (k: string | null) => (totalCost > 0 ? target * ((costByKey.get(k) ?? 0) / totalCost) : 0)
+	const shareOf = (k: string | null) =>
+		rise && totalWeight > 0 ? target * ((rise.get(k) ?? 0) / totalWeight) : costShareOf(k)
 
 	const out = new Map<string | null, ShareEntry>()
 	for (const [k, tok] of tokensByKey) {
 		out.set(k, {
+			costPct: costShareOf(k),
 			exactPct: shareOf(k),
 			models: modelsByKey.get(k) ?? [],
 			tokens: tok,
@@ -611,7 +626,8 @@ export function splitByShare(
 		})
 	}
 	if (rise?.has(UNATTRIBUTED)) {
-		out.set(UNATTRIBUTED, { exactPct: shareOf(UNATTRIBUTED), models: [], tokens: 0, totalTokens: 0 })
+		// No event carries its cost, so its cost share is 0 by construction.
+		out.set(UNATTRIBUTED, { costPct: 0, exactPct: shareOf(UNATTRIBUTED), models: [], tokens: 0, totalTokens: 0 })
 	}
 	return out
 }
@@ -636,7 +652,7 @@ export function inAccount(view: AccountView, deviceAccountId: string | null): bo
 
 /** {@link inAccount} as a predicate over a joined `devices d`, for the raw
  *  aggregate queries that fold in SQL and so can't filter afterwards. */
-function accountFilterSql(view: AccountView): SQL {
+function accountFilterSql(view: { account: { id: string } | null; absorbsUnstamped: boolean }): SQL {
 	const id = view.account?.id ?? null
 	if (id === null) {
 		return sql`d.claude_account_id IS NULL`
@@ -805,16 +821,18 @@ async function loadLiveDashboard(
 	// Unattributed is not a group and holds no budget slice, so it stays on the
 	// account scale; scaling it by the group count would show a 15% remainder as
 	// 60% on a four-group account and push the split bar past the real total.
-	const budgetPctFor = (id: string | null, s: ShareEntry | undefined) =>
-		id === UNATTRIBUTED ? Math.round(s?.exactPct ?? 0) : groupBudgetPct(s, budgetShares)
+	const budgetPctFor = (id: string | null, pct = 0) =>
+		id === UNATTRIBUTED ? Math.round(pct) : groupBudgetPct({ exactPct: pct }, budgetShares)
 
 	const groupUsages: LiveGroupUsage[] = [...keys].map(id => ({
 		groupId: id,
 		...labelFor(id),
 		// Usage against the group's equal slice of the account limit: a group
 		// filling its share reads 100% while the account is at 50%.
-		sessionBudgetPct: budgetPctFor(id, sessionSplit.get(id)),
-		weeklyBudgetPct: budgetPctFor(id, weeklySplit.get(id)),
+		sessionBudgetPct: budgetPctFor(id, sessionSplit.get(id)?.exactPct),
+		weeklyBudgetPct: budgetPctFor(id, weeklySplit.get(id)?.exactPct),
+		sessionCostPct: budgetPctFor(id, sessionSplit.get(id)?.costPct),
+		weeklyCostPct: budgetPctFor(id, weeklySplit.get(id)?.costPct),
 		sessionTokens: sessionSplit.get(id)?.tokens ?? 0,
 		weeklyTokens: weeklySplit.get(id)?.tokens ?? 0,
 		sessionTotalTokens: sessionSplit.get(id)?.totalTokens ?? 0,
@@ -843,7 +861,7 @@ async function loadLiveDashboard(
 		const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(([id, s]) => ({
 			// Via budgetPctFor, not groupBudgetPct: delta attribution can emit the
 			// UNATTRIBUTED sentinel, which must never reach the budget scaling.
-			budgetPct: budgetPctFor(id, s),
+			budgetPct: budgetPctFor(id, s.exactPct),
 			groupId: id,
 			...labelFor(id),
 			tokens: s.tokens,
@@ -1128,7 +1146,7 @@ export async function recordLimitSample(
  *  readings earn a row; old points are pruned on write, so the table stays
  *  bounded without a job. */
 export async function recordLimitChangePoint(
-	account: { extId: string | null; id: string; userId: string },
+	account: { extId: string | null; id: string; userId: string; modelLimits: StoredModelLimit[] | null },
 	window: PointWindow,
 	pct: number | null | undefined,
 	at: Date,
@@ -1167,15 +1185,24 @@ export async function recordLimitChangePoint(
 		.insert(limitChangePoints)
 		.values({ at, claudeAccountId: account.id, model, pct, userId: account.userId, window })
 		.onConflictDoNothing()
-	// Nothing reads past the longest window (7d) plus a day of clamp slack. Not
-	// scoped to this series: every series ages out on the same bound, so whichever
-	// one recorded a point cleans up after all of them.
+	// Nothing reads past the longest window this account tracks — weekly, or a
+	// longer per-model window — plus a day of clamp slack. Not scoped to this
+	// series: every series ages out on the same bound, so whichever one recorded
+	// a point cleans up after all of them. A model limit Anthropic stops sending
+	// shrinks the bound back and its leftover points age out on the next write.
+	const retainMs =
+		Math.max(
+			SEVEN_D_MS,
+			windowDurationMs(window) ?? 0,
+			...(account.modelLimits ?? []).map(m => windowDurationMs(m.window) ?? 0),
+		) +
+		24 * HOUR_MS
 	await db
 		.delete(limitChangePoints)
 		.where(
 			and(
 				eq(limitChangePoints.claudeAccountId, account.id),
-				lt(limitChangePoints.at, new Date(at.getTime() - SEVEN_D_MS - 24 * HOUR_MS)),
+				lt(limitChangePoints.at, new Date(at.getTime() - retainMs)),
 			),
 		)
 }
@@ -1200,9 +1227,11 @@ const calibrationAttempts = new Map<string, number>()
  * this needs. Callers do not await it — a stale calibration is not worth
  * delaying an ingest for.
  *
- * Only ever narrows to devices actually stamped with this account: the fit is
- * about which usage moved *this* meter, and unstamped devices may be signed
- * into a different subscription.
+ * Events are scoped by the same rule the live split uses ({@link inAccount}):
+ * stamped devices always, unstamped ones only when this account's view absorbs
+ * them. Anything narrower would fit weights on fewer events than the split
+ * prices — and the holdout gate could never notice, since both halves would
+ * miss the same events.
  */
 export async function recalibrateAccount(
 	account: { calibration: Calibration | null; extId: string | null; id: string; userId: string },
@@ -1217,8 +1246,12 @@ export async function recalibrateAccount(
 		return
 	}
 	calibrationAttempts.set(account.id, now.getTime())
-	// The whole retained series. Change points are pruned to the longest window
-	// plus slack, so this is every rise the account still remembers.
+	// Same absorption rule as the live split: does this account's view also
+	// answer for never-stamped devices? (True only for a single-account fleet.)
+	const views = await listAccountViews(account.userId)
+	const absorbsUnstamped = views.some(v => v.account?.id === account.id && v.absorbsUnstamped)
+	// The 5h series' full reach: points may be retained longer for per-model
+	// windows, but the fit only reads the account-wide 5h series.
 	const cutoff = new Date(now.getTime() - SEVEN_D_MS - 24 * HOUR_MS)
 	const [settings, points, events] = await Promise.all([
 		ensureSettings(account.userId),
@@ -1236,7 +1269,7 @@ export async function recalibrateAccount(
 				),
 			)
 			.orderBy(asc(limitChangePoints.at)),
-		loadRecentEvents(account.userId, cutoff, account.id),
+		loadRecentEvents(account.userId, cutoff, { absorbsUnstamped, account }),
 		// Same reason the dashboard loader waits on it: the fit prices every event.
 		// Fitting off the hardcoded fallback tiers would bake one price list into the
 		// weights and then apply them against another.
