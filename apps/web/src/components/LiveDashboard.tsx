@@ -6,7 +6,7 @@ import type { GroupRow } from '@/components/dashboard/GroupTable'
 import { InstallCommand } from '@/components/InstallCommand'
 import { ResetCountdown } from '@/components/ResetCountdown'
 import { Button } from '@/components/ui/button'
-import { Num, Section, UsageBar } from '@/components/usage-ui'
+import { Num, overrun, Section, UsageBar } from '@/components/usage-ui'
 import { useMounted } from '@/hooks/use-mounted'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO, SpendPeriod } from '@/lib/data'
 import { formatRelative, formatTokens, formatUsd } from '@/lib/format'
@@ -53,7 +53,7 @@ function GroupSplit({
 				<span key={g.key} className='flex min-w-0 items-center gap-1.5'>
 					<GroupDot color={g.color} />
 					<span className='truncate'>{g.name}</span>
-					<Num value={g.pct} format={pctText} className='text-foreground' />
+					<Num value={g.pct} format={pctText} className={cn('text-foreground', overrun(g.pct))} />
 				</span>
 			))}
 		</div>
@@ -122,7 +122,7 @@ function LimitCell({
 	groups: { key: string; name: string; color: string; pct: number }[]
 }) {
 	return (
-		<StatCell label={label} value={<Num value={pct} format={pctText} />}>
+		<StatCell label={label} value={<Num value={pct} format={pctText} className={overrun(pct)} />}>
 			<UsageBar pct={pct} />
 			<div className='text-[11px] text-muted-foreground'>
 				<ResetCountdown resetsAt={resetsAt} />
@@ -149,7 +149,7 @@ function ModelLimitRow({ limit }: { limit: ModelLimitDTO }) {
 		<div className='flex flex-wrap items-center gap-x-3 gap-y-1 border-b py-2 text-sm last:border-b-0'>
 			<span className='font-medium'>{limit.label}</span>
 			<span className='text-[11px] text-muted-foreground'>{windowLabel(limit.window)}</span>
-			<Num value={limit.pct} format={pctText} />
+			<Num value={limit.pct} format={pctText} className={overrun(limit.pct)} />
 			<UsageBar pct={limit.pct} className='w-20 shrink-0' />
 			<span className='text-[11px] text-muted-foreground'>
 				<ResetCountdown resetsAt={limit.resetsAt} />
@@ -293,7 +293,7 @@ function AccountWindow({
 	return (
 		<div className='flex flex-col gap-2'>
 			<div className='flex flex-wrap items-baseline gap-x-2'>
-				<Num value={pct} format={pctText} className='text-lg leading-none' />
+				<Num value={pct} format={pctText} className={cn('text-lg leading-none', overrun(pct))} />
 				<span className='text-[11px] text-muted-foreground'>
 					{label} · <ResetCountdown resetsAt={resetsAt} />
 				</span>

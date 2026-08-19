@@ -4,10 +4,11 @@ import { Badge } from '@/components/ui/badge'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Num, UsageBar } from '@/components/usage-ui'
+import { Num, overrun, UsageBar } from '@/components/usage-ui'
 import type { LiveGroupUsage } from '@/lib/data'
 import { formatTokens } from '@/lib/format'
 import type { ModelUsage } from '@/lib/usage'
+import { cn } from '@/lib/utils'
 
 /** One group's per-model tokens, session (5h) and weekly side by side. Models
  *  active in either window appear; a window with no activity reads "—". */
@@ -70,7 +71,7 @@ function WindowCell({ pct, tokens, totalTokens }: { pct: number; tokens: number;
 		<div className='flex min-w-48 items-center gap-3'>
 			<UsageBar pct={pct} className='w-20 shrink-0' />
 			<span className='tabular-nums'>
-				<Num value={pct} format={approxPct} className='font-medium' />
+				<Num value={pct} format={approxPct} className={cn('font-medium', overrun(pct))} />
 				<span className='text-muted-foreground'>
 					{' '}
 					· <Num value={tokens} format={formatTokens} /> (<Num value={totalTokens} format={formatTokens} />{' '}

@@ -87,6 +87,11 @@ export function Section({
 	)
 }
 
+/** Percentages are shown uncapped while the bar stops at full, so the number is
+ *  what carries an overrun: paint it destructive once it reads 100%. Rounded
+ *  like the printed value, so "100%" is never white. */
+export const overrun = (pct: number) => (Math.round(pct) >= 100 ? 'text-destructive' : undefined)
+
 /** A limit bar: neutral up to 70%, amber past it, destructive past 90% — so a
  *  group that is about to eat its budget is visible without reading numbers. */
 export function UsageBar({ pct, className }: { pct: number; className?: string }) {

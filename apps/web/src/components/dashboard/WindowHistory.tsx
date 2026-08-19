@@ -4,9 +4,10 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Section, UsageBar } from '@/components/usage-ui'
+import { overrun, Section, UsageBar } from '@/components/usage-ui'
 import type { PastWindow, WindowHistoryDTO } from '@/lib/data'
 import { formatTokens } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 const KINDS = [
 	{ key: 'sessions', label: '5-hour sessions' },
@@ -152,7 +153,9 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 									) : (
 										<span className='flex min-w-36 items-center gap-3'>
 											<UsageBar pct={w.accountPct} className='w-24 shrink-0' />
-											<span className='font-medium tabular-nums'>{w.accountPct}%</span>
+											<span className={cn('font-medium tabular-nums', overrun(w.accountPct))}>
+												{w.accountPct}%
+											</span>
 										</span>
 									)}
 								</TableCell>
@@ -162,7 +165,9 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 									return (
 										<TableCell key={c.key} className='text-right tabular-nums'>
 											{g && g.accountPct !== null ? (
-												<span className='font-medium'>{g.accountPct}%</span>
+												<span className={cn('font-medium', overrun(g.accountPct))}>
+													{g.accountPct}%
+												</span>
 											) : (
 												<span className='text-muted-foreground'>
 													{g ? formatTokens(g.tokens) : '—'}
