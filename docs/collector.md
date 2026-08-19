@@ -167,9 +167,26 @@ hook.
 
 ## Self-update
 
-`update.ts` runs `npm i -g @usagefleet/cli` against the public registry when a
-newer version exists — no server, no token, no GitHub involved.
+`update.ts` reinstalls `@usagefleet/cli` from the public registry when a newer
+version exists — no server, no token, no GitHub involved.
 `USAGEFLEET_UPDATE=0` opts out.
+
+Upgrading *this* install, rather than some other copy, takes three steps that all
+exist because a failure here is silent and permanent — the collector keeps
+running, keeps reporting, and simply never leaves its version:
+
+- **Node goes on the child's PATH.** The service PATH is launchd's
+  `/usr/bin:/bin:/usr/sbin:/sbin`, and npm is a script starting
+  `#!/usr/bin/env node`. Homebrew, nvm, fnm, volta and asdf all put node
+  elsewhere, so without this npm exits 127 on every tick.
+- **The owning manager runs the install.** `npm i -g` only ever writes to npm's
+  own prefix, so a collector that bun or pnpm put on the machine needs that
+  manager instead. The lockfile at the install root (parent of its
+  `node_modules`) names it; npm leaves none, which is what makes it the default.
+- **The install is verified.** A manager exits 0 for an install it wrote
+  somewhere else, so the version is re-read off disk afterwards. Mismatch means
+  two copies exist and the wrong one moved: log it and skip the restart, which
+  would otherwise bounce the service onto the same old code every 6 hours.
 
 **Every push to `main` publishes a new version** (`.github/workflows/release.yml`,
 version = manifest major.minor + run number), so installed collectors pick up CLI
