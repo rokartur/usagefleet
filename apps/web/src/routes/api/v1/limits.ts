@@ -5,7 +5,13 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { claudeAccounts, devices, groups } from '@/db/schema'
 import { deviceWithinPlan, overPlanLimit } from '@/lib/billing'
-import { dashboardForDevice, getLiveDashboards, recordLimitChangePoint, recordLimitSample } from '@/lib/data'
+import {
+	dashboardForDevice,
+	getLiveDashboards,
+	recalibrateAccount,
+	recordLimitChangePoint,
+	recordLimitSample,
+} from '@/lib/data'
 import { authenticateDevice } from '@/lib/device-auth'
 import { readJsonCapped } from '@/lib/rate-limit'
 import { LIMITS_STALE_MS, reportedWindows, toDate } from '@/lib/usage/limits'
@@ -199,7 +205,12 @@ async function POST(req: Request) {
 				...(identity?.org ? { orgName: identity.org } : {}),
 			},
 		})
-		.returning({ extId: claudeAccounts.extId, id: claudeAccounts.id, userId: claudeAccounts.userId })
+		.returning({
+			calibration: claudeAccounts.calibration,
+			extId: claudeAccounts.extId,
+			id: claudeAccounts.id,
+			userId: claudeAccounts.userId,
+		})
 
 	await Promise.all([
 		// Keep a per-window record of the reported utilization: Claude only reports
@@ -225,6 +236,12 @@ async function POST(req: Request) {
 		// bind it to the account whose usage it is now producing.
 		db.update(devices).set({ claudeAccountId: account.id, lastSeenAt: now }).where(eq(devices.id, device.id)),
 	])
+
+	// Refit this account's limit weights if a day has passed — deliberately not
+	// awaited, and self-throttled inside. The collector is posting on a timer with
+	// nobody waiting on the answer, which makes this the cheapest periodic hook in
+	// the app; a failed refit just leaves the previous weights in place.
+	void recalibrateAccount(account, now).catch(error => console.error('recalibrate failed', error))
 
 	return Response.json({ ok: true })
 }

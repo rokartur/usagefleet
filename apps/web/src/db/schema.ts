@@ -14,6 +14,7 @@ import {
 	unique,
 	uniqueIndex,
 } from 'drizzle-orm/pg-core'
+import type { Calibration } from '@/lib/usage/calibration'
 import { user } from './auth-schema'
 
 // Re-export the better-auth-owned tables (user/session/account/verification).
@@ -76,6 +77,12 @@ export const claudeAccounts = pgTable(
 		// keys. Small array and the set of models is dynamic, so jsonb instead of
 		// dedicated columns.
 		modelLimits: jsonb('model_limits').$type<StoredModelLimit[]>(),
+		// What this account's own recorded rises say about how Anthropic weighs its
+		// usage — refitted periodically from limit_change_point, and only stored
+		// when it beat API list prices on data it was not fitted to. NULL means the
+		// list prices stand, which is also the state of every account until it has
+		// enough history. Derived, so it is safe to drop and recompute.
+		calibration: jsonb('calibration').$type<Calibration>(),
 		limitsReportedAt: timestamp('limits_reported_at', { withTimezone: true }),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),

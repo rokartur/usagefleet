@@ -19,6 +19,7 @@ import {
 	costUsd,
 	EMPTY_TOTALS,
 	filterByWindow,
+	fitCalibration,
 	foldEvents,
 	modelBreakdown,
 	modelLabel,
@@ -27,9 +28,10 @@ import {
 	refreshPrices,
 	sumTokens,
 	weekWindowStart,
+	weightedCost,
 	windowSpans,
 } from '@/lib/usage'
-import type { CacheTtl, DailyAggRow, ModelUsage, TokenTotals, UsageRecord, WindowSpan } from '@/lib/usage'
+import type { CacheTtl, Calibration, DailyAggRow, ModelUsage, TokenTotals, UsageRecord, WindowSpan } from '@/lib/usage'
 
 // The logical-message fold key: (messageId, requestId) when present, else the
 // row's own uuid. Prefixed so a uuid can never collide with a messageId pair.
@@ -83,7 +85,7 @@ export async function ensureSettings(userId: string) {
  *
  * Callers still fold; see the note at that call site for why.
  */
-export async function loadRecentEvents(userId: string, cutoff: Date): Promise<UsageRecord[]> {
+export async function loadRecentEvents(userId: string, cutoff: Date, accountId?: string): Promise<UsageRecord[]> {
 	const result = await db.execute(sql`
     SELECT DISTINCT ON (${FOLD_KEY})
       ${usageEvents.uuid} AS uuid,
@@ -104,6 +106,7 @@ export async function loadRecentEvents(userId: string, cutoff: Date): Promise<Us
     JOIN ${devices} d ON d.id = ${usageEvents.deviceId}
     WHERE ${usageEvents.userId} = ${userId}
       AND ${usageEvents.ts} >= ${cutoff.toISOString()}::timestamptz
+      ${accountId ? sql`AND d.claude_account_id = ${accountId}` : sql``}
     ORDER BY ${FOLD_KEY}, ${ROW_TOTAL} DESC, ${usageEvents.ts} ASC
   `)
 
@@ -360,14 +363,22 @@ export interface PctPoint {
  *  fleet (phone, unenrolled machine). Group ids are uuids, so no collision. */
 export const UNATTRIBUTED = '__unattributed__'
 
+/** Grid a limit sample's window start is snapped to — see recordLimitSample. */
+const SAMPLE_GRID_MS = 5 * 60 * 1000
+
 /** Readings closer together than this merge into one attribution interval.
- *  Device clock drift is corrected at ingest (lib/usage/clock.ts), but an
- *  event's tokens still reach Anthropic's meter *after* its timestamp — a long
- *  streamed response plus their own accounting delay — so an interval has to be
- *  comfortably wider than that lag or rises land one bucket off their cause.
- *  The lag is not observable from here; this is a deliberately loose bound, and
- *  it only costs accuracy where two groups work inside the same interval. */
-const MIN_RISE_INTERVAL_MS = 5 * 60 * 1000
+ *  Every device polls Anthropic once a minute and posts what it read, so two
+ *  readings inside one minute are the same moment seen by two machines and the
+ *  boundary between them is noise, not information.
+ *
+ *  This used to be five minutes, to absorb an unmeasured delay between an
+ *  event's timestamp and Anthropic's meter. Measured on real accounts, that
+ *  delay is under a minute — while the five-minute bound was dropping ~25% of
+ *  all recorded rises and, worse, merging idle intervals into active ones,
+ *  which hid off-fleet usage that should have read as {@link UNATTRIBUTED}.
+ *  What remains of the delay is fitted per account instead
+ *  ({@link Calibration.lagMs}), which is falsifiable where a constant is not. */
+const MERGE_INTERVAL_MS = 60 * 1000
 
 /** Start of a window of exactly `len` ending at `now`. `resetsAt` is whatever
  *  the collector reported, and it is range-checked nowhere on the way in, so
@@ -392,17 +403,14 @@ export function windowStartOf(resetsAt: Date | null, now: Date, len: number): Da
  *  anchors each window at 0. The tolerance covers `real`-column float32
  *  round-tripping; readings carry one decimal.
  *
- *  Rises are then thinned to the resolution the split reads at, since every
- *  device posts limits each minute and splitByShare merges anything closer than
- *  MIN_RISE_INTERVAL_MS anyway. */
-export function shouldRecordPoint(prev: { at: Date; pct: number } | undefined, pct: number, at: Date): boolean {
-	if (!prev) {
-		return true
-	}
-	if (pct - prev.pct < 0.05) {
-		return false
-	}
-	return at.getTime() - prev.at.getTime() >= MIN_RISE_INTERVAL_MS
+ *  Every rise is stored. Readings too close together to attribute separately
+ *  are merged at read time ({@link MERGE_INTERVAL_MS}) rather than dropped
+ *  here, so a later, better-calibrated read can still use them — and so the
+ *  series stays the account's full-resolution record of what Anthropic said.
+ *  Duplicate posts cost nothing: repeated devices report the same pct, which
+ *  is not a rise. */
+export function shouldRecordPoint(prev: { pct: number } | undefined, pct: number): boolean {
+	return !prev || pct - prev.pct >= 0.05
 }
 
 /**
@@ -417,6 +425,11 @@ export function shouldRecordPoint(prev: { at: Date; pct: number } | undefined, p
  * already shows but no change point recorded yet — which also makes the
  * no-points case degrade to exactly the whole-window cost split.
  *
+ * `lagMs` shifts every event forward by how long this account's own history
+ * says its tokens take to reach Anthropic's meter, so a rise is matched with
+ * the work that caused it rather than with whatever was running when it
+ * surfaced.
+ *
  * Returns null when there is no rise to weigh; callers then fall back to the
  * plain cost split.
  */
@@ -426,6 +439,7 @@ function riseWeights(
 	windowStart: Date,
 	now: Date,
 	targetPct: number,
+	lagMs: number,
 ): Map<string | null, number> | null {
 	const startMs = windowStart.getTime()
 	const nowMs = now.getTime()
@@ -434,9 +448,9 @@ function riseWeights(
 	for (const p of points
 		.filter(p => p.at.getTime() > startMs && p.at.getTime() <= nowMs)
 		.toSorted((a, b) => a.at.getTime() - b.at.getTime())) {
-		// Thinning: a reading inside the minimum interval is dropped and its rise
+		// Merging: a reading inside the minimum interval is dropped and its rise
 		// carries forward to the next kept reading (or the synthetic final one).
-		if (p.at.getTime() - last.at >= MIN_RISE_INTERVAL_MS) {
+		if (p.at.getTime() - last.at >= MERGE_INTERVAL_MS) {
 			last = { at: p.at.getTime(), pct: p.pct }
 			bounds.push(last)
 		}
@@ -444,9 +458,9 @@ function riseWeights(
 	if (targetPct > last.pct) {
 		// The tail rise the account row already shows but no reading recorded yet.
 		// Inside the merge interval it extends the last interval rather than opening
-		// the hairline one the thinning above exists to prevent — safe to move the
+		// the hairline one the merging above exists to prevent — safe to move the
 		// bound here because this happens once, so it cannot chain.
-		if (bounds.length > 1 && nowMs - last.at < MIN_RISE_INTERVAL_MS) {
+		if (bounds.length > 1 && nowMs - last.at < MERGE_INTERVAL_MS) {
 			last.at = nowMs
 			last.pct = targetPct
 		} else {
@@ -463,7 +477,7 @@ function riseWeights(
 		// Events are consumed even when the rise is <= 0 (a downward correction):
 		// they explain no rise and must not leak into the next interval.
 		const from = i
-		while (i < events.length && events[i].ts <= end) {
+		while (i < events.length && events[i].ts + lagMs <= end) {
 			i += 1
 		}
 		if (rise <= 0) {
@@ -505,6 +519,10 @@ interface ShareEntry {
  *  like Anthropic's cost-based limit accounting. Token fields stay
  *  billable/total for display.
  *
+ *  `calibration` replaces those list prices with what this account's own rises
+ *  say Anthropic actually charges, and shifts events by its measured meter lag.
+ *  Absent (or never fitted well enough to keep) the list prices stand.
+ *
  *  The returned map may carry an extra {@link UNATTRIBUTED} entry — a share of
  *  the account with no group behind it. It is not a group: it holds no budget
  *  slice, so it must not go through {@link groupBudgetPct}. */
@@ -515,6 +533,7 @@ export function splitByShare(
 	officialPct: number,
 	ttl: CacheTtl,
 	points?: PctPoint[],
+	calibration?: Calibration | null,
 ): Map<string | null, ShareEntry> {
 	const byKey = new Map<string | null, UsageRecord[]>()
 	for (const e of filterByWindow(events, windowStart, now)) {
@@ -545,7 +564,7 @@ export function splitByShare(
 		totalByKey.set(k, totals.totalTokens)
 		let cost = 0
 		for (const e of folded) {
-			const c = costUsd(e, ttl)
+			const c = calibration ? weightedCost(e, ttl, calibration.weights) : costUsd(e, ttl)
 			cost += c
 			timeline.push({ cost: c, key: k, ts: e.ts.getTime() })
 		}
@@ -556,7 +575,7 @@ export function splitByShare(
 		totalCost += cost
 	}
 	const target = Math.max(0, officialPct)
-	const rise = points ? riseWeights(timeline, points, windowStart, now, target) : null
+	const rise = points ? riseWeights(timeline, points, windowStart, now, target, calibration?.lagMs ?? 0) : null
 	// Weights sum to the total recorded rise; normalizing to `target` keeps the
 	// official percentage authoritative even after a downward correction.
 	let totalWeight = 0
@@ -768,8 +787,9 @@ async function loadLiveDashboard(
 		new Set(myDevices.filter(d => !d.revoked && d.groupId !== null).map(d => d.groupId)).size,
 	)
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
-	const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, ttl, pointsFor('5h'))
-	const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct, ttl, pointsFor('7d'))
+	const calibration = acct?.calibration ?? null
+	const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, ttl, pointsFor('5h'), calibration)
+	const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct, ttl, pointsFor('7d'), calibration)
 
 	const keys = new Set<string | null>([...sessionSplit.keys(), ...weeklySplit.keys()])
 	const labelFor = (id: string | null) => {
@@ -808,7 +828,15 @@ async function loadLiveDashboard(
 	// above, falling back to plain cost share until a family has points.
 	const modelLimits: LiveModelLimit[] = modelWindows.map(({ entry, start, resetsAt }) => {
 		const familyEvents = events.filter(e => (e.model ?? '').toLowerCase().includes(entry.model))
-		const split = splitByShare(familyEvents, start, now, entry.pct, ttl, pointsFor(entry.window, entry.model))
+		const split = splitByShare(
+			familyEvents,
+			start,
+			now,
+			entry.pct,
+			ttl,
+			pointsFor(entry.window, entry.model),
+			calibration,
+		)
 		const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(([id, s]) => ({
 			// Via budgetPctFor, not groupBudgetPct: delta attribution can emit the
 			// UNATTRIBUTED sentinel, which must never reach the budget scaling.
@@ -1069,7 +1097,16 @@ export async function recordLimitSample(
 	if (pct == null || !resetsAt) {
 		return
 	}
-	const windowStart = new Date(resetsAt.getTime() - (window === '5h' ? FIVE_H_MS : SEVEN_D_MS))
+	// Snapped to a coarse grid because the reset instant Anthropic reports for one
+	// real window jitters by a second or so between reads, and windowStart is part
+	// of the primary key: unsnapped, every reading inserts its own row instead of
+	// raising the peak on the existing one, which is how one 5h window ended up as
+	// a hundred rows that each remember one instant. Coarser than the jitter by
+	// orders of magnitude and far finer than a window, so no two real windows can
+	// land on the same slot.
+	const windowStart = new Date(
+		Math.round((resetsAt.getTime() - (window === '5h' ? FIVE_H_MS : SEVEN_D_MS)) / SAMPLE_GRID_MS) * SAMPLE_GRID_MS,
+	)
 	await db
 		.insert(limitSamples)
 		.values({ claudeAccountId: account.id, peakPct: pct, userId: account.userId, window, windowStart })
@@ -1108,7 +1145,7 @@ export async function recordLimitChangePoint(
 	// reset always lands even though it is lower than the previous window's peak.
 	const windowStart = windowStartOf(resetsAt, at, windowDurationMs(window) ?? SEVEN_D_MS)
 	const [prev] = await db
-		.select({ at: limitChangePoints.at, pct: limitChangePoints.pct })
+		.select({ pct: limitChangePoints.pct })
 		.from(limitChangePoints)
 		.where(
 			and(
@@ -1120,7 +1157,7 @@ export async function recordLimitChangePoint(
 		)
 		.orderBy(desc(limitChangePoints.at))
 		.limit(1)
-	if (!shouldRecordPoint(prev, pct, at)) {
+	if (!shouldRecordPoint(prev, pct)) {
 		return
 	}
 	await db
@@ -1138,6 +1175,71 @@ export async function recordLimitChangePoint(
 				lt(limitChangePoints.at, new Date(at.getTime() - SEVEN_D_MS - 24 * HOUR_MS)),
 			),
 		)
+}
+
+/** How long a fit stands before the next limits report refits it. The inputs
+ *  only change as fast as the account is used; a day keeps the fit current
+ *  without making a heavy query part of anything a user waits on. */
+const CALIBRATION_TTL_MS = 24 * HOUR_MS
+
+/** Accounts whose refit has already been attempted, and when. Failure has to be
+ *  remembered as well as success: a fleet whose rises come from machines outside
+ *  it never produces a calibration, and without this it would re-run the fit on
+ *  every reading forever. In-process like the rest of this app's caches (see
+ *  AGENTS.md) — a restart costs one extra fit per account. */
+const calibrationAttempts = new Map<string, number>()
+
+/**
+ * Refit what this account's own history says about how Anthropic meters it.
+ *
+ * Runs off the back of a limits report rather than a scheduler: reports arrive
+ * every minute from every device, so "has a day passed" is all the scheduling
+ * this needs. Callers do not await it — a stale calibration is not worth
+ * delaying an ingest for.
+ *
+ * Only ever narrows to devices actually stamped with this account: the fit is
+ * about which usage moved *this* meter, and unstamped devices may be signed
+ * into a different subscription.
+ */
+export async function recalibrateAccount(
+	account: { calibration: Calibration | null; extId: string | null; id: string; userId: string },
+	now = new Date(),
+): Promise<void> {
+	// Unidentified accounts get no change points, so there is nothing to fit from.
+	if (account.extId === null) {
+		return
+	}
+	const last = Math.max(calibrationAttempts.get(account.id) ?? 0, Date.parse(account.calibration?.at ?? '') || 0)
+	if (now.getTime() - last < CALIBRATION_TTL_MS) {
+		return
+	}
+	calibrationAttempts.set(account.id, now.getTime())
+	// The whole retained series. Change points are pruned to the longest window
+	// plus slack, so this is every rise the account still remembers.
+	const cutoff = new Date(now.getTime() - SEVEN_D_MS - 24 * HOUR_MS)
+	const [settings, points, events] = await Promise.all([
+		ensureSettings(account.userId),
+		db
+			.select({ at: limitChangePoints.at, pct: limitChangePoints.pct })
+			.from(limitChangePoints)
+			.where(
+				and(
+					eq(limitChangePoints.claudeAccountId, account.id),
+					// The 5h series only: it moves fastest, so it carries by far the most
+					// rises, and the meter it tracks is the same one behind every window.
+					eq(limitChangePoints.window, '5h'),
+					eq(limitChangePoints.model, ''),
+					gte(limitChangePoints.at, cutoff),
+				),
+			)
+			.orderBy(asc(limitChangePoints.at)),
+		loadRecentEvents(account.userId, cutoff, account.id),
+	])
+	const ttl: CacheTtl = settings?.cacheWriteTtl === '1h' ? '1h' : '5m'
+	// Null on a failed fit is a result, not an error: it clears a calibration that
+	// used to hold and no longer does.
+	const fit = fitCalibration(points, foldEvents(events), ttl, now)
+	await db.update(claudeAccounts).set({ calibration: fit }).where(eq(claudeAccounts.id, account.id))
 }
 
 /** Every recorded utilization sample for one account+window at or after

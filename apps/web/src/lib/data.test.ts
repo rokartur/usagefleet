@@ -201,11 +201,33 @@ describe(splitByShare, () => {
 		expect(s.get(UNATTRIBUTED)).toBeUndefined()
 	})
 
-	it('merges readings closer than five minutes into one attribution interval', () => {
-		// Readings land every minute during a's burst; unmerged, the 10:30→10:31 and
-		// 10:32→10:36 rises would find no event inside their hairline intervals and
-		// leak to UNATTRIBUTED. Merged, a's one event carries the whole 10:30→10:36
-		// rise; only the pre-event climb to 5 stays unattributed.
+	it('merges readings closer together than one device poll', () => {
+		// Three devices read Anthropic seconds apart and post the same climb; the
+		// boundaries between their readings are which machine answered first, not
+		// when the usage happened. Unmerged, the hairline intervals around a's event
+		// would find nothing inside them and leak to UNATTRIBUTED.
+		const s = splitByShare(
+			[ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:30:30Z'))],
+			WIN_START,
+			NOW,
+			20,
+			'5m',
+			[
+				pt('2026-06-18T10:30:00Z', 5),
+				pt('2026-06-18T10:30:20Z', 10),
+				pt('2026-06-18T10:30:40Z', 15),
+				pt('2026-06-18T10:31:00Z', 20),
+			],
+		)
+		expect(s.get('a')?.exactPct).toBeCloseTo(15, 6)
+		expect(s.get(UNATTRIBUTED)?.exactPct).toBeCloseTo(5, 6)
+	})
+
+	it('attributes minute-apart rises separately instead of pooling them', () => {
+		// a worked for one minute out of six. The old five-minute merge fused all
+		// four readings into one interval and handed a the entire climb; at poll
+		// resolution a only owns the minute it was actually running, and the rest
+		// reads as what it is — usage from outside the fleet.
 		const s = splitByShare(
 			[ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:31:30Z'))],
 			WIN_START,
@@ -219,8 +241,8 @@ describe(splitByShare, () => {
 				pt('2026-06-18T10:36:00Z', 20),
 			],
 		)
-		expect(s.get('a')?.exactPct).toBeCloseTo(15, 6)
-		expect(s.get(UNATTRIBUTED)?.exactPct).toBeCloseTo(5, 6)
+		expect(s.get('a')?.exactPct).toBeCloseTo(5, 6)
+		expect(s.get(UNATTRIBUTED)?.exactPct).toBeCloseTo(15, 6)
 	})
 
 	it('gives a falling interval no weight and keeps its events out of the next one', () => {
@@ -314,25 +336,26 @@ describe(windowStartOf, () => {
 })
 
 describe(shouldRecordPoint, () => {
-	const prev = { at: new Date('2026-06-18T11:00:00Z'), pct: 40 }
-	const after = (mins: number) => new Date(prev.at.getTime() + mins * 60_000)
+	const prev = { pct: 40 }
 
 	it("records the window's first reading whatever it says", () => {
 		// After a reset the caller scopes prev to the new window, so this is how the
 		// floor gets in despite being far below the previous window's peak.
-		expect(shouldRecordPoint(undefined, 2, after(0))).toBeTruthy()
+		expect(shouldRecordPoint(undefined, 2)).toBeTruthy()
 	})
 
 	it('refuses a fall, so an out-of-order post cannot fabricate a rise', () => {
 		// Two devices read Anthropic moments apart and their posts land reversed.
 		// Storing the dip would make the recovery back to 40 read as a second rise.
-		expect(shouldRecordPoint(prev, 39.8, after(10))).toBeFalsy()
-		expect(shouldRecordPoint(prev, 40, after(10))).toBeFalsy()
+		expect(shouldRecordPoint(prev, 39.8)).toBeFalsy()
+		expect(shouldRecordPoint(prev, 40)).toBeFalsy()
 	})
 
-	it('thins rises to the resolution the split reads at', () => {
-		expect(shouldRecordPoint(prev, 45, after(4))).toBeFalsy()
-		expect(shouldRecordPoint(prev, 45, after(5))).toBeTruthy()
+	it('records every rise, however soon after the last one', () => {
+		// Rises used to be thinned to five minutes here, which threw away a quarter
+		// of them; readings too close to attribute apart are merged at read time now,
+		// where a better-calibrated read can still change its mind about them.
+		expect(shouldRecordPoint(prev, 45)).toBeTruthy()
 	})
 })
 

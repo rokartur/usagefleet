@@ -112,14 +112,19 @@ in the morning. Details that matter:
   corrected by a stale offset. Unmeasurable
   drift (collector too old to send `sentAt`, offset too large to be a clock)
   holds the last known value and the future-clamp stays as the guard.
-- Readings closer than 5 minutes merge into one interval, on both the write and
-  the read side. The bucket has to stay wider than the delay between an event's
-  timestamp and the moment its tokens reach Anthropic's meter — a long streamed
-  response plus their accounting lag — or a rise lands one bucket before its
-  cause. That delay is not observable from here, so 5 minutes is a deliberately
-  loose bound rather than a tuned one. It is the attribution resolution: a 5h
-  window holds at most 60 buckets, and inside a bucket we are back to splitting
-  by cost.
+- Every rise is stored; readings closer than **one minute** merge into one
+  interval at read time. A minute is the collector's poll period, so two
+  readings inside it are one moment seen by two machines. This used to be five
+  minutes, on both sides, to absorb the unmeasured delay between an event's
+  timestamp and the moment its tokens reach Anthropic's meter. Measured since
+  (cross-correlating per-minute cost against rises on real accounts) that delay
+  peaks at about a minute, most of which is the poll period itself — while the
+  five-minute bound was dropping ~25% of all rises and moving group shares by up
+  to 6 points. Worse, it merged idle intervals into active ones, hiding
+  off-fleet usage that should have read as `UNATTRIBUTED`. What remains of the
+  delay is fitted per account (see *Calibration*) instead of guessed at.
+  The merge interval is the attribution resolution: inside one, we are back to
+  splitting by cost.
 - A rise over an interval with no priceable events goes to the sentinel
   `UNATTRIBUTED` key — usage from before the collector ran or from a device
   outside the fleet — and shows as an "Unattributed" row instead of being
@@ -134,6 +139,41 @@ in the morning. Details that matter:
 - Weights are normalized to the official pct, which stays authoritative even
   after a downward correction; concurrent activity inside one interval still
   splits by cost, which is as far as Anthropic's aggregate number can be taken.
+
+### Calibration
+
+The cost that weighs an interval is API list prices, which are only a proxy for
+Anthropic's limit meter — and a measurably biased one. An account with enough
+recorded history fits its own weights instead (`lib/usage/calibration.ts`,
+stored on `claude_account.calibration`, refit at most daily off the back of a
+limits post — there is no scheduler, and reports arrive every minute anyway).
+
+Each interval between two change points is a labelled example: Anthropic's own
+rise, against the list-price cost of what the fleet did in between, split into
+four buckets (input, output, cache write, cache read). Non-negative least
+squares fits one multiplier per bucket, plus a meter lag chosen from the same
+candidates. On the account this was developed against, that halves held-out
+error versus list prices (35% → 18% MAPE), almost entirely by discovering that
+**cache reads barely move the limit at all** — the price list charges them 1/50
+of an output token, the meter closer to 1/800.
+
+What keeps this honest:
+
+- Weights are fitted on the older 70% of the history and scored on the newer
+  30%. A fit that does not beat list prices on data it never saw is discarded
+  and the account keeps the list-price split. Fleets whose rises are driven by
+  machines outside them never produce a calibration, which is the correct
+  outcome: their rises genuinely are not explained by their events.
+- No bucket may stray more than 20× from the scalar the baseline fits. A bucket
+  the account barely uses carries no signal, and least squares will hand it an
+  enormous weight that costs nothing on the fitted data and misattributes wildly
+  the first time it is used in earnest.
+- Intervals no event falls in are excluded from the fit. Asking the weights to
+  explain a rise from nothing is how a fit learns garbage; that rise is
+  `UNATTRIBUTED` at read time and stays that way.
+- Only ratios between buckets reach the split, since weights are normalized to
+  the official pct like any other cost. The absolute scale (pct per dollar) is
+  fitted too, and is what a forecast would need, but nothing reads it yet.
 
 `groupBudgetPct()` then scales a share into what the UI shows:
 `round(exactPct × groupCount)`, where `groupCount` counts the groups holding a

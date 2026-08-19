@@ -15,6 +15,10 @@ interface Price {
 	cacheRead: number
 }
 
+/** One record's list-price cost, per token bucket. Same keys as {@link Price}
+ *  so a per-bucket weight vector shares the shape. Sums to the total USD. */
+export type CostBuckets = Price
+
 // Fable 5 / Mythos 5: the frontier tier ($10/$50 per MTok).
 const FABLE: Price = { cacheRead: 1, cacheWrite: 20, input: 10, output: 50 }
 // Opus 4.5 and later (4.5 / 4.6 / 4.7 / 4.8): the current Opus tier.
@@ -145,20 +149,33 @@ export function priceFor(model: string | null | undefined): Price {
  *  per-TTL breakdown are priced by it exactly. */
 export type CacheTtl = '5m' | '1h'
 
-/** USD cost of a set of token counts under one model's list price.
- *  Cache writes use the per-TTL breakdown where the row carries it; only the
- *  untagged remainder (legacy rows, pi rows) is priced by the `ttl` setting. */
-export function costForTokens(t: TokenCounts, model: string | null, ttl: CacheTtl = '5m'): number {
+/** USD list-price cost of a set of token counts, split by token bucket.
+ *  Anthropic's limit meter does not weigh the four buckets the way its price
+ *  list does (measurably: cache reads cost ~50× less than output but barely
+ *  move the limit at all), so calibration fits a multiplier per bucket — which
+ *  only works if the buckets it fits are exactly the ones the total is made of.
+ *  Hence one decomposition, summed by {@link costForTokens}. */
+export function costBuckets(t: TokenCounts, model: string | null, ttl: CacheTtl = '5m'): CostBuckets {
 	const p = priceFor(model)
 	const write5m = p.input * 1.25
 	const five = t.cacheCreation5mTokens ?? 0
 	const oneHour = t.cacheCreation1hTokens ?? 0
 	const untagged = Math.max(0, t.cacheCreationTokens - five - oneHour)
-	const cacheWriteCost = five * write5m + oneHour * p.cacheWrite + untagged * (ttl === '5m' ? write5m : p.cacheWrite)
-	return (
-		(t.inputTokens * p.input + t.outputTokens * p.output + cacheWriteCost + t.cacheReadTokens * p.cacheRead) /
-		1_000_000
-	)
+	return {
+		cacheRead: (t.cacheReadTokens * p.cacheRead) / 1_000_000,
+		cacheWrite:
+			(five * write5m + oneHour * p.cacheWrite + untagged * (ttl === '5m' ? write5m : p.cacheWrite)) / 1_000_000,
+		input: (t.inputTokens * p.input) / 1_000_000,
+		output: (t.outputTokens * p.output) / 1_000_000,
+	}
+}
+
+/** USD cost of a set of token counts under one model's list price.
+ *  Cache writes use the per-TTL breakdown where the row carries it; only the
+ *  untagged remainder (legacy rows, pi rows) is priced by the `ttl` setting. */
+export function costForTokens(t: TokenCounts, model: string | null, ttl: CacheTtl = '5m'): number {
+	const b = costBuckets(t, model, ttl)
+	return b.input + b.output + b.cacheWrite + b.cacheRead
 }
 
 /** Cost of one record in USD. */
