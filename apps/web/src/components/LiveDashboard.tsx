@@ -60,12 +60,46 @@ function GroupSplit({
 	)
 }
 
+/** Account-wide Weekly with the part attributed to Fable highlighted. */
+function WeeklyUsageBar({ pct, fable }: { pct: number; fable: ModelLimitDTO }) {
+	const contribution = Math.max(0, fable.weeklyContributionPct)
+	const barEnd = Math.min(100, Math.max(0, pct))
+	const showContribution = Math.round(contribution) > 0
+	const segmentWidth = showContribution ? Math.min(barEnd, contribution) : 0
+
+	return (
+		<>
+			<div className='relative'>
+				<UsageBar pct={pct} />
+				{segmentWidth > 0 ? (
+					<span
+						className='pointer-events-none absolute top-0 h-1.5 bg-violet-400'
+						style={{ left: `${barEnd - segmentWidth}%`, width: `${segmentWidth}%` }}
+						aria-hidden
+					/>
+				) : null}
+			</div>
+			{showContribution ? (
+				<div className='flex items-center gap-1.5 text-[11px] text-violet-300'>
+					<span className='size-2 bg-violet-400' aria-hidden />
+					<Num value={contribution} format={pctText} /> {fable.label}
+					<span className='text-muted-foreground'>
+						· ~<Num value={fable.weeklyCostPct} format={pctText} /> by cost
+					</span>
+				</div>
+			) : null}
+		</>
+	)
+}
+
 const groupKey = (groupId: string | null) => groupId ?? 'ungrouped'
 
 /** Whose subscription this card reports on. An account the collector could not
  *  name (API-key login, or a collector too old to report one) is the bucket
  *  every unidentified device falls into. */
 const accountName = (dash: DashboardDTO) => dash.accountLabel ?? 'Unidentified account'
+
+const fableOf = (dash: DashboardDTO) => dash.modelLimits.find(limit => limit.model.toLowerCase().includes('fable'))
 
 /** One window's usage split across the groups on this account. */
 const splitOf = (dash: DashboardDTO, pct: (g: LiveGroupUsage) => number) =>
@@ -115,15 +149,17 @@ function LimitCell({
 	pct,
 	resetsAt,
 	groups,
+	fable,
 }: {
 	label: string
 	pct: number
 	resetsAt: string | null
 	groups: { key: string; name: string; color: string; pct: number }[]
+	fable?: ModelLimitDTO
 }) {
 	return (
 		<StatCell label={label} value={<Num value={pct} format={pctText} className={overrun(pct)} />}>
-			<UsageBar pct={pct} />
+			{fable ? <WeeklyUsageBar pct={pct} fable={fable} /> : <UsageBar pct={pct} />}
 			<div className='text-[11px] text-muted-foreground'>
 				<ResetCountdown resetsAt={resetsAt} />
 			</div>
@@ -284,11 +320,13 @@ function AccountWindow({
 	pct,
 	resetsAt,
 	groups,
+	fable,
 }: {
 	label: string
 	pct: number
 	resetsAt: string | null
 	groups: { key: string; name: string; color: string; pct: number }[]
+	fable?: ModelLimitDTO
 }) {
 	return (
 		<div className='flex flex-col gap-2'>
@@ -298,7 +336,7 @@ function AccountWindow({
 					{label} · <ResetCountdown resetsAt={resetsAt} />
 				</span>
 			</div>
-			<UsageBar pct={pct} />
+			{fable ? <WeeklyUsageBar pct={pct} fable={fable} /> : <UsageBar pct={pct} />}
 			<GroupSplit groups={groups} />
 		</div>
 	)
@@ -325,6 +363,7 @@ function AccountRow({ dash, now, pollDown }: { dash: DashboardDTO; now: number; 
 				pct={dash.sevenDayPct}
 				resetsAt={dash.sevenDayResetsAt}
 				groups={splitOf(dash, g => g.weeklyBudgetPct)}
+				fable={fableOf(dash)}
 			/>
 			<div className='flex flex-col gap-1.5'>
 				<div className='flex flex-wrap items-baseline gap-x-2'>
@@ -457,6 +496,7 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO[]; set
 						pct={solo.sevenDayPct}
 						resetsAt={solo.sevenDayResetsAt}
 						groups={splitOf(solo, g => g.weeklyBudgetPct)}
+						fable={fableOf(solo)}
 					/>
 					<SpendCell label='Spend, this week' period={solo.spend.week} />
 					<SpendCell label='Spend, this month' period={solo.spend.month} />

@@ -325,6 +325,10 @@ export interface LiveModelLimit {
 	window: string
 	/** Claude's official utilization for this model limit. */
 	pct: number
+	/** Percentage points this family contributes to the account-wide Weekly. */
+	weeklyContributionPct: number
+	/** The same Weekly percentage split by cost share alone. */
+	weeklyCostPct: number
 	resetsAt: Date | null
 	groups: LiveModelLimitGroup[]
 }
@@ -530,10 +534,10 @@ interface ShareEntry {
 	models: ModelUsage[]
 }
 
-/** Split an official account-wide percentage across an arbitrary key (group or
- *  device). With recorded {@link PctPoint}s, each rise is attributed to the
- *  keys active in its interval ({@link riseWeights}); without them (or with no
- *  rise), the whole percentage is split by each key's share of estimated cost
+/** Split an official account-wide percentage across groups by default, or a
+ *  caller-supplied event key. With recorded {@link PctPoint}s, each rise is
+ *  attributed to the keys active in its interval ({@link riseWeights}); without
+ *  them (or with no rise), the whole percentage is split by each key's share of estimated cost
  *  (API list prices) within the window — weighting buckets (output 5×, cache
  *  write 1.25×, cache read 0.1×) and models (Fable > Opus > Sonnet > Haiku)
  *  like Anthropic's cost-based limit accounting. Token fields stay
@@ -554,10 +558,11 @@ export function splitByShare(
 	ttl: CacheTtl,
 	points?: PctPoint[],
 	calibration?: Calibration | null,
+	keyOf?: (event: UsageRecord) => string | null,
 ): Map<string | null, ShareEntry> {
 	const byKey = new Map<string | null, UsageRecord[]>()
 	for (const e of filterByWindow(events, windowStart, now)) {
-		const k = e.groupId ?? null
+		const k = keyOf ? keyOf(e) : (e.groupId ?? null)
 		const arr = byKey.get(k)
 		if (arr) {
 			arr.push(e)
@@ -848,7 +853,9 @@ async function loadLiveDashboard(
 	// attribution (and per-group budget scaling) as the session/weekly limits
 	// above, falling back to plain cost share until a family has points.
 	const modelLimits: LiveModelLimit[] = modelWindows.map(({ entry, start, resetsAt }) => {
-		const familyEvents = events.filter(e => (e.model ?? '').toLowerCase().includes(entry.model))
+		const family = entry.model.toLowerCase()
+		const isFamilyEvent = (event: UsageRecord) => (event.model ?? '').toLowerCase().includes(family)
+		const familyEvents = events.filter(isFamilyEvent)
 		const split = splitByShare(
 			familyEvents,
 			start,
@@ -858,6 +865,20 @@ async function loadLiveDashboard(
 			pointsFor(entry.window, entry.model),
 			calibration,
 		)
+		// Unlike the family's own cap above, this splits the account-wide Weekly
+		// across this family and every other model, both by Weekly's rises and cost.
+		const weeklyShare = splitByShare(
+			events,
+			weekStart,
+			now,
+			base.sevenDayPct,
+			ttl,
+			pointsFor('7d'),
+			calibration,
+			event => (isFamilyEvent(event) ? entry.model : null),
+		).get(entry.model)
+		const weeklyContributionPct = weeklyShare?.exactPct ?? 0
+		const weeklyCostPct = weeklyShare?.costPct ?? 0
 		const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(([id, s]) => ({
 			// Via budgetPctFor, not groupBudgetPct: delta attribution can emit the
 			// UNATTRIBUTED sentinel, which must never reach the budget scaling.
@@ -875,6 +896,8 @@ async function loadLiveDashboard(
 			// "105%" is the number worth seeing. Floor at 0 only.
 			pct: Math.max(0, entry.pct),
 			resetsAt,
+			weeklyContributionPct,
+			weeklyCostPct,
 			window: entry.window,
 		}
 	})

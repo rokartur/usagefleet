@@ -201,6 +201,26 @@ describe(splitByShare, () => {
 		expect(s.get('b')?.exactPct).toBeCloseTo(20, 6)
 	})
 
+	it('attributes the headline across a caller-supplied model key', () => {
+		const s = splitByShare(
+			[
+				ev('a', 'claude-fable-1', 3_000_000, new Date('2026-06-18T10:30:00Z')),
+				ev('b', 'claude-sonnet-4', 10_000_000, new Date('2026-06-18T13:30:00Z')),
+			],
+			WIN_START,
+			NOW,
+			50,
+			'5m',
+			[pt('2026-06-18T11:00:00Z', 30), pt('2026-06-18T14:00:00Z', 50)],
+			undefined,
+			event => (event.model?.includes('fable') ? 'fable' : null),
+		)
+		expect(s.get('fable')?.exactPct).toBeCloseTo(30, 6)
+		// 3M Fable input ($10/M) equals 10M Sonnet input ($3/M).
+		expect(s.get('fable')?.costPct).toBeCloseTo(25, 6)
+		expect(s.get(null)?.exactPct).toBeCloseTo(20, 6)
+	})
+
 	it('parks a rise no monitored event can explain under UNATTRIBUTED', () => {
 		// The account hit 40% before the only monitored event existed; the synthetic
 		// final reading tops the rest up to the official 50.
