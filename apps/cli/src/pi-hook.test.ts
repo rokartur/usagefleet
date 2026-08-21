@@ -45,20 +45,20 @@ describe(installPiGuard, () => {
 	it('skips machines without pi instead of conjuring the directory', () => {
 		const absent = join(agentDir, 'nope')
 		installPiGuard(PROG, absent)
-		expect(existsSync(absent)).toBe(false)
+		expect(existsSync(absent)).toBeFalsy()
 	})
 
 	it('honours USAGEFLEET_HOOK=0, same switch as the Claude hook', () => {
 		vi.stubEnv('USAGEFLEET_HOOK', '0')
 		installPiGuard(PROG, agentDir)
-		expect(existsSync(piGuardPath(agentDir))).toBe(false)
+		expect(existsSync(piGuardPath(agentDir))).toBeFalsy()
 		vi.unstubAllEnvs()
 	})
 
 	it('uninstall removes ours and tolerates it already being gone', () => {
 		installPiGuard(PROG, agentDir)
 		uninstallPiGuard(agentDir)
-		expect(existsSync(piGuardPath(agentDir))).toBe(false)
+		expect(existsSync(piGuardPath(agentDir))).toBeFalsy()
 		uninstallPiGuard(agentDir) // no throw
 	})
 

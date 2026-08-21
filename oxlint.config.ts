@@ -41,7 +41,6 @@ const houseOverrides = defineConfig({
 				'react/no-danger': 'off',
 				'react/no-object-type-as-default-prop': 'off',
 				'react/no-unstable-nested-components': 'off',
-				'react/react-compiler': 'off',
 				'unicorn/no-document-cookie': 'off',
 			},
 		},
@@ -88,6 +87,17 @@ export default defineConfig({
 		'promise/avoid-new': 'off',
 		'promise/prefer-await-to-callbacks': 'off',
 		'promise/prefer-await-to-then': 'off',
+		// `import Stripe from 'stripe'` is stripe's own documented import.
+		'import/no-named-as-default': 'off',
+		// This build does not run the React Compiler; its lint family reports
+		// "cannot compile this syntax" notices and compiler-grade dependency
+		// analysis, not bugs in code that never compiles through it.
+		'react/todo': 'off',
+		'react/exhaustive-effect-dependencies': 'off',
+		// The flagged effects initialise state from external systems on mount
+		// (matchMedia, storage-backed theme), which is the documented escape
+		// hatch this rule flags wholesale.
+		'react/set-state-in-effect': 'off',
 		'react/function-component-definition': 'off',
 		// `const [initial] = useState(...)` for a mount-stable value is deliberate.
 		'react/hook-use-state': 'off',
