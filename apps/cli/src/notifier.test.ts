@@ -3,7 +3,7 @@ import { evaluateWindow, loadNotifyConfig } from './notifier.js'
 
 describe(loadNotifyConfig, () => {
 	it('defaults to enabled with 80/95 thresholds', () => {
-		expect(loadNotifyConfig({})).toStrictEqual({
+		expect(loadNotifyConfig({}, {})).toStrictEqual({
 			enabled: true,
 			thresholds: [80, 95],
 		})
@@ -11,24 +11,36 @@ describe(loadNotifyConfig, () => {
 
 	it('disables on falsey flags (case-insensitive)', () => {
 		for (const v of ['0', 'false', 'off', 'NO', ' Off ']) {
-			expect(loadNotifyConfig({ USAGEFLEET_NOTIFY: v }).enabled).toBeFalsy()
+			expect(loadNotifyConfig({ USAGEFLEET_NOTIFY: v }, {}).enabled).toBeFalsy()
 		}
 	})
 
 	it('stays enabled for other values', () => {
-		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY: '1' }).enabled).toBeTruthy()
-		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY: 'yes' }).enabled).toBeTruthy()
+		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY: '1' }, {}).enabled).toBeTruthy()
+		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY: 'yes' }, {}).enabled).toBeTruthy()
+	})
+
+	it('reads the config file keys, env winning', () => {
+		expect(loadNotifyConfig({}, { notifications: false }).enabled).toBeFalsy()
+		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY: '1' }, { notifications: false }).enabled).toBeTruthy()
+		expect(loadNotifyConfig({}, { notifyThresholds: [90, 50] }).thresholds).toStrictEqual([50, 90])
+		expect(
+			loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: '70' }, { notifyThresholds: [90] }).thresholds,
+		).toStrictEqual([70])
 	})
 
 	it('parses, dedups, sorts, and bounds thresholds', () => {
-		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: '95, 50,80, 80' }).thresholds).toStrictEqual([
+		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: '95, 50,80, 80' }, {}).thresholds).toStrictEqual([
 			50, 80, 95,
 		])
 	})
 
 	it('drops out-of-range / non-numeric entries and falls back when empty', () => {
-		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: '0,101,-5,abc' }).thresholds).toStrictEqual([80, 95])
-		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: '  ' }).thresholds).toStrictEqual([80, 95])
+		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: '0,101,-5,abc' }, {}).thresholds).toStrictEqual([
+			80, 95,
+		])
+		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: '  ' }, {}).thresholds).toStrictEqual([80, 95])
+		expect(loadNotifyConfig({}, { notifyThresholds: [0, 200] }).thresholds).toStrictEqual([80, 95])
 	})
 })
 

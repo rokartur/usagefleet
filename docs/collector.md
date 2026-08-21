@@ -152,9 +152,14 @@ notification marks. Every write goes through `atomic-write.ts` — tmp file →
 fsync → rename → fsync dir, with a per-pid tmp name so a manual `run` alongside
 the installed service can't publish a corrupt half-write.
 
-Env overrides everything in the file: `USAGEFLEET_TOKEN`, `_PROJECTS`,
-`_DESKTOP`, `_PI`, `_BATCH`, `_INTERVAL`, `_LIMITS_INTERVAL`, `_UPDATE`,
-`_UPDATE_INTERVAL`, `_NOTIFY`, `_NOTIFY_THRESHOLDS`, `_HOOK`.
+Every knob is a top-level file key (`interval`, `limitsInterval`, `batch`,
+`notifications`, `notifyThresholds`, `hook`, `update`, `updateInterval`, plus
+the dirs and `token`) with a matching env var that overrides it:
+`USAGEFLEET_TOKEN`, `_PROJECTS`, `_DESKTOP`, `_PI`, `_BATCH`, `_INTERVAL`,
+`_LIMITS_INTERVAL`, `_UPDATE`, `_UPDATE_INTERVAL`, `_NOTIFY`,
+`_NOTIFY_THRESHOLDS`, `_HOOK`. Resolution is env → file → default
+(`positiveNumber`/`flagOff` in `config.ts`); `normalize()` in `store.ts` must
+list each key or the next rewrite drops it (tripwire test in `store.test.ts`).
 
 The server is not among them. `ENDPOINT` in `config.ts` is a constant
 (`https://usagefleet.com`): the request carries a device token and a log of what

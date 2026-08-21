@@ -90,6 +90,25 @@ export interface Store {
 	desktopDir?: string
 	/** One path, or several (pi's session root moves with PI_CODING_AGENT_DIR). */
 	piDir?: string | string[]
+	// Every USAGEFLEET_* knob is also a file key (the matching env var wins);
+	// resolution lives in config.ts (positiveNumber/flagOff) and each read site.
+	/** Watch poll seconds (USAGEFLEET_INTERVAL). */
+	interval?: number
+	/** Seconds between limits reports (USAGEFLEET_LIMITS_INTERVAL). */
+	limitsInterval?: number
+	/** Records per upload (USAGEFLEET_BATCH). */
+	batch?: number
+	/** false disables desktop notifications (USAGEFLEET_NOTIFY). Named apart
+	 *  from the machine-managed `notify` section below. */
+	notifications?: boolean
+	/** Utilization % alert thresholds (USAGEFLEET_NOTIFY_THRESHOLDS). */
+	notifyThresholds?: number[]
+	/** false keeps the prompt guard out of Claude Code and pi (USAGEFLEET_HOOK). */
+	hook?: boolean
+	/** false disables self-update while watching (USAGEFLEET_UPDATE). */
+	update?: boolean
+	/** Seconds between update checks (USAGEFLEET_UPDATE_INTERVAL). */
+	updateInterval?: number
 	limits?: LimitsMark
 	state: StateFile
 	notify: NotifyState

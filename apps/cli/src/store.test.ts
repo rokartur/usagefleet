@@ -90,4 +90,25 @@ describe('store', () => {
 		expect(saved.token).toBe('uf_rotated')
 		expect(saved.state.files['/a.jsonl'].offset).toBe(99)
 	})
+
+	// normalize() lists fields explicitly, so a settings key it forgets is
+	// silently erased by the next updateStore — this is the tripwire.
+	it('carries every user settings key through a rewrite', () => {
+		const path = join(mkdtempSync(join(tmpdir(), 'uf-store-')), 'config.json')
+		const settings = {
+			batch: 200,
+			hook: false,
+			interval: 30,
+			limitsInterval: 120,
+			notifications: false,
+			notifyThresholds: [50, 90],
+			update: false,
+			updateInterval: 3600,
+		}
+		writeFileSync(path, JSON.stringify({ ...settings, token: 'uf_x' }))
+		updateStore(path, s => {
+			s.state.files['/a.jsonl'] = { inode: 1, offset: 1 }
+		})
+		expect(read(path)).toMatchObject(settings)
+	})
 })

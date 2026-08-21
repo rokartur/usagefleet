@@ -1,14 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { writeFileAtomic } from './atomic-write.js'
+import { flagOff } from './config.js'
 import { piAgentDir } from './paths.js'
+import { readStore } from './store.js'
 import { step, tilde } from './ui.js'
 
 /** pi has no settings-file hooks; its extension point is a TypeScript file
  *  auto-discovered from `<agent-dir>/extensions/*.ts`. So the pi guard is a
  *  generated file rather than a settings entry, with the same lifecycle as the
  *  Claude hook: written by `login` (which self-update re-runs, refreshing the
- *  baked binary path), removed by `uninstall`, skipped by USAGEFLEET_HOOK=0. */
+ *  baked binary path), removed by `uninstall`, skipped by USAGEFLEET_HOOK=0 or
+ *  `"hook": false` in the config file. */
 const FILE = 'usagefleet-guard.ts'
 
 export function piGuardPath(agentDir: string = piAgentDir()): string {
@@ -74,7 +77,7 @@ export default function (pi: { on(event: 'input', handler: InputHandler): void }
 /** Skips machines without pi (agent dir absent) rather than conjuring a `.pi`
  *  tree that pi itself never made. */
 export function installPiGuard(program: string[], agentDir: string = piAgentDir()): void {
-	if (process.env.USAGEFLEET_HOOK === '0' || !existsSync(agentDir)) {
+	if (flagOff(process.env.USAGEFLEET_HOOK, readStore().hook) || !existsSync(agentDir)) {
 		return
 	}
 	const path = piGuardPath(agentDir)

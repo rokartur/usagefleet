@@ -3,7 +3,7 @@ import { detectClaudeCreds } from './claude-creds.js'
 import { reportLimitsOnce, runOnce } from './collector.js'
 import { commands, completionScript, installCompletions, removeCompletions, shells, suggest } from './completion.js'
 import type { Shell } from './completion.js'
-import { ENDPOINT, loadConfig } from './config.js'
+import { ENDPOINT, loadConfig, positiveNumber } from './config.js'
 import { runGuard } from './guard.js'
 import { loadNotifyConfig } from './notifier.js'
 import { sendNotification } from './notify.js'
@@ -103,22 +103,26 @@ async function cmdLimits(): Promise<void> {
 
 async function cmdWatch(): Promise<void> {
 	const cfg = loadConfig()
-	const raw = Number(flag('interval') ?? process.env.USAGEFLEET_INTERVAL ?? 15)
+	const settings = readStore(cfg.storePath)
+	const raw =
+		flag('interval') == null
+			? (positiveNumber(process.env.USAGEFLEET_INTERVAL, settings.interval) ?? 15)
+			: Number(flag('interval'))
 	const interval = Math.max(1, Number.isFinite(raw) && raw > 0 ? raw : 15) * 1000
 	// Limits reporting is decoupled from the much faster usage poll. Default
 	// interval depends on how the reading is fetched: subscription logins use the
 	// free oauth/usage endpoint (60s keeps the dashboard split fresh at zero token
 	// cost), API keys pay a 1-token Messages ping per reading (300s). An explicit
-	// USAGEFLEET_LIMITS_INTERVAL overrides both.
-	const rawLimits = Number(process.env.USAGEFLEET_LIMITS_INTERVAL)
-	const explicitLimits = Number.isFinite(rawLimits) && rawLimits > 0 ? rawLimits * 1000 : null
+	// USAGEFLEET_LIMITS_INTERVAL or `limitsInterval` file key overrides both.
+	const rawLimits = positiveNumber(process.env.USAGEFLEET_LIMITS_INTERVAL, settings.limitsInterval)
+	const explicitLimits = rawLimits ? rawLimits * 1000 : null
 	let limitsInterval = explicitLimits ?? 60_000
 	let lastLimitsAt = 0
 	// Self-update: once at startup, then every USAGEFLEET_UPDATE_INTERVAL seconds
 	// (default 6h — a release lands on a device the same day, not the next).
-	// USAGEFLEET_UPDATE=0 opts out.
-	const rawUpdate = Number(process.env.USAGEFLEET_UPDATE_INTERVAL ?? 6 * 60 * 60)
-	const updateInterval = Math.max(60, Number.isFinite(rawUpdate) && rawUpdate > 0 ? rawUpdate : 6 * 60 * 60) * 1000
+	// USAGEFLEET_UPDATE=0 or `"update": false` opts out.
+	const rawUpdate = positiveNumber(process.env.USAGEFLEET_UPDATE_INTERVAL, settings.updateInterval) ?? 6 * 60 * 60
+	const updateInterval = Math.max(60, rawUpdate) * 1000
 	let lastUpdateAt = 0
 	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs].filter((d): d is string => !!d)
 	console.log(header(`watching every ${interval / 1000}s`))
@@ -188,7 +192,7 @@ async function cmdWatch(): Promise<void> {
 function cmdNotifyTest(): void {
 	const cfg = loadNotifyConfig()
 	if (!cfg.enabled) {
-		console.log(warn('notify', 'disabled · unset USAGEFLEET_NOTIFY=0 to enable'))
+		console.log(warn('notify', 'disabled · unset USAGEFLEET_NOTIFY=0 / `"notifications": false` to enable'))
 		return
 	}
 	sendNotification('usagefleet', 'Test notification — desktop alerts are working.', {
@@ -308,31 +312,40 @@ function print(rows: [string, string][]): void {
 	}
 }
 
-/** Where settings live and every env var that overrides them. Reads nothing:
- *  it must work before a token exists, when the config is what you're fixing. */
+/** Where settings live: every knob is a key in the config file, and the
+ *  matching env var overrides it. Reads nothing: it must work before a token
+ *  exists, when the config is what you're fixing. */
 function cmdConfig(): void {
-	const env: [string, string][] = [
-		['USAGEFLEET_TOKEN', 'device token from the Devices page'],
-		['USAGEFLEET_PROJECTS', 'override ~/.claude/projects'],
-		['USAGEFLEET_DESKTOP', 'override the Claude Desktop dir ("off" disables)'],
-		['USAGEFLEET_PI', 'override pi session dirs, comma-separated'],
-		['USAGEFLEET_INTERVAL', 'watch interval seconds (default 15)'],
-		['USAGEFLEET_LIMITS_INTERVAL', 'seconds between limits reports (default 60; 300 on API keys)'],
-		['USAGEFLEET_BATCH', 'records per upload (default 100, max 1000)'],
-		['USAGEFLEET_NOTIFY', 'desktop notifications (0 disables)'],
-		['USAGEFLEET_NOTIFY_THRESHOLDS', 'comma list of % alerts (default 80,95)'],
-		['USAGEFLEET_HOOK', 'register the guard on install (0 skips)'],
-		['USAGEFLEET_UPDATE', 'self-update while watching (0 disables)'],
-		['USAGEFLEET_UPDATE_INTERVAL', 'seconds between update checks (default 21600)'],
-		['USAGEFLEET_CONFIG', 'relocate the config file'],
+	const knobs: [string, string, string][] = [
+		['token', 'USAGEFLEET_TOKEN', 'device token from the Devices page'],
+		['projectsDir', 'USAGEFLEET_PROJECTS', 'override ~/.claude/projects'],
+		['desktopDir', 'USAGEFLEET_DESKTOP', 'override the Claude Desktop dir ("off" disables)'],
+		['piDir', 'USAGEFLEET_PI', 'pi session dirs · string or array; env comma-separated'],
+		['interval', 'USAGEFLEET_INTERVAL', 'watch interval seconds (default 15)'],
+		[
+			'limitsInterval',
+			'USAGEFLEET_LIMITS_INTERVAL',
+			'seconds between limits reports (default 60; 300 on API keys)',
+		],
+		['batch', 'USAGEFLEET_BATCH', 'records per upload (default 100, max 1000)'],
+		['notifications', 'USAGEFLEET_NOTIFY', 'desktop notifications (false/0 disables)'],
+		['notifyThresholds', 'USAGEFLEET_NOTIFY_THRESHOLDS', '% alerts · array; env comma list (default 80,95)'],
+		['hook', 'USAGEFLEET_HOOK', 'register the prompt guard on install (false/0 skips)'],
+		['update', 'USAGEFLEET_UPDATE', 'self-update while watching (false/0 disables)'],
+		['updateInterval', 'USAGEFLEET_UPDATE_INTERVAL', 'seconds between update checks (default 21600)'],
+		['—', 'USAGEFLEET_CONFIG', 'relocate the config file (env only — it locates the file)'],
 	]
 	console.log(header())
 	console.log(hint('settings, tail offsets and notification marks'))
 	console.log('')
 	console.log(row('file', tilde(storePath())))
 	console.log('')
-	console.log(hint('env — overrides the file'))
-	print(env)
+	console.log(hint('file key · env override wins'))
+	const keyWidth = Math.max(...knobs.map(([key]) => key.length))
+	const envWidth = Math.max(...knobs.map(([, env]) => env.length))
+	for (const [key, env, meaning] of knobs) {
+		console.log(`  ${key.padEnd(keyWidth)}  ${env.padEnd(envWidth)}  ${dim(meaning)}`)
+	}
 	console.log('')
 	console.log(hint('`usagefleet status` shows the resolved values'))
 }

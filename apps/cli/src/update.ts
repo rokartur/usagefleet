@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { basename, delimiter, dirname, join } from 'node:path'
+import { flagOff } from './config.js'
 import { RELEASE_VERSION } from './release.js'
+import { readStore } from './store.js'
 import type { Log } from './ui.js'
 import { tilde } from './ui.js'
 
@@ -169,7 +171,7 @@ export async function checkForUpdate(log: Log, force = false): Promise<string | 
 	if (!self) {
 		return null
 	}
-	if (!force && process.env.USAGEFLEET_UPDATE === '0') {
+	if (!force && flagOff(process.env.USAGEFLEET_UPDATE, readStore().update)) {
 		return null
 	}
 

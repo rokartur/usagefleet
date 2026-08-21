@@ -46,15 +46,24 @@ export function freshWindow(): WindowNotifyState {
 	return { lastBucket: 0, resetsAt: null }
 }
 
-/** Fill in every field so callers get a total value, whatever the file held. */
+/** Fill in every field so callers get a total value, whatever the file held.
+ *  Listing fields explicitly (rather than spreading `raw`) is what drops junk
+ *  keys — so every new settings key must be carried through here or the next
+ *  `updateStore` silently erases it. */
 function normalize(raw: Partial<Store>): Store {
 	return {
+		batch: raw.batch,
 		desktopDir: raw.desktopDir,
+		hook: raw.hook,
+		interval: raw.interval,
 		limits: raw.limits,
+		limitsInterval: raw.limitsInterval,
+		notifications: raw.notifications,
 		notify: {
 			fiveHour: { ...freshWindow(), ...raw.notify?.fiveHour },
 			sevenDay: { ...freshWindow(), ...raw.notify?.sevenDay },
 		},
+		notifyThresholds: raw.notifyThresholds,
 		piDir: raw.piDir,
 		projectsDir: raw.projectsDir,
 		state: {
@@ -63,6 +72,8 @@ function normalize(raw: Partial<Store>): Store {
 			updatedAt: raw.state?.updatedAt ?? new Date().toISOString(),
 		},
 		token: raw.token,
+		update: raw.update,
+		updateInterval: raw.updateInterval,
 		version: 1,
 	}
 }

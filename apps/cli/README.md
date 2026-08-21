@@ -126,24 +126,25 @@ the CLI persists: your settings plus two machine-managed sections, `state` (tail
 offsets) and `notify` (which thresholds already fired). Delete it to start
 clean. Re-running `login` merges, so rotating a token doesn't reset offsets.
 
-Env vars override the file:
+Every knob is a top-level key in that file, and the matching env var overrides
+it (`usagefleet config` prints this same table):
 
-| Variable | Meaning |
-|----------|---------|
-| `USAGEFLEET_TOKEN` | device token |
-| `USAGEFLEET_PROJECTS` | override `~/.claude/projects` |
-| `USAGEFLEET_DESKTOP` | override the Claude Desktop sessions dir; `off` to skip it |
-| `USAGEFLEET_PI` | override the pi sessions dirs, comma-separated; `off` to skip |
-| `USAGEFLEET_INTERVAL` | watch poll seconds (default 15) |
-| `USAGEFLEET_LIMITS_INTERVAL` | seconds between limit reports (default 60; 300 on API keys, where each report costs a 1-token ping) |
-| `USAGEFLEET_NOTIFY` | desktop notifications, on by default |
-| `USAGEFLEET_NOTIFY_THRESHOLDS` | utilization % that trigger an alert (default `80,95`) |
-| `USAGEFLEET_BATCH` | records per upload (default 100, server caps at 1000) |
-| `USAGEFLEET_CONFIG` | override the config file path |
-| `USAGEFLEET_UPDATE` | `0` turns the self-update check off |
-| `USAGEFLEET_UPDATE_INTERVAL` | seconds between update checks (default `21600` = 6h) |
-| `USAGEFLEET_HOOK` | `0` keeps the prompt-blocking guard out of Claude Code and pi |
-| `CLAUDE_CONFIG_DIR` | Claude Code's own knob: which login to watch (default `~/.claude`) |
+| File key | Env override | Meaning |
+|----------|--------------|---------|
+| `token` | `USAGEFLEET_TOKEN` | device token |
+| `projectsDir` | `USAGEFLEET_PROJECTS` | override `~/.claude/projects` |
+| `desktopDir` | `USAGEFLEET_DESKTOP` | override the Claude Desktop sessions dir; `off` to skip it |
+| `piDir` | `USAGEFLEET_PI` | pi sessions dirs — string or array in the file, comma-separated in env; `off` to skip |
+| `interval` | `USAGEFLEET_INTERVAL` | watch poll seconds (default 15) |
+| `limitsInterval` | `USAGEFLEET_LIMITS_INTERVAL` | seconds between limit reports (default 60; 300 on API keys, where each report costs a 1-token ping) |
+| `notifications` | `USAGEFLEET_NOTIFY` | desktop notifications, on by default (`false`/`0` disables) |
+| `notifyThresholds` | `USAGEFLEET_NOTIFY_THRESHOLDS` | utilization % that trigger an alert — array in the file, comma list in env (default `80,95`) |
+| `batch` | `USAGEFLEET_BATCH` | records per upload (default 100, server caps at 1000) |
+| `update` | `USAGEFLEET_UPDATE` | `false`/`0` turns the self-update check off |
+| `updateInterval` | `USAGEFLEET_UPDATE_INTERVAL` | seconds between update checks (default `21600` = 6h) |
+| `hook` | `USAGEFLEET_HOOK` | `false`/`0` keeps the prompt-blocking guard out of Claude Code and pi |
+| — | `USAGEFLEET_CONFIG` | override the config file path (env only — it locates the file) |
+| — | `CLAUDE_CONFIG_DIR` | Claude Code's own knob: which login to watch (default `~/.claude`) |
 
 When run as a service, `login` bakes every `USAGEFLEET_*` value currently set
 (plus `ANTHROPIC_API_KEY` and `CLAUDE_CONFIG_DIR`) into the launchd/systemd

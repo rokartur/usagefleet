@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -25,10 +25,15 @@ describe(installPiGuard, () => {
 	let agentDir: string
 	beforeEach(() => {
 		agentDir = mkdtempSync(join(tmpdir(), 'uf-pi-'))
+		// Isolate from this machine's real config file and shell: the installer
+		// consults readStore() and USAGEFLEET_HOOK for the hook off-switch.
+		vi.stubEnv('USAGEFLEET_CONFIG', join(agentDir, 'store.json'))
+		vi.stubEnv('USAGEFLEET_HOOK', '')
 		vi.spyOn(console, 'log').mockImplementation(() => {})
 	})
 	afterEach(() => {
 		rmSync(agentDir, { recursive: true, force: true })
+		vi.unstubAllEnvs()
 		vi.restoreAllMocks()
 	})
 
@@ -52,7 +57,16 @@ describe(installPiGuard, () => {
 		vi.stubEnv('USAGEFLEET_HOOK', '0')
 		installPiGuard(PROG, agentDir)
 		expect(existsSync(piGuardPath(agentDir))).toBeFalsy()
-		vi.unstubAllEnvs()
+	})
+
+	it('honours `"hook": false` in the config file, env winning', () => {
+		writeFileSync(join(agentDir, 'store.json'), JSON.stringify({ hook: false }))
+		installPiGuard(PROG, agentDir)
+		expect(existsSync(piGuardPath(agentDir))).toBeFalsy()
+
+		vi.stubEnv('USAGEFLEET_HOOK', '1')
+		installPiGuard(PROG, agentDir)
+		expect(existsSync(piGuardPath(agentDir))).toBeTruthy()
 	})
 
 	it('uninstall removes ours and tolerates it already being gone', () => {

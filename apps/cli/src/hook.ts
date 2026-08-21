@@ -1,7 +1,9 @@
 import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { writeFileAtomic } from './atomic-write.js'
+import { flagOff } from './config.js'
 import { claudeSettingsPath } from './paths.js'
+import { readStore } from './store.js'
 import { step, tilde, warn } from './ui.js'
 
 /** Outer bound on the hook, in seconds. runGuard's own fetch gives up after 5s
@@ -124,11 +126,11 @@ function editSettings(transform: (s: ClaudeSettings) => ClaudeSettings, onWrite:
 /**
  * Register `usagefleet guard` as a Claude Code UserPromptSubmit hook, so a
  * group with blocking enabled actually refuses prompts. Called by
- * `usagefleet login`; set USAGEFLEET_HOOK=0 to keep settings.json
- * untouched.
+ * `usagefleet login`; USAGEFLEET_HOOK=0 or `"hook": false` in the config file
+ * keeps settings.json untouched.
  */
 export function installPromptHook(program: string[]): void {
-	if (process.env.USAGEFLEET_HOOK === '0') {
+	if (flagOff(process.env.USAGEFLEET_HOOK, readStore().hook)) {
 		return
 	}
 	const command = guardCommand(program, process.env.USAGEFLEET_CONFIG)

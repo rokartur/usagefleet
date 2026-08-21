@@ -22,7 +22,7 @@ export function loadConfig(): Config {
 	// Guard batch size: "0" (infinite loop), NaN (silent drop), fractional → 100.
 	// Clamped to the server's own 1000-record cap, since a larger batch is
 	// rejected as malformed and would cost the whole chunk a bisect to discover.
-	const parsedBatch = Math.floor(Number(process.env.USAGEFLEET_BATCH))
+	const parsedBatch = Math.floor(positiveNumber(process.env.USAGEFLEET_BATCH, file.batch) ?? 100)
 	const batchSize = Number.isFinite(parsedBatch) && parsedBatch > 0 ? Math.min(parsedBatch, MAX_BATCH) : 100
 	return {
 		batchSize,
@@ -34,9 +34,32 @@ export function loadConfig(): Config {
 	}
 }
 
+/** env → file → nothing, for the numeric knobs (intervals, batch): an env
+ *  value wins when present (empty string counts as unset, same `||` rule as
+ *  loadConfig), and a non-positive or non-numeric candidate is skipped rather
+ *  than trusted. */
+export function positiveNumber(env?: string, fromFile?: number): number | null {
+	for (const candidate of [env ? Number(env) : null, fromFile]) {
+		if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+			return candidate
+		}
+	}
+	return null
+}
+
+/** The off-switches (hook, update, notifications): an env value wins when
+ *  present — 0/false/off/no disable, anything else enables — otherwise `false`
+ *  under the config-file key disables. */
+export function flagOff(env?: string, fromFile?: boolean): boolean {
+	if (env) {
+		return /^(0|false|off|no)$/i.test(env.trim())
+	}
+	return fromFile === false
+}
+
 /** pi scan roots: env "off"/"0" disables, else a comma-separated env list, else
  *  the config file's string-or-array, else every auto-detected default. */
-export function resolvePiDirs(env: string | undefined, fromFile: string | string[] | undefined): string[] {
+export function resolvePiDirs(env?: string, fromFile?: string | string[]): string[] {
 	if (env === '0' || env?.toLowerCase() === 'off') {
 		return []
 	}

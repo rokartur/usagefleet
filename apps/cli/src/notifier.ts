@@ -1,8 +1,9 @@
 import type { LimitsReport } from './claude-limits.js'
+import { flagOff } from './config.js'
 import { sendNotification } from './notify.js'
 import type { Urgency } from './notify.js'
 import { readStore, storePath, updateStore } from './store.js'
-import type { WindowNotifyState } from './types.js'
+import type { Store, WindowNotifyState } from './types.js'
 import type { Log } from './ui.js'
 
 export interface NotifyConfig {
@@ -14,24 +15,20 @@ export interface NotifyConfig {
 
 const DEFAULT_THRESHOLDS = [80, 95]
 
-/** Resolve notify config from env. Enabled by default; disable with
- *  USAGEFLEET_NOTIFY=0 (also: false/off/no). Thresholds from
- *  USAGEFLEET_NOTIFY_THRESHOLDS as a comma list (e.g. "50,80,95"). */
-export function loadNotifyConfig(env: Record<string, string | undefined> = process.env): NotifyConfig {
-	const flag = env.USAGEFLEET_NOTIFY
-	const enabled = flag == null || !/^(0|false|off|no)$/i.test(flag.trim())
+/** Resolve notify config, env first then the config file. Enabled by default;
+ *  disable with USAGEFLEET_NOTIFY=0 (also: false/off/no) or `"notifications":
+ *  false`. Thresholds from USAGEFLEET_NOTIFY_THRESHOLDS as a comma list
+ *  (e.g. "50,80,95") or a `notifyThresholds` array. */
+export function loadNotifyConfig(
+	env: Record<string, string | undefined> = process.env,
+	file: Pick<Store, 'notifications' | 'notifyThresholds'> = readStore(),
+): NotifyConfig {
+	const enabled = !flagOff(env.USAGEFLEET_NOTIFY, file.notifications)
 
-	let thresholds = DEFAULT_THRESHOLDS
 	const raw = env.USAGEFLEET_NOTIFY_THRESHOLDS
-	if (raw && raw.trim()) {
-		const parsed = raw
-			.split(',')
-			.map(s => Math.round(Number(s.trim())))
-			.filter(n => Number.isFinite(n) && n > 0 && n <= 100)
-		if (parsed.length > 0) {
-			thresholds = [...new Set(parsed)].toSorted((a, b) => a - b)
-		}
-	}
+	const candidates = raw?.trim() ? raw.split(',').map(s => Number(s.trim())) : (file.notifyThresholds ?? [])
+	const parsed = candidates.map(Math.round).filter(n => Number.isFinite(n) && n > 0 && n <= 100)
+	const thresholds = parsed.length > 0 ? [...new Set(parsed)].toSorted((a, b) => a - b) : DEFAULT_THRESHOLDS
 	return { enabled, thresholds }
 }
 
