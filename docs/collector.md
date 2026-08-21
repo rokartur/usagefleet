@@ -126,6 +126,13 @@ re-arms them.
 lets it through. Nothing is printed on stdout — on this hook stdout is injected
 into the model's context.
 
+The same guard covers the pi coding agent: `pi-hook.ts` generates a
+self-contained pi extension into `~/.pi/agent/extensions/usagefleet-guard.ts`
+(only when that agent dir already exists) whose `input` handler runs the same
+baked `usagefleet guard` command and refuses the prompt on exit 2. Same
+lifecycle as the Claude hook: written by `login`, refreshed by self-update,
+removed by `uninstall`, skipped with `USAGEFLEET_HOOK=0`.
+
 It **fails open** by design: unconfigured, offline, timed out (5s), non-OK
 response, junk JSON, or a server too old to send the fields all return 0. Only an
 explicit `blocked: true` blocks. A tracker outage must never stop someone from
@@ -162,8 +169,8 @@ User-scoped on every OS, never root: launchd `LaunchAgents` plist (macOS),
 systemd `--user` unit (Linux), Scheduled Task at logon driven by a hidden VBS
 launcher (Windows, because a compiled console binary would flash a window).
 Installs resolve the binary through a stable bin dir, since the service starts
-with a nearly empty PATH. `uninstall` removes the agent/unit/task and the guard
-hook.
+with a nearly empty PATH. `uninstall` removes the agent/unit/task, the guard
+hook and the pi guard extension.
 
 ## Self-update
 
@@ -195,5 +202,5 @@ changes within ~6 hours. Treat `apps/cli` edits as shipping to user machines.
 ## Tests
 
 `bun run test` in `apps/cli` (vitest). The pure pieces — parser, store, config,
-guard, hook, notifier, uploader, service, claude-limits — are covered; keep new
+guard, hook, pi-hook, notifier, uploader, service, claude-limits — are covered; keep new
 logic in that shape rather than inside the loop.

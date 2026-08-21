@@ -49,6 +49,14 @@ export function defaultPiSessionsDirs(): string[] {
 	return [...new Set(dirs)]
 }
 
+/** pi's agent dir, the root for its sessions and extensions.
+ *  PI_CODING_AGENT_DIR is pi's own relocation knob; unlike the service-side
+ *  scan above, the guard installer runs from the user's shell where that env
+ *  is actually present, so honouring just the primary root is enough. */
+export function piAgentDir(): string {
+	return process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent')
+}
+
 /** Claude Code's config dir. CLAUDE_CONFIG_DIR is Claude Code's own relocation
  *  knob, and a relocated dir is a second, independent login: its own settings,
  *  its own credentials, its own Anthropic account. */

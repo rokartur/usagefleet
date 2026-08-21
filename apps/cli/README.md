@@ -104,6 +104,11 @@ on re-install, and skipped entirely with `USAGEFLEET_HOOK=0`):
 }
 ```
 
+If the pi coding agent is on the machine (`~/.pi/agent` exists), `login` also
+writes a pi extension — `~/.pi/agent/extensions/usagefleet-guard.ts` — that runs
+the same guard before every pi prompt. Same lifecycle: refreshed on re-install,
+removed by `uninstall`, skipped with `USAGEFLEET_HOOK=0`.
+
 If `USAGEFLEET_CONFIG` was set when you logged in, the installed command carries
 it (`USAGEFLEET_CONFIG=<path> usagefleet guard`, or `set "..." && ...` on
 Windows). That is what binds the hook to the right store, and so to the right
@@ -137,7 +142,7 @@ Env vars override the file:
 | `USAGEFLEET_CONFIG` | override the config file path |
 | `USAGEFLEET_UPDATE` | `0` turns the self-update check off |
 | `USAGEFLEET_UPDATE_INTERVAL` | seconds between update checks (default `21600` = 6h) |
-| `USAGEFLEET_HOOK` | `0` keeps the prompt-blocking hook out of `~/.claude/settings.json` |
+| `USAGEFLEET_HOOK` | `0` keeps the prompt-blocking guard out of Claude Code and pi |
 | `CLAUDE_CONFIG_DIR` | Claude Code's own knob: which login to watch (default `~/.claude`) |
 
 When run as a service, `login` bakes every `USAGEFLEET_*` value currently set

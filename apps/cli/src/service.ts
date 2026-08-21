@@ -4,6 +4,7 @@ import { homedir, tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { ENDPOINT, loadConfig } from './config.js'
 import { installPromptHook, uninstallPromptHook } from './hook.js'
+import { installPiGuard, uninstallPiGuard } from './pi-hook.js'
 import { readStore, storePath, updateStore } from './store.js'
 import type { Config } from './types.js'
 import { fail, header, hint, host, row, step, tilde, warn } from './ui.js'
@@ -287,9 +288,11 @@ export function install(): void {
 	}
 	const env = presentEnv()
 
-	// Same binary, different entry point: the service watches, the hook enforces.
+	// Same binary, different entry point: the service watches, the hooks enforce.
 	// `prog` ends in "watch"; everything before it is how to launch this build.
-	installPromptHook([...prog.slice(0, -1), 'guard'])
+	const guardProg = [...prog.slice(0, -1), 'guard']
+	installPromptHook(guardProg)
+	installPiGuard(guardProg)
 
 	if (process.platform === 'darwin') {
 		const envXml = env.map(([k, v]) => `    <key>${xml(k)}</key><string>${xml(v)}</string>`).join('\n')
@@ -551,6 +554,7 @@ function removeStableBin(): void {
 
 export function uninstall(): void {
 	uninstallPromptHook()
+	uninstallPiGuard()
 	if (process.platform === 'darwin') {
 		const path = macPlistPath()
 		try {
