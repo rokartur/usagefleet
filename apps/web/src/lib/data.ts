@@ -396,15 +396,32 @@ export const UNATTRIBUTED = '__unattributed__'
 /** Grid a limit sample's window start is snapped to — see recordLimitSample. */
 const SAMPLE_GRID_MS = 5 * 60 * 1000
 
-/** Start of a window of exactly `len` ending at `now`. `resetsAt` is whatever
- *  the collector reported, and it is range-checked nowhere on the way in, so
- *  two ways of being wrong are handled here: stale (already past) clamps to the
- *  rolling window, and further ahead than one whole window means it is not this
- *  window's reset at all, which would otherwise produce a window starting in the
- *  future — empty, so the entire account pct would read as unattributed. */
+/** Start of the window of length `len` that contains `now`, given the reset the
+ *  collector reported. A reset already in the past opened the current window, so
+ *  it steps forward by whole windows instead of falling back to `now - len` —
+ *  between a reset and the next report (five minutes by default) that is the
+ *  difference between counting this window and counting the one that just ended.
+ *
+ *  `resetsAt` is range-checked nowhere on the way in, and further ahead than one
+ *  whole window means it is not this window's reset at all — that would put the
+ *  start in the future, leaving the window empty and the entire account pct
+ *  reading as unattributed. Rolling window for that, and for no reading at all. */
 export function windowStartOf(resetsAt: Date | null, now: Date, len: number): Date {
-	const usable = resetsAt && resetsAt.getTime() <= now.getTime() + len ? resetsAt.getTime() - len : 0
-	return new Date(Math.max(usable, now.getTime() - len))
+	if (!resetsAt || resetsAt.getTime() > now.getTime() + len) {
+		return new Date(now.getTime() - len)
+	}
+	const periods = Math.floor((now.getTime() - resetsAt.getTime()) / len)
+	return new Date(resetsAt.getTime() + periods * len)
+}
+
+/** Whether a percentage reported against `resetsAt` still describes the window
+ *  `now` falls in. Anthropic zeroes utilization at the reset, but the collector
+ *  only reports every few minutes, so between the two the stored pct belongs to
+ *  a window that no longer exists. Per window, never per report: the 5h and the
+ *  weekly reset at different times of day, so one can be expired while the other
+ *  is still the freshest thing we have. */
+export function windowExpired(resetsAt: Date | null, now: Date): boolean {
+	return resetsAt !== null && resetsAt.getTime() <= now.getTime()
 }
 
 /** Whether a reading opens a new change point, given the last one stored for the
@@ -727,14 +744,22 @@ async function loadLiveDashboard(
 	const hasLimits = acct != null && (acct.fiveHourPct !== null || acct.sevenDayPct !== null)
 
 	const clampPct = (v: number | null | undefined) => Math.min(100, Math.max(0, v ?? 0))
+	// A reading whose window has reset describes a window that is over, whatever
+	// its age: report it as the zero Anthropic already moved to rather than
+	// showing (and blocking prompts on) last window's number for another few
+	// minutes. The two windows reset at different times, so they expire apart.
+	const livePct = (v: number | null | undefined, resetsAt: Date | null) =>
+		windowExpired(resetsAt, now) ? 0 : clampPct(v)
+	const fiveHourResetsAt = acct?.fiveHourResetsAt ? new Date(acct.fiveHourResetsAt) : null
+	const sevenDayResetsAt = acct?.sevenDayResetsAt ? new Date(acct.sevenDayResetsAt) : null
 	const base = {
 		accountId: acct?.id ?? null,
 		accountLabel: acct?.email ?? acct?.orgName ?? null,
-		fiveHourPct: clampPct(acct?.fiveHourPct),
-		fiveHourResetsAt: acct?.fiveHourResetsAt ? new Date(acct.fiveHourResetsAt) : null,
+		fiveHourPct: livePct(acct?.fiveHourPct, fiveHourResetsAt),
+		fiveHourResetsAt,
 		reportedAt: acct?.limitsReportedAt ? new Date(acct.limitsReportedAt) : null,
-		sevenDayPct: clampPct(acct?.sevenDayPct),
-		sevenDayResetsAt: acct?.sevenDayResetsAt ? new Date(acct.sevenDayResetsAt) : null,
+		sevenDayPct: livePct(acct?.sevenDayPct, sevenDayResetsAt),
+		sevenDayResetsAt,
 		source: (acct?.limitSource as 'sub' | 'api' | null) ?? null,
 	}
 
@@ -759,7 +784,8 @@ async function loadLiveDashboard(
 			const dur = windowDurationMs(m.window) ?? SEVEN_D_MS
 			const parsed = m.resetsAt ? new Date(m.resetsAt) : null
 			const resetsAt = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null
-			return { entry: m, resetsAt, start: windowStartOf(resetsAt, now, dur) }
+			const pct = windowExpired(resetsAt, now) ? 0 : m.pct
+			return { entry: { ...m, pct }, resetsAt, start: windowStartOf(resetsAt, now, dur) }
 		})
 
 	// The shared flight loads a superset window (see getLiveDashboards); every

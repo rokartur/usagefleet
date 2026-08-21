@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { buildPastWindows, groupBudgetPct, shouldRecordPoint, splitByShare, UNATTRIBUTED, windowStartOf } from './data'
+import {
+	buildPastWindows,
+	groupBudgetPct,
+	shouldRecordPoint,
+	splitByShare,
+	UNATTRIBUTED,
+	windowExpired,
+	windowStartOf,
+} from './data'
 import type { WindowAggRow } from './data'
 import type { BucketWeights, Calibration, UsageRecord } from './usage'
 
@@ -398,14 +406,26 @@ describe(windowStartOf, () => {
 		)
 	})
 
-	it('falls back to the rolling window when the reset is stale or missing', () => {
-		// A reset already in the past means the collector has not reported since the
-		// window turned over. Taking it literally would start the window before the
-		// current one, weighing events from a window that already closed.
+	it('opens the current window at a reset that has already passed', () => {
+		// The collector has not reported since the window turned over. The rolling
+		// window would drag in events from the one that just closed; the reset is
+		// exactly where the live window began.
 		expect(windowStartOf(new Date('2026-06-18T09:00:00Z'), NOON, 5 * HOUR)).toStrictEqual(
-			new Date('2026-06-18T07:00:00Z'),
+			new Date('2026-06-18T09:00:00Z'),
+		)
+		// Several windows without a report: step forward by whole windows.
+		expect(windowStartOf(new Date('2026-06-18T00:30:00Z'), NOON, 5 * HOUR)).toStrictEqual(
+			new Date('2026-06-18T10:30:00Z'),
 		)
 		expect(windowStartOf(null, NOON, 5 * HOUR)).toStrictEqual(new Date('2026-06-18T07:00:00Z'))
+	})
+
+	it('expires a window only once its own reset passes', () => {
+		// The 5h and the weekly reset at different times of day, so the weekly
+		// percentage keeps standing for the hour after the 5h one has turned over.
+		expect(windowExpired(new Date('2026-06-18T11:30:00Z'), NOON)).toBeTruthy()
+		expect(windowExpired(new Date('2026-06-18T12:40:00Z'), NOON)).toBeFalsy()
+		expect(windowExpired(null, NOON)).toBeFalsy()
 	})
 
 	it('rejects a reset further ahead than one whole window', () => {
