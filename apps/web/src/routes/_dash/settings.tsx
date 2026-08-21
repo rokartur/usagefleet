@@ -36,13 +36,13 @@ const settingsData = createServerFn().handler(async () => {
 	const user = await requireUser()
 	const [settings, linked, entitlement] = await Promise.all([
 		ensureSettings(user.id),
-		db.select({ providerId: account.providerId }).from(account).where(eq(account.userId, user.id)),
+		db.select({ id: account.id, providerId: account.providerId }).from(account).where(eq(account.userId, user.id)),
 		accountPlan(user.id),
 	])
 	return {
 		settings,
 		email: user.email,
-		connected: linked.map(row => row.providerId),
+		connected: linked,
 		entitlement,
 		isAdmin: isAdminEmail(user.email),
 	}
@@ -171,15 +171,15 @@ function SignInMethodsCard({
 	linkError,
 }: {
 	email: string
-	connected: string[]
+	connected: { id: string; providerId: string }[]
 	linkError?: string
 }) {
 	const router = useRouter()
 	const [busy, setBusy] = useState<ProviderId | 'password' | null>(null)
-	const linkedCount = PROVIDER_IDS.filter(id => connected.includes(id)).length
+	const linkedCount = connected.filter(row => PROVIDER_IDS.some(id => id === row.providerId)).length
 	// better-auth stores a password under the 'credential' provider, so its
 	// presence means unlinking the last provider still leaves a way in.
-	const hasPassword = connected.includes('credential')
+	const hasPassword = connected.some(row => row.providerId === 'credential')
 
 	async function run(provider: ProviderId, op: () => Promise<{ error?: { message?: string } | null }>) {
 		setBusy(provider)
@@ -235,7 +235,8 @@ function SignInMethodsCard({
 			)}
 			<CardContent className='flex flex-col divide-y px-0'>
 				{PROVIDER_IDS.map(id => {
-					const isConnected = connected.includes(id)
+					const linked = connected.find(row => row.providerId === id)
+					const isConnected = linked !== undefined
 					const isLast = isConnected && linkedCount === 1 && !hasPassword
 					return (
 						<div key={id} className='flex items-center justify-between gap-4 px-(--card-spacing) py-3.5'>
@@ -259,8 +260,9 @@ function SignInMethodsCard({
 									}
 									onClick={() =>
 										run(id, () =>
-											isConnected
-												? authClient.unlinkAccount({ providerId: id })
+											linked
+												? // better-auth 1.7 unlinks by account row, not by provider.
+													authClient.unlinkAccount({ accountId: linked.id })
 												: authClient.linkSocial({
 														provider: id,
 														callbackURL: '/settings',
