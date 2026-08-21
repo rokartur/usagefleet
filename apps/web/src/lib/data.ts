@@ -1668,6 +1668,29 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
 	}
 }
 
+/** Everything the dashboard page renders for one user: one live card per
+ *  Anthropic account (with its past windows), the usage history and the
+ *  per-project table. Shared by /dashboard (own data) and the admin's per-user
+ *  view, so both always read the same numbers. */
+export async function getDashboardOverview(userId: string, now = new Date()) {
+	const [dashboards, history, views, projects] = await Promise.all([
+		getLiveDashboards(userId),
+		getHistory(userId),
+		listAccountViews(userId),
+		getProjectUsage(userId, now),
+	])
+	const accounts = await Promise.all(
+		dashboards.map(async dash => ({
+			dash: toDashboardDTO(dash),
+			windows: await getWindowHistory(
+				views.find(v => (v.account?.id ?? null) === dash.accountId) ?? views[0],
+				now,
+			),
+		})),
+	)
+	return { accounts, history, projects }
+}
+
 /** The user's "default" group — the oldest one, or a freshly created "Default"
  *  if the user has none. Used so a device is never left without a group. */
 export async function ensureDefaultGroup(userId: string) {

@@ -5,38 +5,12 @@ import { ProjectTable } from '@/components/dashboard/ProjectTable'
 import { UsageExplorer } from '@/components/dashboard/UsageExplorer'
 import { WindowHistory } from '@/components/dashboard/WindowHistory'
 import { LiveDashboard } from '@/components/LiveDashboard'
-import {
-	getHistory,
-	getLiveDashboards,
-	getProjectUsage,
-	getWindowHistory,
-	listAccountViews,
-	listDevices,
-	toDashboardDTO,
-} from '@/lib/data'
+import { getDashboardOverview, listDevices } from '@/lib/data'
 import { requireUser } from '@/lib/session'
 
 const dashboardData = createServerFn().handler(async () => {
 	const user = await requireUser()
-	const now = new Date()
-	// One set of numbers per Anthropic account the fleet reports on: the
-	// percentages are Anthropic's and Anthropic meters each subscription
-	// separately.
-	const [dashboards, history, views, projects] = await Promise.all([
-		getLiveDashboards(user.id),
-		getHistory(user.id),
-		listAccountViews(user.id),
-		getProjectUsage(user.id, now),
-	])
-	const accounts = await Promise.all(
-		dashboards.map(async dash => ({
-			dash: toDashboardDTO(dash),
-			windows: await getWindowHistory(
-				views.find(v => (v.account?.id ?? null) === dash.accountId) ?? views[0],
-				now,
-			),
-		})),
-	)
+	const { accounts, history, projects } = await getDashboardOverview(user.id)
 	// Only a never-reported account sees the setup rail, so this extra query costs
 	// nothing once data is flowing.
 	const setup = accounts.some(a => a.dash.connected) ? null : await setupState(user.id)

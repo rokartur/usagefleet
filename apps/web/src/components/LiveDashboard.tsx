@@ -381,8 +381,18 @@ function AccountRow({ dash, now, pollDown }: { dash: DashboardDTO; now: number; 
 /** Live cards for every Anthropic account the fleet reports on. One account
  *  renders the full headline strip; several collapse to one row each with a
  *  single merged group table, so the page keeps its height as accounts are
- *  added. Polls the whole set at once: /api/dashboard answers for all of them. */
-export function LiveDashboard({ initial, setup }: { initial: DashboardDTO[]; setup: SetupState | null }) {
+ *  added. Polls the whole set at once: /api/dashboard answers for all of them.
+ *  `poll: false` renders a static snapshot — the admin's per-user view, where
+ *  /api/dashboard would answer with the viewer's own accounts, not these. */
+export function LiveDashboard({
+	initial,
+	setup,
+	poll = true,
+}: {
+	initial: DashboardDTO[]
+	setup: SetupState | null
+	poll?: boolean
+}) {
 	const [dashes, setDashes] = useState<DashboardDTO[]>(initial)
 	const [lastOk, setLastOk] = useState(() => Date.now())
 	// `now` advances once a second (below) so the staleness check stays a pure
@@ -449,8 +459,11 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO[]; set
 	}, [])
 
 	useEffect(() => {
-		const id = setInterval(refresh, POLL_MS)
 		const ticker = setInterval(() => setClock(Date.now()), 1000)
+		if (!poll) {
+			return () => clearInterval(ticker)
+		}
+		const id = setInterval(refresh, POLL_MS)
 		const onVisible = () => {
 			if (document.visibilityState === 'visible') {
 				refresh()
@@ -462,9 +475,9 @@ export function LiveDashboard({ initial, setup }: { initial: DashboardDTO[]; set
 			clearInterval(ticker)
 			document.removeEventListener('visibilitychange', onVisible)
 		}
-	}, [refresh])
+	}, [refresh, poll])
 
-	const pollDown = now - lastOk > 3 * POLL_MS
+	const pollDown = poll && now - lastOk > 3 * POLL_MS
 	const solo = dashes.length === 1 ? dashes[0] : undefined
 
 	if (dashes.length === 0 || (solo && !solo.connected)) {

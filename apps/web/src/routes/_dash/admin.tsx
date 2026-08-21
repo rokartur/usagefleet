@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { desc, eq, inArray, sql } from 'drizzle-orm'
 import { ActionForm } from '@/components/ActionForm'
@@ -105,6 +105,7 @@ function AdminPage() {
 						<TableHead>Plan</TableHead>
 						<TableHead className='text-right'>Devices</TableHead>
 						<TableHead className='w-52'>Free allowance</TableHead>
+						<TableHead />
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -156,6 +157,15 @@ function AdminPage() {
 										Save
 									</Button>
 								</ActionForm>
+							</TableCell>
+							<TableCell>
+								<Button
+									render={<Link to='/admin/$userId' params={{ userId: a.id }} />}
+									variant='outline'
+									size='sm'
+								>
+									View
+								</Button>
 							</TableCell>
 						</TableRow>
 					))}
