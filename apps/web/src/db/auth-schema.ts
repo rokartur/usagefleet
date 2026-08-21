@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { pgTable, text, timestamp, boolean, index, integer } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, boolean, index, integer, uniqueIndex } from 'drizzle-orm/pg-core'
 
 export const user = pgTable('user', {
 	id: text('id').primaryKey(),
@@ -50,6 +50,12 @@ export const account = pgTable(
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		id: text('id').primaryKey(),
 		idToken: text('id_token'),
+		// Identity namespace better-auth matches an account on, alongside accountId:
+		// `local:credential` for password rows, `local:oauth:<provider>` for social
+		// ones without an issuer of their own. Sign-in looks accounts up by it, so a
+		// row missing it is invisible to auth even though providerId still reads
+		// right.
+		issuer: text('issuer').notNull(),
 		password: text('password'),
 		providerId: text('provider_id').notNull(),
 		refreshToken: text('refresh_token'),
@@ -62,7 +68,10 @@ export const account = pgTable(
 			.notNull()
 			.references(() => user.id, { onDelete: 'cascade' }),
 	},
-	table => [index('account_userId_idx').on(table.userId)],
+	table => [
+		index('account_userId_idx').on(table.userId),
+		uniqueIndex('account_issuer_accountId_idx').on(table.issuer, table.accountId),
+	],
 )
 
 export const verification = pgTable(

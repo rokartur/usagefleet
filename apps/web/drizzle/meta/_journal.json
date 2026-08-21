@@ -169,6 +169,13 @@
       "when": 1787124614025,
       "tag": "0023_fat_lila_cheney",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787318964238,
+      "tag": "0024_furry_madame_hydra",
+      "breakpoints": true
     }
   ]
 }
