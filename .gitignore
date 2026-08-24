@@ -30,6 +30,9 @@ yarn-error.log*
 apps/cli/dist
 .usagefleet-state.json
 
+# rendered marketing videos
+apps/videos/out
+
 # bundled migrator (built inside the Docker image)
 apps/web/migrate.cjs
 
