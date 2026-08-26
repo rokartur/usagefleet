@@ -1,5 +1,16 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { AbsoluteFill, Audio, Easing, interpolate, OffthreadVideo, Sequence, staticFile, useCurrentFrame } from 'remotion'
+import {
+	AbsoluteFill,
+	Audio,
+	Easing,
+	interpolate,
+	OffthreadVideo,
+	Sequence,
+	spring,
+	staticFile,
+	useCurrentFrame,
+	useVideoConfig,
+} from 'remotion'
 
 export const COLORS = {
 	amber: '#f59e0b',
@@ -44,6 +55,123 @@ export function rise(frame: number, start = 0, distance = 42) {
 
 export function countTo(frame: number, value: number, start = 0, duration = 26) {
 	return Math.round(value * progress(frame, start, duration, EASE_IN_OUT))
+}
+
+// Spring with overshoot for entrances — cards land with weight instead of fading in.
+export function pop(frame: number, delay = 0, stiffness = 150) {
+	return spring({ config: { damping: 13, mass: 0.8, stiffness }, fps: 30, frame: frame - delay })
+}
+
+// Entrance transform + clamped opacity from a single spring value.
+export function popIn(frame: number, delay = 0, distance = 36) {
+	const p = pop(frame, delay)
+	return {
+		opacity: Math.min(1, p * 1.6),
+		transform: `translate3d(0, ${(1 - p) * distance}px, 0) scale(${0.94 + p * 0.06})`,
+	}
+}
+
+// Deterministic decaying shake for impact moments.
+export function shake(frame: number, at: number, amp = 9, len = 14) {
+	const t = frame - at
+	if (t < 0 || t > len) return { x: 0, y: 0 }
+	const decay = 1 - t / len
+	return { x: Math.sin(t * 2.6) * amp * decay, y: Math.cos(t * 3.4) * amp * 0.55 * decay }
+}
+
+// Full-canvas radial flash — pairs with sfx/hit and heavy sfx/pop moments.
+// Mount at composition level (absolute frames), before GameplayStrip.
+export function Impact({ at, color = 'rgba(255,255,255,0.2)' }: { at: number; color?: string }) {
+	const frame = useCurrentFrame()
+	const opacity = interpolate(frame, [at, at + 2, at + 12], [0, 1, 0], clamp)
+
+	if (opacity === 0) return null
+	return (
+		<AbsoluteFill
+			style={{
+				background: `radial-gradient(ellipse 90% 55% at 50% 38%, ${color}, transparent 70%)`,
+				opacity,
+				pointerEvents: 'none',
+			}}
+		/>
+	)
+}
+
+// Word-by-word kinetic headline: each word springs in with a blur-settle.
+export function KineticTitle({
+	accentColor,
+	accentWords = [],
+	delay = 0,
+	lines,
+	size = 84,
+	stagger = 3,
+	style,
+}: {
+	accentColor?: string
+	accentWords?: string[]
+	delay?: number
+	lines: string[]
+	size?: number
+	stagger?: number
+	style?: CSSProperties
+}) {
+	const frame = useCurrentFrame()
+	let wordIndex = 0
+
+	return (
+		<div
+			style={{
+				fontSize: size,
+				fontWeight: 680,
+				letterSpacing: '-0.056em',
+				lineHeight: 1.02,
+				...style,
+			}}
+		>
+			{lines.map(line => (
+				<div key={line}>
+					{line.split(' ').map(word => {
+						const p = pop(frame, delay + wordIndex++ * stagger, 170)
+						const blur = Math.max(0, (1 - p) * 12)
+						return (
+							<span
+								key={word}
+								style={{
+									color: accentWords.includes(word) ? accentColor : undefined,
+									display: 'inline-block',
+									filter: blur > 0.5 ? `blur(${blur}px)` : undefined,
+									marginRight: '0.24em',
+									opacity: Math.min(1, p * 1.7),
+									transform: `translate3d(0, ${(1 - p) * 40}px, 0) scale(${0.92 + p * 0.08})`,
+								}}
+							>
+								{word}
+							</span>
+						)
+					})}
+				</div>
+			))}
+		</div>
+	)
+}
+
+// Thin retention line across the top — signals "this is short, stay".
+export function ProgressBar() {
+	const frame = useCurrentFrame()
+	const { durationInFrames } = useVideoConfig()
+
+	return (
+		<div style={{ background: 'rgba(255,255,255,0.14)', height: 5, left: 0, position: 'absolute', right: 0, top: 0 }}>
+			<div
+				style={{
+					background: COLORS.text,
+					height: '100%',
+					transform: `scaleX(${frame / durationInFrames})`,
+					transformOrigin: 'left',
+				}}
+			/>
+		</div>
+	)
 }
 
 // True-black canvas matching the app: faint drifting grid only, no glows.
@@ -196,12 +324,14 @@ export function Meter({
 	color = COLORS.text,
 	delay = 0,
 	frame,
+	glow = false,
 	height = 12,
 	value,
 }: {
 	color?: string
 	delay?: number
 	frame: number
+	glow?: boolean
 	height?: number
 	value: number
 }) {
@@ -213,13 +343,14 @@ export function Meter({
 				background: 'rgba(255,255,255,0.1)',
 				borderRadius: 999,
 				height,
-				overflow: 'hidden',
+				overflow: glow ? undefined : 'hidden',
 			}}
 		>
 			<div
 				style={{
 					background: color,
 					borderRadius: 999,
+					boxShadow: glow ? `0 0 22px ${color}77` : undefined,
 					height: '100%',
 					transform: `scaleX(${(Math.max(0, Math.min(100, value)) / 100) * p})`,
 					transformOrigin: 'left',
@@ -436,9 +567,11 @@ export function CheckRow({ children, delay, frame }: { children: ReactNode; dela
 
 export function EndCard({ kicker, question, title }: { kicker?: string; question?: string; title: ReactNode }) {
 	const frame = useCurrentFrame()
-	const mark = progress(frame, 0, 18)
-	const copy = progress(frame, 8, 20)
-	const url = progress(frame, 22, 18)
+	const mark = pop(frame, 0)
+	const copy = pop(frame, 8)
+	const url = pop(frame, 20)
+	// One heartbeat on the URL pill when the ding lands (~scene frame 22).
+	const pulse = 1 + Math.sin(Math.min(Math.PI, Math.max(0, (frame - 24) / 10) * Math.PI)) * 0.06
 
 	return (
 		<AbsoluteFill
@@ -455,8 +588,8 @@ export function EndCard({ kicker, question, title }: { kicker?: string; question
 					alignItems: 'center',
 					display: 'flex',
 					flexDirection: 'column',
-					opacity: mark,
-					transform: `translate3d(0, ${(1 - mark) * 34}px, 0) scale(${0.95 + mark * 0.05})`,
+					opacity: Math.min(1, mark * 1.5),
+					transform: `translate3d(0, ${(1 - mark) * 34}px, 0) scale(${0.93 + mark * 0.07})`,
 				}}
 			>
 				<UsageFleetMark size={104} />
@@ -471,7 +604,7 @@ export function EndCard({ kicker, question, title }: { kicker?: string; question
 					lineHeight: 1.04,
 					marginTop: 130,
 					maxWidth: 900,
-					opacity: copy,
+					opacity: Math.min(1, copy * 1.5),
 					textWrap: 'balance',
 					transform: `translate3d(0, ${(1 - copy) * 32}px, 0)`,
 				}}
@@ -502,10 +635,11 @@ export function EndCard({ kicker, question, title }: { kicker?: string; question
 					color: '#080808',
 					fontSize: 33,
 					fontWeight: 700,
+					boxShadow: '0 0 46px rgba(255,255,255,0.22)',
 					marginTop: 82,
-					opacity: url,
+					opacity: Math.min(1, url * 1.5),
 					padding: '23px 42px',
-					transform: `translate3d(0, ${(1 - url) * 26}px, 0)`,
+					transform: `translate3d(0, ${(1 - url) * 26}px, 0) scale(${(0.9 + url * 0.1) * pulse})`,
 				}}
 			>
 				usagefleet.com

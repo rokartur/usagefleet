@@ -11,10 +11,10 @@ import { WhichMachineAteTheLimit } from './WhichMachineAteTheLimit'
 const VIDEOS = [
 	{ component: WhichMachineAteTheLimit, durationInFrames: 450, id: 'WhichMachineAteTheLimit' },
 	{ component: ClaudeCodeOnMultipleMachines, durationInFrames: 450, id: 'ClaudeCodeOnMultipleMachines' },
-	{ component: BuiltTheUsageView, durationInFrames: 810, id: 'BuiltTheUsageView' },
-	{ component: FromAnnoyanceToProduct, durationInFrames: 840, id: 'FromAnnoyanceToProduct' },
-	{ component: FocusedMicroSaaS, durationInFrames: 810, id: 'FocusedMicroSaaS' },
-	{ component: ClaudeFleetForTeams, durationInFrames: 780, id: 'ClaudeFleetForTeams' },
+	{ component: BuiltTheUsageView, durationInFrames: 450, id: 'BuiltTheUsageView' },
+	{ component: FromAnnoyanceToProduct, durationInFrames: 450, id: 'FromAnnoyanceToProduct' },
+	{ component: FocusedMicroSaaS, durationInFrames: 450, id: 'FocusedMicroSaaS' },
+	{ component: ClaudeFleetForTeams, durationInFrames: 450, id: 'ClaudeFleetForTeams' },
 ]
 
 export function RemotionRoot() {

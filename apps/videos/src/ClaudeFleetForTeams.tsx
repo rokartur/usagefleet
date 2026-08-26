@@ -1,310 +1,286 @@
-import { AbsoluteFill, interpolate, Sequence, useCurrentFrame } from 'remotion'
+import { AbsoluteFill, Sequence, useCurrentFrame } from 'remotion'
 import {
-	CheckRow,
+	Camera,
 	COLORS,
 	countTo,
 	DeviceIcon,
 	EndCard,
 	firstSceneOpacity,
+	GameplayStrip,
+	Impact,
+	KineticTitle,
 	Meter,
 	Pill,
+	pop,
+	popIn,
+	ProgressBar,
 	progress,
-	rise,
 	sceneOpacity,
+	shake,
+	Sound,
 	Surface,
 	VideoCanvas,
-	clamp,
 } from './CampaignKit'
 
+// Bottom bias keeps the optical centre above TikTok's caption/action overlay.
+const SCENE_PADDING = '90px 72px 640px'
+
 const FLEET = [
-	{ account: 'A', color: COLORS.indigo, kind: 'laptop' as const, name: 'Product laptop' },
-	{ account: 'A', color: COLORS.indigo, kind: 'desktop' as const, name: 'Product desktop' },
-	{ account: 'B', color: COLORS.emerald, kind: 'laptop' as const, name: 'Research laptop' },
-	{ account: 'B', color: COLORS.emerald, kind: 'server' as const, name: 'Research server' },
-	{ account: 'B', color: COLORS.amber, kind: 'server' as const, name: 'Automation box' },
-	{ account: 'A', color: COLORS.violet, kind: 'desktop' as const, name: 'Design workstation' },
+	{ color: COLORS.indigo, group: 'Laptops', kind: 'laptop' as const, name: 'Product laptop' },
+	{ color: COLORS.indigo, group: 'Laptops', kind: 'laptop' as const, name: 'Research laptop' },
+	{ color: COLORS.emerald, group: 'Workstations', kind: 'desktop' as const, name: 'Design desktop' },
+	{ color: COLORS.emerald, group: 'Workstations', kind: 'desktop' as const, name: 'Build desktop' },
+	{ color: COLORS.amber, group: 'CI', kind: 'server' as const, name: 'CI node 1' },
+	{ color: COLORS.amber, group: 'CI', kind: 'server' as const, name: 'CI node 2' },
 ]
 
-function FleetNode({
-	account,
-	color,
-	delay,
-	frame,
-	kind,
-	name,
-}: (typeof FLEET)[number] & { delay: number; frame: number }) {
-	const appear = progress(frame, delay, 18)
-
-	return (
-		<Surface
-			color={color}
-			style={{
-				alignItems: 'center',
-				display: 'grid',
-				gap: 15,
-				gridTemplateColumns: '48px 1fr 38px',
-				opacity: appear,
-				padding: '21px 22px',
-				transform: `translate3d(0, ${(1 - appear) * 28}px, 0)`,
-			}}
-		>
-			<div style={{ color }}>
-				<DeviceIcon kind={kind} size={42} />
-			</div>
-			<div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.25 }}>{name}</div>
-			<div
-				style={{
-					alignItems: 'center',
-					background: `${color}20`,
-					border: `1px solid ${color}52`,
-					borderRadius: 999,
-					color,
-					display: 'flex',
-					fontSize: 18,
-					fontWeight: 720,
-					height: 34,
-					justifyContent: 'center',
-					width: 34,
-				}}
-			>
-				{account}
-			</div>
-		</Surface>
-	)
-}
-
-function FleetScene() {
+function HookScene() {
 	const frame = useCurrentFrame()
-	const duration = 156
+	const duration = 90
+	const complete = progress(frame, 40, 10)
+	const kick = shake(frame, 42, 8)
 
 	return (
 		<AbsoluteFill
 			style={{
-				opacity: firstSceneOpacity(frame, duration, 16),
-				padding: '145px 62px 145px',
+				justifyContent: 'center',
+				opacity: firstSceneOpacity(frame, duration, 8),
+				padding: SCENE_PADDING,
+				transform: `translate3d(${kick.x}px, ${kick.y}px, 0)`,
 			}}
 		>
-			<Pill style={{ marginLeft: 10, width: 'fit-content' }}>Tech founders · operational view</Pill>
-			<div
-				style={{
-					...rise(frame, -8),
-					fontSize: 79,
-					fontWeight: 670,
-					letterSpacing: '-0.056em',
-					lineHeight: 1.02,
-					margin: '82px 10px 0',
-					maxWidth: 940,
-					textWrap: 'balance',
-				}}
-			>
-				Claude across a fleet
-				<br />
-				creates multiple budgets.
-			</div>
-			<div style={{ color: COLORS.muted, fontSize: 29, lineHeight: 1.42, margin: '26px 10px 0', maxWidth: 860 }}>
-				Laptops, workstations, and servers — often on different subscriptions.
-			</div>
+			<Pill style={{ width: 'fit-content' }}>Tech founders · operational view</Pill>
+			{/* Negative delay: words are mid-flight on frame 0 so the hook reads instantly. */}
+			<KineticTitle
+				accentColor={COLORS.amber}
+				accentWords={['budget']}
+				delay={-6}
+				lines={['Your team shares', 'an AI budget']}
+				size={84}
+				style={{ marginTop: 64, maxWidth: 930 }}
+			/>
 
-			<div style={{ display: 'grid', gap: 16, gridTemplateColumns: '1fr 1fr', marginTop: 78 }}>
+			<div style={{ display: 'grid', gap: 16, gridTemplateColumns: '1fr 1fr', marginTop: 70 }}>
 				{FLEET.map((device, index) => (
-					<FleetNode key={device.name} {...device} delay={12 + index * 5} frame={frame} />
+					<Surface
+						key={device.name}
+						color={device.color}
+						style={{
+							alignItems: 'center',
+							display: 'grid',
+							gap: 15,
+							gridTemplateColumns: '48px 1fr',
+							padding: '20px 22px',
+							...popIn(frame, 6 + index * 5, 30),
+						}}
+					>
+						<div style={{ color: device.color }}>
+							<DeviceIcon kind={device.kind} size={42} />
+						</div>
+						<div>
+							<div style={{ fontSize: 23, fontWeight: 600 }}>{device.name}</div>
+							<div style={{ color: device.color, fontSize: 18, marginTop: 4 }}>{device.group}</div>
+						</div>
+					</Surface>
 				))}
 			</div>
 
 			<div
 				style={{
 					alignItems: 'center',
+					color: COLORS.muted,
 					display: 'flex',
-					gap: 18,
+					fontSize: 26,
+					gap: 14,
 					justifyContent: 'center',
-					marginTop: 46,
-					opacity: progress(frame, 58, 18),
+					marginTop: 44,
+					opacity: complete,
 				}}
 			>
-				<div
-					style={{
-						background: 'rgba(99,102,241,0.14)',
-						border: '1px solid rgba(99,102,241,0.42)',
-						borderRadius: 999,
-						color: COLORS.indigo,
-						fontSize: 24,
-						fontWeight: 650,
-						padding: '16px 24px',
-					}}
-				>
-					Account A · 41%
-				</div>
-				<div
-					style={{
-						background: 'rgba(16,185,129,0.14)',
-						border: '1px solid rgba(16,185,129,0.42)',
-						borderRadius: 999,
-						color: COLORS.emerald,
-						fontSize: 24,
-						fontWeight: 650,
-						padding: '16px 24px',
-					}}
-				>
-					Account B · 63%
-				</div>
+				<span style={{ background: COLORS.emerald, borderRadius: 999, height: 12, width: 12 }} />
+				One Claude subscription. Six machines reporting.
 			</div>
 		</AbsoluteFill>
 	)
 }
 
-function AccountRow({
-	color,
-	delay,
-	frame,
-	groups,
-	label,
-	monthly,
-	value,
-}: {
-	color: string
-	delay: number
-	frame: number
-	groups: { color: string; label: string; value: number }[]
-	label: string
-	monthly: string
-	value: number
-}) {
-	const appear = progress(frame, delay, 18)
-
-	return (
-		<Surface
-			color={color}
-			style={{
-				opacity: appear,
-				padding: '28px 30px',
-				transform: `translate3d(0, ${(1 - appear) * 30}px, 0)`,
-			}}
-		>
-			<div style={{ alignItems: 'start', display: 'grid', gap: 20, gridTemplateColumns: '1fr 170px' }}>
-				<div>
-					<div style={{ fontSize: 31, fontWeight: 640 }}>{label}</div>
-					<div style={{ color: COLORS.muted, fontSize: 20, marginTop: 7 }}>
-						{monthly} estimated this month
-					</div>
-				</div>
-				<div>
-					<div
-						style={{
-							color,
-							fontSize: 48,
-							fontVariantNumeric: 'tabular-nums',
-							fontWeight: 690,
-							textAlign: 'right',
-						}}
-					>
-						{countTo(frame, value, delay + 4, 24)}%
-					</div>
-					<div style={{ marginTop: 12 }}>
-						<Meter color={color} delay={delay + 4} frame={frame} value={value} />
-					</div>
-				</div>
-			</div>
-			<div style={{ borderTop: `1px solid ${COLORS.border}`, marginTop: 27, paddingTop: 22 }}>
-				{groups.map((group, index) => (
-					<div
-						key={group.label}
-						style={{
-							alignItems: 'center',
-							display: 'grid',
-							gap: 18,
-							gridTemplateColumns: '1fr 120px',
-							marginTop: index ? 18 : 0,
-							opacity: progress(frame, delay + 18 + index * 5, 14),
-						}}
-					>
-						<div style={{ alignItems: 'center', display: 'flex', fontSize: 23, gap: 12 }}>
-							<span style={{ background: group.color, borderRadius: 999, height: 11, width: 11 }} />
-							{group.label}
-						</div>
-						<div
-							style={{
-								fontSize: 24,
-								fontVariantNumeric: 'tabular-nums',
-								fontWeight: 620,
-								textAlign: 'right',
-							}}
-						>
-							{group.value}% budget
-						</div>
-					</div>
-				))}
-			</div>
-		</Surface>
-	)
-}
-
-function AccountsScene() {
+function AnonymousScene() {
 	const frame = useCurrentFrame()
-	const duration = 180
+	const duration = 90
+	// Source labels fade out — the account total keeps no memory of them.
+	const fade = progress(frame, 24, 24)
+	const total = progress(frame, 20, 18)
 
 	return (
 		<AbsoluteFill
 			style={{
-				opacity: sceneOpacity(frame, duration, 14),
-				padding: '145px 72px 145px',
+				justifyContent: 'center',
+				opacity: sceneOpacity(frame, duration, 8),
+				padding: SCENE_PADDING,
 			}}
 		>
-			<Pill style={{ width: 'fit-content' }}>Every subscription stays separate</Pill>
-			<div
-				style={{
-					...rise(frame, 2),
-					fontSize: 78,
-					fontWeight: 660,
-					letterSpacing: '-0.055em',
-					lineHeight: 1.02,
-					marginTop: 82,
-				}}
-			>
-				Never merge
-				<br />
-				unrelated limits.
-			</div>
-			<div style={{ color: COLORS.muted, fontSize: 28, lineHeight: 1.42, marginTop: 26, maxWidth: 880 }}>
-				Anthropic meters each subscription independently. The dashboard does too.
+			<KineticTitle
+				accentColor={COLORS.red}
+				accentWords={['where']}
+				lines={['Does anyone know', 'where it goes?']}
+				size={84}
+			/>
+
+			<div style={{ display: 'flex', gap: 14, justifyContent: 'center', marginTop: 76 }}>
+				{['Laptops', 'Workstations', 'CI'].map((group, index) => (
+					<div
+						key={group}
+						style={{
+							background: 'rgba(255,255,255,0.07)',
+							border: `1px solid ${COLORS.border}`,
+							borderRadius: 999,
+							color: COLORS.muted,
+							fontSize: 24,
+							fontWeight: 640,
+							opacity: (1 - fade) * progress(frame, 4 + index * 3, 10),
+							padding: '14px 24px',
+						}}
+					>
+						{group}
+					</div>
+				))}
 			</div>
 
-			<div style={{ display: 'grid', gap: 22, marginTop: 68 }}>
-				<AccountRow
-					color={COLORS.indigo}
-					delay={14}
-					frame={frame}
-					groups={[
-						{ color: COLORS.indigo, label: 'Product laptops', value: 78 },
-						{ color: COLORS.violet, label: 'Design workstations', value: 34 },
-					]}
-					label='Work subscription'
-					monthly='$42.18'
-					value={41}
-				/>
-				<AccountRow
-					color={COLORS.emerald}
-					delay={28}
-					frame={frame}
-					groups={[
-						{ color: COLORS.emerald, label: 'Research', value: 92 },
-						{ color: COLORS.amber, label: 'Automation', value: 51 },
-					]}
-					label='Research subscription'
-					monthly='$71.06'
-					value={63}
-				/>
+			<div
+				style={{
+					background: `linear-gradient(to bottom, rgba(255,255,255,${0.24 * (1 - fade)}), rgba(255,255,255,0.05))`,
+					height: 70,
+					margin: '10px auto 0',
+					transform: `scaleY(${total})`,
+					transformOrigin: 'top',
+					width: 2,
+				}}
+			/>
+
+			<Surface
+				style={{
+					marginTop: 10,
+					opacity: Math.min(1, total * 1.4),
+					padding: '34px 36px',
+					transform: `translate3d(0, ${(1 - total) * 30}px, 0)`,
+				}}
+			>
+				<div style={{ alignItems: 'baseline', display: 'flex', justifyContent: 'space-between' }}>
+					<div>
+						<div style={{ color: COLORS.muted, fontSize: 22 }}>Anthropic account · 5-hour window</div>
+						<div style={{ fontSize: 30, fontWeight: 610, marginTop: 9 }}>One anonymous percentage</div>
+					</div>
+					<div
+						style={{
+							fontSize: 96,
+							fontVariantNumeric: 'tabular-nums',
+							fontWeight: 710,
+							letterSpacing: '-0.065em',
+						}}
+					>
+						{countTo(frame, 63, 22, 26)}%
+					</div>
+				</div>
+				<div style={{ marginTop: 26 }}>
+					<Meter delay={24} frame={frame} glow height={16} value={63} />
+				</div>
+				<div style={{ color: COLORS.muted, fontSize: 24, marginTop: 24, opacity: fade }}>
+					Source: unknown. Every group looks the same.
+				</div>
+			</Surface>
+		</AbsoluteFill>
+	)
+}
+
+function GroupsScene() {
+	const frame = useCurrentFrame()
+	const duration = 98
+
+	return (
+		<AbsoluteFill
+			style={{
+				justifyContent: 'center',
+				opacity: sceneOpacity(frame, duration, 8),
+				padding: SCENE_PADDING,
+			}}
+		>
+			<div style={{ ...popIn(frame, 0, 24), alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
+				<Pill>
+					<span style={{ background: COLORS.emerald, borderRadius: 999, height: 10, width: 10 }} />
+					UsageFleet · live
+				</Pill>
+				<div style={{ color: COLORS.muted, fontSize: 24 }}>5h + weekly</div>
+			</div>
+
+			<KineticTitle
+				accentColor={COLORS.emerald}
+				accentWords={['Live.']}
+				delay={2}
+				lines={['See the window', 'by group. Live.']}
+				size={82}
+				style={{ marginTop: 60 }}
+			/>
+
+			<div style={{ display: 'grid', gap: 18, marginTop: 66 }}>
+				{[
+					{ color: COLORS.indigo, kind: 'laptop' as const, name: 'Laptops', value: 78 },
+					{ color: COLORS.emerald, kind: 'desktop' as const, name: 'Workstations', value: 34 },
+					{ color: COLORS.amber, kind: 'server' as const, name: 'CI', value: 51 },
+				].map((group, index) => (
+					<Surface
+						key={group.name}
+						color={group.color}
+						style={{
+							alignItems: 'center',
+							display: 'grid',
+							gap: 22,
+							gridTemplateColumns: '54px 1fr 200px',
+							padding: '24px 28px',
+							...popIn(frame, 10 + index * 7),
+						}}
+					>
+						<div style={{ color: group.color }}>
+							<DeviceIcon kind={group.kind} size={44} />
+						</div>
+						<div>
+							<div style={{ fontSize: 28, fontWeight: 600 }}>{group.name}</div>
+							<div style={{ marginTop: 14 }}>
+								<Meter
+									color={group.color}
+									delay={14 + index * 7}
+									frame={frame}
+									glow
+									height={12}
+									value={group.value}
+								/>
+							</div>
+						</div>
+						<div style={{ textAlign: 'right' }}>
+							<span
+								style={{
+									fontSize: 44,
+									fontVariantNumeric: 'tabular-nums',
+									fontWeight: 690,
+								}}
+							>
+								{countTo(frame, group.value, 14 + index * 7, 20)}%
+							</span>
+							<span style={{ color: COLORS.muted, fontSize: 21, marginLeft: 10 }}>of budget</span>
+						</div>
+					</Surface>
+				))}
 			</div>
 
 			<div
 				style={{
 					color: COLORS.muted,
-					fontSize: 24,
-					marginTop: 34,
-					opacity: progress(frame, 64, 16),
+					fontSize: 25,
+					marginTop: 36,
+					opacity: progress(frame, 40, 14),
 					textAlign: 'center',
 				}}
 			>
-				One fleet view. Independent account budgets.
+				Anthropic's account total, attributed across your groups.
 			</div>
 		</AbsoluteFill>
 	)
@@ -325,35 +301,37 @@ function ThresholdCard({
 	subtitle: string
 	value: string
 }) {
-	const appear = progress(frame, delay, 18)
+	const landed = pop(frame, delay)
 
 	return (
 		<Surface
 			color={color}
 			style={{
 				alignItems: 'center',
+				boxShadow: `0 0 44px ${color}${frame >= delay ? '2e' : '00'}`,
 				display: 'grid',
-				gap: 22,
-				gridTemplateColumns: '110px 1fr',
-				opacity: appear,
-				padding: '25px 27px',
-				transform: `translate3d(0, ${(1 - appear) * 28}px, 0)`,
+				gap: 24,
+				gridTemplateColumns: '140px 1fr',
+				opacity: Math.min(1, landed * 1.6),
+				padding: '28px 30px',
+				transform: `translate3d(0, ${(1 - landed) * 30}px, 0) scale(${0.94 + landed * 0.06})`,
 			}}
 		>
 			<div
 				style={{
 					color,
-					fontSize: 44,
+					fontSize: 48,
 					fontVariantNumeric: 'tabular-nums',
 					fontWeight: 700,
 					textAlign: 'center',
+					transform: `scale(${1 + (1 - Math.min(1, landed)) * 0.5})`,
 				}}
 			>
 				{value}
 			</div>
 			<div>
-				<div style={{ fontSize: 28, fontWeight: 630 }}>{label}</div>
-				<div style={{ color: COLORS.muted, fontSize: 20, lineHeight: 1.35, marginTop: 7 }}>{subtitle}</div>
+				<div style={{ fontSize: 31, fontWeight: 630 }}>{label}</div>
+				<div style={{ color: COLORS.muted, fontSize: 22, lineHeight: 1.35, marginTop: 8 }}>{subtitle}</div>
 			</div>
 		</Surface>
 	)
@@ -361,197 +339,126 @@ function ThresholdCard({
 
 function GuardScene() {
 	const frame = useCurrentFrame()
-	const duration = 180
-	const path = progress(frame, 20, 65)
-	const offline = progress(frame, 94, 18)
+	const duration = 114
+	const offline = progress(frame, 64, 14)
 
 	return (
 		<AbsoluteFill
 			style={{
-				opacity: sceneOpacity(frame, duration, 14),
-				padding: '145px 72px 145px',
+				justifyContent: 'center',
+				opacity: sceneOpacity(frame, duration, 8),
+				padding: SCENE_PADDING,
 			}}
 		>
 			<Pill style={{ width: 'fit-content' }}>Operational controls</Pill>
-			<div
-				style={{
-					...rise(frame, 2),
-					fontSize: 75,
-					fontWeight: 660,
-					letterSpacing: '-0.053em',
-					lineHeight: 1.03,
-					marginTop: 78,
-				}}
-			>
-				Alert early.
-				<br />
-				Guard only when enabled.
-			</div>
-
-			<div style={{ marginTop: 72, paddingLeft: 28, position: 'relative' }}>
-				<div
-					style={{
-						background: 'linear-gradient(to bottom, #f59e0b, #ff5b57, #10b981)',
-						height: 650,
-						left: 0,
-						position: 'absolute',
-						top: 30,
-						transform: `scaleY(${path})`,
-						transformOrigin: 'top',
-						width: 3,
-					}}
-				/>
-				<div style={{ display: 'grid', gap: 20 }}>
-					<ThresholdCard
-						color={COLORS.amber}
-						delay={22}
-						frame={frame}
-						label='Desktop alert'
-						subtitle='First crossing of the window threshold.'
-						value='80%'
-					/>
-					<ThresholdCard
-						color={COLORS.red}
-						delay={42}
-						frame={frame}
-						label='Second alert'
-						subtitle='A final warning before the slice is gone.'
-						value='95%'
-					/>
-					<ThresholdCard
-						color={COLORS.red}
-						delay={62}
-						frame={frame}
-						label='Prompt guard'
-						subtitle='Blocks only on explicit, fresh blocked: true.'
-						value='100%'
-					/>
-					<ThresholdCard
-						color={COLORS.emerald}
-						delay={98}
-						frame={frame}
-						label='Tracker offline'
-						subtitle='Fails open. Work continues.'
-						value={offline > 0.4 ? 'PASS' : '…'}
-					/>
-				</div>
-			</div>
-		</AbsoluteFill>
-	)
-}
-
-function SecurityScene() {
-	const frame = useCurrentFrame()
-	const duration = 156
-	const hash = progress(frame, 28, 28)
-
-	return (
-		<AbsoluteFill
-			style={{
-				opacity: sceneOpacity(frame, duration, 14),
-				padding: '145px 72px 145px',
-			}}
-		>
-			<Pill style={{ width: 'fit-content' }}>Trust boundary</Pill>
-			<div
-				style={{
-					...rise(frame, 2),
-					fontSize: 78,
-					fontWeight: 660,
-					letterSpacing: '-0.055em',
-					lineHeight: 1.02,
-					marginTop: 80,
-				}}
-			>
-				Operational visibility
-				<br />
-				without the conversations.
-			</div>
-
-			<div style={{ display: 'grid', gap: 17, marginTop: 70 }}>
-				<CheckRow delay={14} frame={frame}>
-					No prompts or responses
-				</CheckRow>
-				<CheckRow delay={20} frame={frame}>
-					No source files
-				</CheckRow>
-				<CheckRow delay={26} frame={frame}>
-					No Claude credentials uploaded
-				</CheckRow>
-			</div>
-
-			<Surface
-				color={COLORS.indigo}
-				style={{
-					marginTop: 46,
-					opacity: hash,
-					padding: '28px 30px',
-					transform: `translate3d(0, ${(1 - hash) * 28}px, 0)`,
-				}}
-			>
-				<div style={{ color: COLORS.muted, fontSize: 20 }}>Device token stored server-side as</div>
-				<div
-					style={{
-						color: COLORS.indigo,
-						fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-						fontSize: 27,
-						fontWeight: 650,
-						letterSpacing: '0.06em',
-						marginTop: 18,
-						overflow: 'hidden',
-						whiteSpace: 'nowrap',
-						width: `${hash * 100}%`,
-					}}
-				>
-					SHA-256 · 8d4f••••••••••••••••••••
-				</div>
-				<div style={{ color: COLORS.muted, fontSize: 21, lineHeight: 1.4, marginTop: 20 }}>
-					The raw token is shown once, then never stored.
-				</div>
-			</Surface>
-		</AbsoluteFill>
-	)
-}
-
-function TeamEndScene() {
-	const frame = useCurrentFrame()
-	const duration = 180
-	const emphasis = interpolate(frame, [0, 22], [0.45, 1], clamp)
-
-	return (
-		<div style={{ opacity: emphasis }}>
-			<EndCard
-				kicker='Per account · per group · across every reporting machine'
-				title={
-					<>
-						Built for teams using
-						<br />
-						Claude Code way too much.
-					</>
-				}
+			<KineticTitle
+				accentColor={COLORS.emerald}
+				accentWords={['open.']}
+				delay={2}
+				lines={['Alert early.', 'Guard fails open.']}
+				size={80}
+				style={{ marginTop: 62 }}
 			/>
-		</div>
+
+			<div style={{ display: 'grid', gap: 20, marginTop: 66 }}>
+				<ThresholdCard
+					color={COLORS.amber}
+					delay={12}
+					frame={frame}
+					label='Alert fires'
+					subtitle='First crossing of the window threshold.'
+					value='80%'
+				/>
+				<ThresholdCard
+					color={COLORS.red}
+					delay={32}
+					frame={frame}
+					label='Guard blocks'
+					subtitle='Only on an explicit, fresh blocked signal.'
+					value='100%'
+				/>
+				<ThresholdCard
+					color={COLORS.emerald}
+					delay={56}
+					frame={frame}
+					label='Tracker offline'
+					subtitle='Fails open. Work continues.'
+					value={offline > 0.6 ? 'PASS' : '…'}
+				/>
+			</div>
+		</AbsoluteFill>
 	)
 }
 
 export function ClaudeFleetForTeams() {
 	return (
 		<VideoCanvas>
-			<Sequence from={0} durationInFrames={156}>
-				<FleetScene />
+			<Sequence from={0} durationInFrames={90}>
+				<Camera duration={90}>
+					<HookScene />
+				</Camera>
 			</Sequence>
-			<Sequence from={138} durationInFrames={180}>
-				<AccountsScene />
+			<Sequence from={82} durationInFrames={90}>
+				<Camera duration={90}>
+					<AnonymousScene />
+				</Camera>
 			</Sequence>
-			<Sequence from={300} durationInFrames={180}>
-				<GuardScene />
+			<Sequence from={164} durationInFrames={98}>
+				<Camera duration={98}>
+					<GroupsScene />
+				</Camera>
 			</Sequence>
-			<Sequence from={462} durationInFrames={156}>
-				<SecurityScene />
+			<Sequence from={254} durationInFrames={114}>
+				<Camera duration={114}>
+					<GuardScene />
+				</Camera>
 			</Sequence>
-			<Sequence from={600} durationInFrames={180}>
-				<TeamEndScene />
+			<Sequence from={360} durationInFrames={90}>
+				<Camera duration={90}>
+					<EndCard
+						kicker='No prompts · tokens stored hashed'
+						title={
+							<>
+								Built for teams using
+								<br />
+								Claude Code way too much
+							</>
+						}
+					/>
+				</Camera>
 			</Sequence>
+
+			{/* Voiceover — one clip per scene, absolute frame positions. */}
+			<Sound at={8} src='vo/v6-s1.wav' />
+			<Sound at={86} src='vo/v6-s2.wav' />
+			<Sound at={166} src='vo/v6-s3.wav' />
+			<Sound at={264} src='vo/v6-s4.wav' />
+			<Sound at={375} src='vo/v6-s5.wav' />
+
+			{/* Impact flashes ride the hit and the threshold slams. */}
+			<Impact at={42} />
+			<Impact at={268} color='rgba(245,158,11,0.16)' />
+			<Impact at={288} color='rgba(255,91,87,0.18)' />
+			<Impact at={312} color='rgba(16,185,129,0.16)' />
+			<ProgressBar />
+
+			{/* Music bed under everything; SFX punch through it. */}
+			<Sound src='sfx/music.wav' volume={0.32} />
+			<Sound at={42} src='sfx/hit.wav' volume={1} />
+			<Sound at={82} src='sfx/whoosh.wav' volume={0.6} />
+			<Sound at={104} src='sfx/pop.wav' volume={0.4} />
+			<Sound at={164} src='sfx/whoosh.wav' volume={0.6} />
+			<Sound at={176} src='sfx/pop.wav' volume={0.5} />
+			<Sound at={184} src='sfx/pop.wav' volume={0.5} />
+			<Sound at={192} src='sfx/pop.wav' volume={0.5} />
+			<Sound at={254} src='sfx/whoosh.wav' volume={0.6} />
+			<Sound at={268} src='sfx/pop.wav' volume={0.45} />
+			<Sound at={288} src='sfx/pop.wav' volume={0.45} />
+			<Sound at={312} src='sfx/pop.wav' volume={0.45} />
+			<Sound at={360} src='sfx/whoosh.wav' volume={0.6} />
+			<Sound at={382} src='sfx/ding.wav' volume={0.7} />
+
+			<GameplayStrip src='gameplay/mc-6.mp4' />
 		</VideoCanvas>
 	)
 }

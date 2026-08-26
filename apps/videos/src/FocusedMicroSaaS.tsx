@@ -1,53 +1,62 @@
-import { AbsoluteFill, interpolate, Sequence, useCurrentFrame } from 'remotion'
+import { AbsoluteFill, Sequence, useCurrentFrame } from 'remotion'
 import {
+	Camera,
 	COLORS,
 	countTo,
 	DeviceIcon,
+	EASE_IN_OUT,
 	EndCard,
 	firstSceneOpacity,
+	GameplayStrip,
+	Impact,
+	KineticTitle,
 	Meter,
 	Pill,
+	pop,
+	popIn,
+	ProgressBar,
 	progress,
-	rise,
 	sceneOpacity,
+	shake,
+	Sound,
 	Surface,
 	UsageFleetMark,
 	VideoCanvas,
-	clamp,
 } from './CampaignKit'
 
-function TinyIdeaScene() {
+// Bottom bias keeps the optical centre above TikTok's caption/action overlay.
+const SCENE_PADDING = '90px 72px 640px'
+
+function HookScene() {
 	const frame = useCurrentFrame()
-	const duration = 156
-	const dot = progress(frame, 6, 24)
-	const card = progress(frame, 40, 24)
+	const duration = 90
+	const dot = progress(frame, 6, 10)
+	const card = pop(frame, 16)
+	const stackTwo = pop(frame, 32)
+	const stackThree = pop(frame, 42)
+	const kick = shake(frame, 8, 7)
 
 	return (
 		<AbsoluteFill
 			style={{
-				opacity: firstSceneOpacity(frame, duration, 16),
-				padding: '150px 72px 150px',
+				justifyContent: 'center',
+				opacity: firstSceneOpacity(frame, duration, 8),
+				padding: SCENE_PADDING,
+				transform: `translate3d(${kick.x}px, ${kick.y}px, 0)`,
 			}}
 		>
 			<Pill style={{ width: 'fit-content' }}>Indie makers · micro-SaaS</Pill>
-			<div
-				style={{
-					...rise(frame, -8),
-					fontSize: 82,
-					fontWeight: 670,
-					letterSpacing: '-0.057em',
-					lineHeight: 1.02,
-					marginTop: 86,
-					maxWidth: 920,
-					textWrap: 'balance',
-				}}
-			>
-				A tiny SaaS can solve
-				<br />
-				one repeated annoyance.
-			</div>
+			{/* Negative delay: words are mid-flight on frame 0 so the hook reads instantly. */}
+			<KineticTitle
+				accentColor={COLORS.indigo}
+				accentWords={['recurring', 'irritation']}
+				delay={-6}
+				lines={['A micro-SaaS needs', 'one recurring irritation']}
+				size={80}
+				style={{ marginTop: 66, maxWidth: 930 }}
+			/>
 
-			<div style={{ height: 730, marginTop: 76, position: 'relative' }}>
+			<div style={{ height: 560, marginTop: 70, position: 'relative' }}>
 				<div
 					style={{
 						background: COLORS.indigo,
@@ -57,53 +66,61 @@ function TinyIdeaScene() {
 						left: '50%',
 						opacity: dot * (1 - card),
 						position: 'absolute',
-						top: 290,
-						transform: `translateX(-50%) scale(${0.95 + dot * 0.05})`,
+						top: 220,
+						transform: `translateX(-50%) scale(${0.6 + dot * 0.4})`,
 						width: 22,
 					}}
 				/>
 
-				<Surface
-					color={COLORS.indigo}
-					style={{
-						left: 70,
-						opacity: card,
-						padding: '36px 36px',
-						position: 'absolute',
-						right: 70,
-						top: 150,
-						transform: `translate3d(0, ${(1 - card) * 36}px, 0) scale(${0.95 + card * 0.05})`,
-					}}
-				>
-					<div style={{ color: COLORS.muted, fontSize: 21 }}>The recurring irritation</div>
-					<div style={{ fontSize: 40, fontWeight: 640, letterSpacing: '-0.035em', marginTop: 14 }}>
-						Claude usage moved again.
-					</div>
-					<div
+				{/* The same card, three deep: the annoyance recurs every window. */}
+				{[
+					{ label: 'Again', offset: 100, p: stackThree, tilt: 1.6 },
+					{ label: 'Later that day', offset: 50, p: stackTwo, tilt: -1.2 },
+					{ label: 'This morning', offset: 0, p: card, tilt: 0 },
+				].map(layer => (
+					<Surface
+						key={layer.label}
+						color={layer.offset === 0 ? COLORS.indigo : undefined}
 						style={{
-							fontSize: 126,
-							fontVariantNumeric: 'tabular-nums',
-							fontWeight: 730,
-							letterSpacing: '-0.08em',
-							marginTop: 76,
+							background: '#0a0a0a',
+							boxShadow: layer.offset === 0 ? '0 30px 80px rgba(0,0,0,0.8)' : undefined,
+							left: layer.offset,
+							opacity: Math.min(1, layer.p * 1.6),
+							padding: '30px 32px',
+							position: 'absolute',
+							right: layer.offset,
+							top: 60 + layer.offset * 0.9,
+							transform: `translate3d(0, ${(1 - layer.p) * 44}px, 0) scale(${0.93 + layer.p * 0.07}) rotate(${layer.tilt * layer.p}deg)`,
 						}}
 					>
-						{countTo(frame, 41, 42, 32)}%
-					</div>
-					<div style={{ marginTop: 28 }}>
-						<Meter color={COLORS.indigo} delay={42} frame={frame} height={18} value={41} />
-					</div>
-					<div style={{ color: COLORS.muted, fontSize: 25, lineHeight: 1.45, marginTop: 40 }}>
-						Which machine caused it?
-					</div>
-				</Surface>
+						<div style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
+							<div>
+								<div style={{ color: COLORS.muted, fontSize: 20 }}>{layer.label}</div>
+								<div style={{ fontSize: 30, fontWeight: 620, marginTop: 8 }}>Claude usage moved again</div>
+							</div>
+							<div
+								style={{
+									fontSize: 66,
+									fontVariantNumeric: 'tabular-nums',
+									fontWeight: 700,
+									letterSpacing: '-0.055em',
+								}}
+							>
+								{layer.offset === 0 ? countTo(frame, 41, 18, 20) : 41}%
+							</div>
+						</div>
+						<div style={{ marginTop: 24 }}>
+							<Meter color={COLORS.indigo} delay={20} frame={frame} glow={layer.offset === 0} height={14} value={41} />
+						</div>
+					</Surface>
+				))}
 			</div>
 
 			<div
 				style={{
 					color: COLORS.muted,
 					fontSize: 29,
-					opacity: progress(frame, 82, 18),
+					opacity: progress(frame, 50, 14),
 					textAlign: 'center',
 				}}
 			>
@@ -113,102 +130,50 @@ function TinyIdeaScene() {
 	)
 }
 
-function RepeatedCard({
-	delay,
-	frame,
-	label,
-	offset,
-}: {
-	delay: number
-	frame: number
-	label: string
-	offset: number
-}) {
-	const appear = progress(frame, delay, 16)
-
-	return (
-		<Surface
-			style={{
-				left: 0,
-				opacity: appear,
-				padding: '25px 27px',
-				position: 'absolute',
-				right: 0,
-				top: offset,
-				transform: `translate3d(0, ${(1 - appear) * 30}px, 0) scale(${0.97 + appear * 0.03})`,
-			}}
-		>
-			<div style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
-				<div>
-					<div style={{ color: COLORS.muted, fontSize: 19 }}>{label}</div>
-					<div style={{ fontSize: 26, fontWeight: 610, marginTop: 7 }}>Account usage changed</div>
-				</div>
-				<div style={{ fontSize: 44, fontVariantNumeric: 'tabular-nums', fontWeight: 680 }}>41%</div>
-			</div>
-		</Surface>
-	)
-}
-
-function RepeatedAnnoyanceScene() {
+function NoBreakdownScene() {
 	const frame = useCurrentFrame()
-	const duration = 156
-	const collapse = progress(frame, 82, 24)
+	const duration = 94
 
 	return (
 		<AbsoluteFill
 			style={{
-				opacity: sceneOpacity(frame, duration, 14),
-				padding: '145px 72px 145px',
+				justifyContent: 'center',
+				opacity: sceneOpacity(frame, duration, 8),
+				padding: SCENE_PADDING,
 			}}
 		>
-			<Pill style={{ width: 'fit-content' }}>The same blind spot, every window</Pill>
-			<div
-				style={{
-					...rise(frame, 2),
-					fontSize: 82,
-					fontWeight: 670,
-					letterSpacing: '-0.057em',
-					lineHeight: 1.02,
-					marginTop: 82,
-				}}
-			>
-				One total.
-				<br />
-				Several machines.
-			</div>
+			<KineticTitle
+				accentColor={COLORS.red}
+				accentWords={['No', 'breakdown.']}
+				lines={['One total.', 'Several machines.', 'No breakdown.']}
+				size={78}
+			/>
 
-			<div style={{ height: 475, marginTop: 68, position: 'relative' }}>
-				<RepeatedCard delay={12} frame={frame} label='This morning' offset={0} />
-				<RepeatedCard delay={21} frame={frame} label='Later that day' offset={122} />
-				<RepeatedCard delay={30} frame={frame} label='Again' offset={244} />
-				<div
-					style={{
-						background: 'linear-gradient(to bottom, rgba(0,0,0,0), #000)',
-						bottom: 0,
-						height: 180,
-						left: 0,
-						opacity: 1 - collapse,
-						position: 'absolute',
-						right: 0,
-					}}
-				/>
-			</div>
+			<Surface style={{ marginTop: 64, padding: '30px 32px', ...popIn(frame, 6) }}>
+				<div style={{ alignItems: 'baseline', display: 'flex', justifyContent: 'space-between' }}>
+					<div style={{ color: COLORS.muted, fontSize: 23 }}>Anthropic account · 5-hour window</div>
+					<div
+						style={{
+							fontSize: 66,
+							fontVariantNumeric: 'tabular-nums',
+							fontWeight: 700,
+							letterSpacing: '-0.055em',
+						}}
+					>
+						{countTo(frame, 41, 8, 20)}%
+					</div>
+				</div>
+				<div style={{ marginTop: 22 }}>
+					<Meter delay={10} frame={frame} glow height={14} value={41} />
+				</div>
+			</Surface>
 
-			<div
-				style={{
-					display: 'grid',
-					gap: 18,
-					gridTemplateColumns: '1fr 1fr 1fr',
-					marginTop: -20,
-					opacity: collapse,
-					transform: `translate3d(0, ${(1 - collapse) * 34}px, 0)`,
-				}}
-			>
+			<div style={{ display: 'grid', gap: 18, gridTemplateColumns: '1fr 1fr 1fr', marginTop: 28 }}>
 				{[
 					{ color: COLORS.indigo, kind: 'laptop' as const, name: 'MacBook' },
 					{ color: COLORS.emerald, kind: 'desktop' as const, name: 'Studio' },
 					{ color: COLORS.amber, kind: 'server' as const, name: 'Server' },
-				].map(device => (
+				].map((device, index) => (
 					<Surface
 						key={device.name}
 						color={device.color}
@@ -217,28 +182,37 @@ function RepeatedAnnoyanceScene() {
 							display: 'flex',
 							flexDirection: 'column',
 							padding: '28px 16px 25px',
+							...popIn(frame, 16 + index * 5),
 						}}
 					>
 						<div style={{ color: device.color }}>
 							<DeviceIcon kind={device.kind} size={48} />
 						</div>
 						<div style={{ fontSize: 23, fontWeight: 610, marginTop: 15 }}>{device.name}</div>
-						<div style={{ color: COLORS.muted, fontSize: 38, fontWeight: 680, marginTop: 20 }}>?</div>
+						{/* Blank bar: this machine's share is simply unknown. */}
+						<div
+							style={{
+								background: 'rgba(255,255,255,0.1)',
+								borderRadius: 999,
+								height: 10,
+								marginTop: 22,
+								width: '100%',
+							}}
+						/>
+						{/* The unknown pulses — an open question, not a resting label. */}
+						<div
+							style={{
+								color: COLORS.muted,
+								fontSize: 34,
+								fontWeight: 680,
+								marginTop: 16,
+								transform: `scale(${1 + Math.sin((frame - index * 6) * 0.18) * 0.09})`,
+							}}
+						>
+							?
+						</div>
 					</Surface>
 				))}
-			</div>
-
-			<div
-				style={{
-					color: COLORS.red,
-					fontSize: 32,
-					fontWeight: 620,
-					marginTop: 40,
-					opacity: progress(frame, 105, 16),
-					textAlign: 'center',
-				}}
-			>
-				No breakdown.
 			</div>
 		</AbsoluteFill>
 	)
@@ -259,16 +233,13 @@ function FlowStep({
 	number: string
 	subtitle: string
 }) {
-	const appear = progress(frame, delay, 18)
-
 	return (
 		<Surface
 			color={color}
 			style={{
 				minHeight: 250,
-				opacity: appear,
 				padding: '28px 27px',
-				transform: `translate3d(0, ${(1 - appear) * 30}px, 0)`,
+				...popIn(frame, delay, 44),
 			}}
 		>
 			<div
@@ -288,71 +259,63 @@ function FlowStep({
 			>
 				{number}
 			</div>
-			<div style={{ fontSize: 31, fontWeight: 640, marginTop: 26 }}>{label}</div>
+			<div style={{ fontSize: 30, fontWeight: 640, marginTop: 26 }}>{label}</div>
 			<div style={{ color: COLORS.muted, fontSize: 21, lineHeight: 1.4, marginTop: 12 }}>{subtitle}</div>
 		</Surface>
 	)
 }
 
-function ProductLoopScene() {
+function WholeProductScene() {
 	const frame = useCurrentFrame()
-	const duration = 168
-	const lineOne = progress(frame, 30, 30)
-	const lineTwo = progress(frame, 52, 30)
+	const duration = 108
+	const lineOne = progress(frame, 22, 16)
+	const lineTwo = progress(frame, 36, 16)
 
 	return (
 		<AbsoluteFill
 			style={{
-				opacity: sceneOpacity(frame, duration, 14),
-				padding: '145px 62px 145px',
+				justifyContent: 'center',
+				opacity: sceneOpacity(frame, duration, 8),
+				padding: SCENE_PADDING,
 			}}
 		>
-			<Pill style={{ marginLeft: 10, width: 'fit-content' }}>That is the whole product</Pill>
-			<div
-				style={{
-					...rise(frame, 2),
-					fontSize: 82,
-					fontWeight: 670,
-					letterSpacing: '-0.057em',
-					lineHeight: 1.02,
-					margin: '82px 10px 0',
-				}}
-			>
-				Three steps.
-				<br />
-				One useful answer.
-			</div>
+			<KineticTitle
+				accentColor={COLORS.emerald}
+				accentWords={['whole']}
+				lines={["That's the", 'whole product']}
+				size={88}
+			/>
 
 			<div
 				style={{
 					display: 'grid',
 					gap: 22,
 					gridTemplateColumns: '1fr 1fr 1fr',
-					marginTop: 92,
+					marginTop: 84,
 					position: 'relative',
 				}}
 			>
 				<FlowStep
 					color={COLORS.indigo}
-					delay={12}
+					delay={10}
 					frame={frame}
-					label='Collect'
+					label='Collector'
 					number='1'
 					subtitle='Tail local usage records.'
 				/>
 				<FlowStep
 					color={COLORS.emerald}
-					delay={26}
+					delay={22}
 					frame={frame}
-					label='Attribute'
+					label='Attribution'
 					number='2'
 					subtitle='Split each official rise.'
 				/>
 				<FlowStep
 					color={COLORS.amber}
-					delay={40}
+					delay={34}
 					frame={frame}
-					label='Show'
+					label='Dashboard'
 					number='3'
 					subtitle='Make the fleet legible.'
 				/>
@@ -389,9 +352,9 @@ function ProductLoopScene() {
 					alignItems: 'center',
 					display: 'flex',
 					gap: 26,
-					marginTop: 70,
-					opacity: progress(frame, 76, 18),
+					marginTop: 54,
 					padding: '30px 32px',
+					...popIn(frame, 48),
 				}}
 			>
 				<UsageFleetMark size={64} />
@@ -402,118 +365,6 @@ function ProductLoopScene() {
 					</div>
 				</div>
 			</Surface>
-		</AbsoluteFill>
-	)
-}
-
-function FeatureCard({
-	children,
-	color,
-	delay,
-	frame,
-	label,
-}: {
-	children: React.ReactNode
-	color: string
-	delay: number
-	frame: number
-	label: string
-}) {
-	const appear = progress(frame, delay, 18)
-
-	return (
-		<Surface
-			color={color}
-			style={{
-				minHeight: 300,
-				opacity: appear,
-				padding: '28px 27px',
-				transform: `translate3d(0, ${(1 - appear) * 30}px, 0)`,
-			}}
-		>
-			<div style={{ color, fontSize: 20, fontWeight: 680, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-				{label}
-			</div>
-			{children}
-		</Surface>
-	)
-}
-
-function CoreFeaturesScene() {
-	const frame = useCurrentFrame()
-	const duration = 144
-
-	return (
-		<AbsoluteFill
-			style={{
-				opacity: sceneOpacity(frame, duration, 14),
-				padding: '145px 62px 145px',
-			}}
-		>
-			<div style={{ ...rise(frame), fontSize: 80, fontWeight: 670, letterSpacing: '-0.057em', lineHeight: 1.02 }}>
-				Only the things
-				<br />
-				that answer the question.
-			</div>
-			<div style={{ display: 'grid', gap: 18, gridTemplateColumns: '1fr 1fr 1fr', marginTop: 92 }}>
-				<FeatureCard color={COLORS.indigo} delay={12} frame={frame} label='Live limits'>
-					<div style={{ fontSize: 82, fontVariantNumeric: 'tabular-nums', fontWeight: 690, marginTop: 48 }}>
-						41%
-					</div>
-					<div style={{ marginTop: 22 }}>
-						<Meter color={COLORS.indigo} delay={18} frame={frame} value={41} />
-					</div>
-					<div style={{ color: COLORS.muted, fontSize: 20, marginTop: 21 }}>5-hour + weekly</div>
-				</FeatureCard>
-
-				<FeatureCard color={COLORS.emerald} delay={20} frame={frame} label='History'>
-					<div style={{ alignItems: 'end', display: 'flex', gap: 10, height: 105, marginTop: 45 }}>
-						{[42, 70, 54, 92, 61].map((height, index) => (
-							<div
-								key={height}
-								style={{
-									background: COLORS.emerald,
-									borderRadius: 8,
-									height: `${height}%`,
-									opacity: progress(frame, 30 + index * 4, 12),
-									width: 23,
-								}}
-							/>
-						))}
-					</div>
-					<div style={{ color: COLORS.muted, fontSize: 20, marginTop: 25 }}>by device or group</div>
-				</FeatureCard>
-
-				<FeatureCard color={COLORS.amber} delay={28} frame={frame} label='Spend'>
-					<div
-						style={{
-							fontSize: 60,
-							fontVariantNumeric: 'tabular-nums',
-							fontWeight: 690,
-							letterSpacing: '-0.055em',
-							marginTop: 64,
-						}}
-					>
-						$18.42
-					</div>
-					<div style={{ color: COLORS.muted, fontSize: 20, lineHeight: 1.4, marginTop: 22 }}>
-						estimated this week
-					</div>
-				</FeatureCard>
-			</div>
-
-			<div
-				style={{
-					color: COLORS.muted,
-					fontSize: 31,
-					fontWeight: 590,
-					marginTop: 70,
-					opacity: progress(frame, 58, 16),
-					textAlign: 'center',
-				}}
-			>
-				Live limits. History. Spend.
-			</div>
 		</AbsoluteFill>
 	)
 }
@@ -529,8 +380,8 @@ function ModuleCard({
 	keep?: boolean
 	label: string
 }) {
-	const appear = progress(frame, 6, 16)
-	const remove = keep ? 0 : progress(frame, delay, 14)
+	const appear = pop(frame, 4 + delay * 0.2)
+	const remove = keep ? 0 : progress(frame, delay, 12, EASE_IN_OUT)
 
 	return (
 		<Surface
@@ -542,9 +393,10 @@ function ModuleCard({
 				fontWeight: 610,
 				justifyContent: 'space-between',
 				minHeight: 112,
-				opacity: appear * (1 - remove),
+				opacity: Math.min(1, appear * 1.6) * (1 - remove),
 				padding: '20px 23px',
-				transform: `translate3d(${remove * 52}px, ${(1 - appear) * 20}px, 0)`,
+				// Deleted modules get flicked off screen with a twist.
+				transform: `translate3d(${remove * 130}px, ${(1 - appear) * 20}px, 0) rotate(${remove * 5}deg)`,
 			}}
 		>
 			<span>{label}</span>
@@ -555,59 +407,53 @@ function ModuleCard({
 
 function NotGiantScene() {
 	const frame = useCurrentFrame()
-	const duration = 144
-	const focus = progress(frame, 74, 18)
+	const duration = 90
+	const focus = progress(frame, 56, 16)
 
 	return (
 		<AbsoluteFill
 			style={{
-				opacity: sceneOpacity(frame, duration, 14),
-				padding: '145px 72px 145px',
+				justifyContent: 'center',
+				opacity: sceneOpacity(frame, duration, 8),
+				padding: SCENE_PADDING,
 			}}
 		>
 			<Pill style={{ width: 'fit-content' }}>Product strategy by deletion</Pill>
-			<div
-				style={{
-					...rise(frame, 2),
-					fontSize: 73,
-					fontWeight: 660,
-					letterSpacing: '-0.052em',
-					lineHeight: 1.03,
-					marginTop: 80,
-				}}
-			>
-				Not another giant
-				<br />
-				AI dashboard.
-			</div>
+			<KineticTitle
+				accentColor={COLORS.red}
+				accentWords={['giant']}
+				delay={2}
+				lines={['Not another giant', 'AI dashboard']}
+				size={76}
+				style={{ marginTop: 64 }}
+			/>
 
 			<div
 				style={{
 					display: 'grid',
 					gap: 16,
 					gridTemplateColumns: '1fr 1fr',
-					marginTop: 72,
-					position: 'relative',
+					marginTop: 66,
 				}}
 			>
-				<ModuleCard delay={24} frame={frame} label='Prompt scoring' />
-				<ModuleCard delay={34} frame={frame} label='Agent chat' />
-				<ModuleCard delay={44} frame={frame} label='Model routing' />
-				<ModuleCard delay={54} frame={frame} label='AI marketplace' />
-				<ModuleCard delay={64} frame={frame} label='Workflow builder' />
-				<ModuleCard delay={74} frame={frame} keep label='Usage visibility' />
+				<ModuleCard delay={16} frame={frame} label='Prompt scoring' />
+				<ModuleCard delay={24} frame={frame} label='Agent chat' />
+				<ModuleCard delay={32} frame={frame} label='Model routing' />
+				<ModuleCard delay={40} frame={frame} label='AI marketplace' />
+				<ModuleCard delay={48} frame={frame} label='Workflow builder' />
+				<ModuleCard delay={56} frame={frame} keep label='Usage visibility' />
 			</div>
 
 			<Surface
 				color={COLORS.indigo}
 				style={{
 					alignItems: 'center',
+					boxShadow: `0 0 60px rgba(99,102,241,${focus * 0.25})`,
 					display: 'flex',
 					gap: 26,
-					marginTop: 50,
-					opacity: focus,
+					marginTop: 44,
 					padding: '30px 32px',
-					transform: `scale(${0.95 + focus * 0.05})`,
+					...popIn(frame, 56),
 				}}
 			>
 				<UsageFleetMark size={62} />
@@ -630,43 +476,69 @@ function NotGiantScene() {
 	)
 }
 
-function FounderEndScene() {
-	return (
-		<EndCard
-			kicker='A deliberately narrow micro-SaaS'
-			question='Focused enough — or too narrow?'
-			title={
-				<>
-					One recurring irritation.
-					<br />
-					One focused product.
-				</>
-			}
-		/>
-	)
-}
-
 export function FocusedMicroSaaS() {
 	return (
 		<VideoCanvas>
-			<Sequence from={0} durationInFrames={156}>
-				<TinyIdeaScene />
+			<Sequence from={0} durationInFrames={90}>
+				<Camera duration={90}>
+					<HookScene />
+				</Camera>
 			</Sequence>
-			<Sequence from={138} durationInFrames={156}>
-				<RepeatedAnnoyanceScene />
+			<Sequence from={82} durationInFrames={94}>
+				<Camera duration={94}>
+					<NoBreakdownScene />
+				</Camera>
 			</Sequence>
-			<Sequence from={276} durationInFrames={168}>
-				<ProductLoopScene />
+			<Sequence from={168} durationInFrames={108}>
+				<Camera duration={108}>
+					<WholeProductScene />
+				</Camera>
 			</Sequence>
-			<Sequence from={426} durationInFrames={144}>
-				<CoreFeaturesScene />
+			<Sequence from={268} durationInFrames={90}>
+				<Camera duration={90}>
+					<NotGiantScene />
+				</Camera>
 			</Sequence>
-			<Sequence from={552} durationInFrames={144}>
-				<NotGiantScene />
+			<Sequence from={350} durationInFrames={100}>
+				<Camera duration={100}>
+					<EndCard
+						kicker='Start with one machine'
+						question='You tell me.'
+						title='Focused enough, or too narrow?'
+					/>
+				</Camera>
 			</Sequence>
-			<Sequence from={678} durationInFrames={132}>
-				<FounderEndScene />
-			</Sequence>
+
+			{/* Voiceover — one clip per scene, absolute frame positions. */}
+			<Sound at={6} src='vo/v5-s1.wav' />
+			<Sound at={84} src='vo/v5-s2.wav' />
+			<Sound at={170} src='vo/v5-s3.wav' />
+			<Sound at={278} src='vo/v5-s4.wav' />
+			<Sound at={364} src='vo/v5-s5.wav' />
+
+			{/* Impact flashes ride the hit and the deletion beats. */}
+			<Impact at={8} color='rgba(99,102,241,0.22)' />
+			<Impact at={308} color='rgba(99,102,241,0.16)' />
+			<ProgressBar />
+
+			{/* Music bed under everything; SFX punch through it. */}
+			<Sound src='sfx/music.wav' volume={0.32} />
+			<Sound at={8} src='sfx/hit.wav' volume={1} />
+			<Sound at={82} src='sfx/whoosh.wav' volume={0.6} />
+			<Sound at={100} src='sfx/pop.wav' volume={0.4} />
+			<Sound at={168} src='sfx/whoosh.wav' volume={0.6} />
+			<Sound at={178} src='sfx/pop.wav' volume={0.5} />
+			<Sound at={190} src='sfx/pop.wav' volume={0.5} />
+			<Sound at={202} src='sfx/pop.wav' volume={0.5} />
+			<Sound at={268} src='sfx/whoosh.wav' volume={0.6} />
+			<Sound at={284} src='sfx/pop.wav' volume={0.4} />
+			<Sound at={292} src='sfx/pop.wav' volume={0.4} />
+			<Sound at={300} src='sfx/pop.wav' volume={0.4} />
+			<Sound at={308} src='sfx/pop.wav' volume={0.4} />
+			<Sound at={350} src='sfx/whoosh.wav' volume={0.6} />
+			<Sound at={372} src='sfx/ding.wav' volume={0.7} />
+
+			<GameplayStrip src='gameplay/mc-5.mp4' />
 		</VideoCanvas>
 	)
 }

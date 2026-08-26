@@ -1,158 +1,128 @@
 import { AbsoluteFill, interpolate, Sequence, useCurrentFrame } from 'remotion'
 import {
+	Camera,
 	COLORS,
+	countTo,
 	DeviceIcon,
-	DeviceRow,
 	EndCard,
 	firstSceneOpacity,
+	GameplayStrip,
+	Impact,
+	KineticTitle,
 	Meter,
 	Pill,
+	pop,
+	popIn,
+	ProgressBar,
 	progress,
 	rise,
 	sceneOpacity,
+	shake,
+	Sound,
 	Surface,
 	VideoCanvas,
-	WindowCard,
 	clamp,
 } from './CampaignKit'
 
+// Bottom bias keeps the optical centre above TikTok's caption/action overlay.
+const SCENE_PADDING = '90px 72px 640px'
+
 const SETUP = [
-	{ color: COLORS.indigo, kind: 'laptop' as const, name: 'MacBook', x: 0, y: 0 },
-	{ color: COLORS.emerald, kind: 'desktop' as const, name: 'Mac Studio', x: 1, y: 0 },
-	{ color: COLORS.amber, kind: 'server' as const, name: 'Server', x: 0.5, y: 1 },
+	{ color: COLORS.indigo, kind: 'laptop' as const, name: 'MacBook' },
+	{ color: COLORS.emerald, kind: 'desktop' as const, name: 'Mac Studio' },
+	{ color: COLORS.amber, kind: 'server' as const, name: 'Server' },
 ]
 
-function SetupNode({
-	active,
-	color,
-	delay,
-	frame,
-	kind,
-	name,
-}: {
-	active: number
-	color: string
-	delay: number
-	frame: number
-	kind: 'desktop' | 'laptop' | 'server'
-	name: string
-}) {
-	const appear = progress(frame, delay, 18)
-
-	return (
-		<Surface
-			color={color}
-			style={{
-				alignItems: 'center',
-				boxShadow: `0 24px 90px ${color}${active > 0.15 ? '38' : '14'}`,
-				display: 'flex',
-				gap: 18,
-				opacity: appear,
-				padding: '24px 26px',
-				transform: `translate3d(0, ${(1 - appear) * 30}px, 0) scale(${0.98 + active * 0.02})`,
-			}}
-		>
-			<div style={{ color }}>
-				<DeviceIcon kind={kind} size={46} />
-			</div>
-			<div>
-				<div style={{ fontSize: 26, fontWeight: 610 }}>{name}</div>
-				<div style={{ color: active > 0.15 ? color : COLORS.muted, fontSize: 19, marginTop: 5 }}>
-					{active > 0.15 ? 'Claude active' : 'connected'}
-				</div>
-			</div>
-		</Surface>
-	)
-}
-
-function PersonalSetupScene() {
+function HookScene() {
 	const frame = useCurrentFrame()
-	const duration = 174
-	const first = interpolate(frame, [30, 48], [0, 12], clamp)
-	const second = interpolate(frame, [58, 78], [0, 17], clamp)
-	const third = interpolate(frame, [88, 108], [0, 12], clamp)
-	const total = Math.round(first + second + third)
+	const duration = 90
+	// Meter rises in uneven steps — each machine's activity lands separately.
+	const total = Math.round(
+		interpolate(frame, [16, 22, 28, 34, 40, 46], [0, 12, 12, 29, 29, 41], { ...clamp })
+	)
+	const kick = shake(frame, 40)
+	// Number swells on the final jump so the eye lands where the hit lands.
+	const swell = 1 + interpolate(frame, [40, 44, 54], [0, 0.16, 0], clamp)
 
 	return (
 		<AbsoluteFill
 			style={{
-				opacity: firstSceneOpacity(frame, duration, 16),
-				padding: '155px 72px 150px',
+				justifyContent: 'center',
+				opacity: firstSceneOpacity(frame, duration, 8),
+				padding: SCENE_PADDING,
+				transform: `translate3d(${kick.x}px, ${kick.y}px, 0)`,
 			}}
 		>
-			<Pill style={{ width: 'fit-content' }}>Claude Code Community</Pill>
-			<div
-				style={{
-					...rise(frame, -8),
-					fontSize: 76,
-					fontWeight: 660,
-					letterSpacing: '-0.054em',
-					lineHeight: 1.03,
-					marginTop: 82,
-					maxWidth: 900,
-					textWrap: 'balance',
-				}}
-			>
-				I use Claude Code
-				<br />
-				across three machines.
+			<div style={{ ...rise(frame, -10) }}>
+				<Pill style={{ width: 'fit-content' }}>Claude Code Community</Pill>
 			</div>
 
-			<div style={{ display: 'grid', gap: 18, gridTemplateColumns: '1fr 1fr', marginTop: 78 }}>
-				{SETUP.slice(0, 2).map((device, index) => (
-					<SetupNode
+			{/* Negative delay: words are mid-flight on frame 0 so the hook reads instantly. */}
+			<KineticTitle
+				accentColor={COLORS.indigo}
+				accentWords={['question']}
+				delay={-6}
+				lines={['I had one', 'unanswered question']}
+				style={{ marginTop: 70, maxWidth: 920 }}
+			/>
+
+			<div style={{ display: 'grid', gap: 20, gridTemplateColumns: '1fr 1fr 1fr', marginTop: 84 }}>
+				{SETUP.map((device, index) => (
+					<Surface
 						key={device.name}
-						{...device}
-						active={progress(frame, 30 + index * 30, 14)}
-						delay={10 + index * 6}
-						frame={frame}
-					/>
+						color={device.color}
+						style={{
+							alignItems: 'center',
+							display: 'flex',
+							flexDirection: 'column',
+							padding: '28px 18px 24px',
+							...popIn(frame, 6 + index * 4),
+						}}
+					>
+						<div style={{ color: device.color }}>
+							<DeviceIcon kind={device.kind} size={50} />
+						</div>
+						<div style={{ fontSize: 24, fontWeight: 610, marginTop: 15 }}>{device.name}</div>
+					</Surface>
 				))}
 			</div>
-			<div style={{ margin: '18px auto 0', width: '50%' }}>
-				<SetupNode {...SETUP[2]} active={progress(frame, 88, 14)} delay={22} frame={frame} />
-			</div>
 
-			<Surface
-				style={{
-					marginTop: 68,
-					opacity: progress(frame, 28, 18),
-					padding: '28px 30px',
-				}}
-			>
+			<Surface style={{ marginTop: 34, padding: '28px 30px', ...popIn(frame, 12) }}>
 				<div style={{ alignItems: 'baseline', display: 'flex', justifyContent: 'space-between' }}>
-					<div>
-						<div style={{ color: COLORS.muted, fontSize: 21 }}>Anthropic account total</div>
-						<div style={{ fontSize: 28, fontWeight: 590, marginTop: 7 }}>5-hour window</div>
-					</div>
+					<div style={{ color: COLORS.muted, fontSize: 23 }}>Anthropic account · 5-hour window</div>
 					<div
 						style={{
-							fontSize: 66,
+							fontSize: 68,
 							fontVariantNumeric: 'tabular-nums',
-							fontWeight: 690,
+							fontWeight: 700,
 							letterSpacing: '-0.055em',
+							transform: `scale(${swell})`,
+							transformOrigin: 'right center',
 						}}
 					>
 						{total}%
 					</div>
 				</div>
-				<div style={{ marginTop: 22 }}>
-					<Meter frame={frame} value={total} />
+				<div
+					style={{
+						background: 'rgba(255,255,255,0.1)',
+						borderRadius: 999,
+						height: 16,
+						marginTop: 22,
+					}}
+				>
+					<div
+						style={{
+							background: COLORS.text,
+							borderRadius: 999,
+							boxShadow: '0 0 22px rgba(248,248,248,0.4)',
+							height: '100%',
+							transform: `scaleX(${total / 100})`,
+							transformOrigin: 'left',
+						}}
+					/>
 				</div>
 			</Surface>
-
-			<div
-				style={{
-					fontSize: 39,
-					fontWeight: 610,
-					letterSpacing: '-0.035em',
-					marginTop: 48,
-					opacity: progress(frame, 108, 18),
-					textAlign: 'center',
-				}}
-			>
-				But which machine moved it?
-			</div>
 		</AbsoluteFill>
 	)
 }
@@ -163,56 +133,49 @@ function GuessCard({
 	index,
 	kind,
 	name,
-}: {
-	color: string
-	frame: number
-	index: number
-	kind: 'desktop' | 'laptop' | 'server'
-	name: string
-}) {
-	const appear = progress(frame, 8 + index * 5, 16)
-	const start = 24 + index * 28
-	const selected = interpolate(frame, [start, start + 8, start + 20, start + 27], [0, 1, 1, 0], clamp)
-	const crossed = progress(frame, start + 17, 8)
+}: (typeof SETUP)[number] & { frame: number; index: number }) {
+	const stamp = pop(frame, 18 + index * 16, 240)
+	const stamped = frame >= 18 + index * 16
 
 	return (
 		<Surface
-			color={selected > 0.1 ? color : undefined}
+			color={stamped ? COLORS.red : color}
 			style={{
 				alignItems: 'center',
 				display: 'grid',
 				gridTemplateColumns: '64px 1fr 72px',
-				opacity: appear,
 				padding: '28px 28px',
-				transform: `translate3d(0, ${(1 - appear) * 28}px, 0) scale(${0.98 + selected * 0.02})`,
+				...popIn(frame, 4 + index * 4),
 			}}
 		>
-			<div style={{ color: selected > 0.1 ? color : COLORS.muted }}>
+			<div style={{ color }}>
 				<DeviceIcon kind={kind} size={50} />
 			</div>
 			<div>
-				<div style={{ fontSize: 31, fontWeight: 620 }}>{name}</div>
+				<div style={{ fontSize: 31, fontWeight: 620 }}>{name}?</div>
 				<div style={{ color: COLORS.muted, fontSize: 20, marginTop: 7 }}>
-					{selected > 0.1 ? 'maybe this one?' : 'unknown'}
+					{stamped ? 'no idea' : 'maybe this one'}
 				</div>
 			</div>
 			<div
 				style={{
 					alignItems: 'center',
-					background: crossed > 0.1 ? 'rgba(255,91,87,0.14)' : 'rgba(255,255,255,0.05)',
-					border: `1px solid ${crossed > 0.1 ? 'rgba(255,91,87,0.45)' : COLORS.border}`,
+					background: stamped ? 'rgba(255,91,87,0.14)' : 'rgba(255,255,255,0.05)',
+					border: `1px solid ${stamped ? 'rgba(255,91,87,0.45)' : COLORS.border}`,
 					borderRadius: 999,
-					color: crossed > 0.1 ? COLORS.red : COLORS.muted,
+					boxShadow: stamped ? '0 0 26px rgba(255,91,87,0.35)' : undefined,
+					color: stamped ? COLORS.red : COLORS.muted,
 					display: 'flex',
-					fontSize: 34,
+					fontSize: 36,
 					fontWeight: 750,
-					height: 58,
+					height: 60,
 					justifyContent: 'center',
-					opacity: selected > 0.1 ? 1 : 0.55,
-					width: 58,
+					// Stamp slams in oversized and settles — rubber-stamp weight.
+					transform: `scale(${stamped ? 1.7 - stamp * 0.7 : 1}) rotate(${stamped ? (1 - stamp) * -14 : 0}deg)`,
+					width: 60,
 				}}
 			>
-				{crossed > 0.1 ? '×' : '?'}
+				{stamped ? '×' : '?'}
 			</div>
 		</Surface>
 	)
@@ -220,244 +183,122 @@ function GuessCard({
 
 function GuessingScene() {
 	const frame = useCurrentFrame()
-	const duration = 150
+	const duration = 94
 
 	return (
 		<AbsoluteFill
 			style={{
-				opacity: sceneOpacity(frame, duration, 14),
-				padding: '160px 72px 150px',
+				justifyContent: 'center',
+				opacity: sceneOpacity(frame, duration, 8),
+				padding: SCENE_PADDING,
 			}}
 		>
-			<Pill style={{ width: 'fit-content' }}>The old workflow</Pill>
-			<div
-				style={{
-					...rise(frame, 2),
-					fontSize: 90,
-					fontWeight: 670,
-					letterSpacing: '-0.06em',
-					lineHeight: 1,
-					marginTop: 90,
-				}}
-			>
-				I kept guessing.
-			</div>
-			<div style={{ color: COLORS.muted, fontSize: 30, marginTop: 25 }}>
-				Open a laptop. Check a server. Still no answer.
+			<KineticTitle
+				accentColor={COLORS.red}
+				accentWords={['limit?']}
+				lines={['Which machine', 'moved my limit?']}
+				size={88}
+			/>
+			<div style={{ color: COLORS.muted, fontSize: 29, marginTop: 26, opacity: progress(frame, 10, 12) }}>
+				Every window, the same guessing game.
 			</div>
 
-			<div style={{ display: 'grid', gap: 18, marginTop: 92 }}>
+			<div style={{ display: 'grid', gap: 20, marginTop: 74 }}>
 				{SETUP.map((device, index) => (
 					<GuessCard key={device.name} {...device} frame={frame} index={index} />
 				))}
-			</div>
-
-			<div
-				style={{
-					color: COLORS.red,
-					fontSize: 29,
-					fontWeight: 620,
-					marginTop: 42,
-					opacity: progress(frame, 104, 14),
-					textAlign: 'center',
-				}}
-			>
-				Guessing is not observability.
 			</div>
 		</AbsoluteFill>
 	)
 }
 
-function DataChip({
-	children,
-	color,
-	delay,
-	frame,
-}: {
-	children: string
-	color: string
-	delay: number
-	frame: number
-}) {
-	const appear = progress(frame, delay, 14)
-
-	return (
-		<div
-			style={{
-				background: `${color}18`,
-				border: `1px solid ${color}58`,
-				borderRadius: 999,
-				color,
-				fontSize: 20,
-				fontWeight: 650,
-				opacity: appear,
-				padding: '12px 17px',
-				transform: `translate3d(${(1 - appear) * -24}px, 0, 0)`,
-			}}
-		>
-			{children}
-		</div>
-	)
-}
+const TAIL_LINES = [
+	{ label: 'input_tokens', pass: true, value: '482' },
+	{ label: 'output_tokens', pass: true, value: '1,204' },
+	{ label: 'model', pass: true, value: 'sonnet' },
+	{ label: 'prompt text', pass: false, value: '██████████' },
+]
 
 function CollectorScene() {
 	const frame = useCurrentFrame()
-	const duration = 162
-	const flow = progress(frame, 32, 44)
+	const duration = 96
 
 	return (
 		<AbsoluteFill
 			style={{
-				opacity: sceneOpacity(frame, duration, 14),
-				padding: '145px 60px 145px',
+				justifyContent: 'center',
+				opacity: sceneOpacity(frame, duration, 8),
+				padding: SCENE_PADDING,
 			}}
 		>
-			<Pill style={{ marginLeft: 12, width: 'fit-content' }}>So I built the missing layer</Pill>
-			<div
-				style={{
-					...rise(frame, 2),
-					fontSize: 72,
-					fontWeight: 660,
-					letterSpacing: '-0.052em',
-					lineHeight: 1.03,
-					margin: '76px 12px 0',
-					maxWidth: 910,
-				}}
-			>
-				A read-only collector
-				<br />
-				for usage records.
-			</div>
+			<Pill style={{ width: 'fit-content' }}>Read-only</Pill>
+			<KineticTitle
+				accentColor={COLORS.emerald}
+				accentWords={['read-only']}
+				delay={2}
+				lines={['So I built a', 'read-only collector']}
+				size={82}
+				style={{ marginTop: 64 }}
+			/>
 
-			<div
-				style={{
-					alignItems: 'stretch',
-					display: 'grid',
-					gap: 28,
-					gridTemplateColumns: '1fr 100px 1fr',
-					marginTop: 74,
-				}}
-			>
-				<Surface style={{ minHeight: 530, opacity: progress(frame, 10, 18), padding: '28px 26px' }}>
-					<div
-						style={{
-							color: COLORS.muted,
-							fontSize: 19,
-							letterSpacing: '0.08em',
-							textTransform: 'uppercase',
-						}}
-					>
-						Stays local
-					</div>
-					<div style={{ fontSize: 30, fontWeight: 620, marginTop: 14 }}>Claude JSONL</div>
-					<div
-						style={{
-							color: 'rgba(255,255,255,0.68)',
-							fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-							fontSize: 18,
-							lineHeight: 1.7,
-							marginTop: 30,
-						}}
-					>
-						<div>usage.input_tokens</div>
-						<div>usage.output_tokens</div>
-						<div>model</div>
-						<div>session_id</div>
-						<div>cwd · branch</div>
-					</div>
-					<div style={{ borderTop: `1px solid ${COLORS.border}`, marginTop: 30, paddingTop: 25 }}>
-						{['prompts', 'responses', 'file contents'].map(item => (
-							<div
-								key={item}
-								style={{
-									alignItems: 'center',
-									color: COLORS.muted,
-									display: 'flex',
-									fontSize: 21,
-									gap: 10,
-									marginTop: 12,
-								}}
-							>
-								<span style={{ color: COLORS.emerald }}>●</span> {item}: not read
-							</div>
-						))}
-					</div>
-				</Surface>
-
-				<div style={{ alignItems: 'center', display: 'flex', justifyContent: 'center', position: 'relative' }}>
-					<div
-						style={{
-							background: 'linear-gradient(90deg, rgba(255,255,255,0.08), rgba(99,102,241,0.8))',
-							height: 2,
-							transform: `scaleX(${flow})`,
-							transformOrigin: 'left',
-							width: '100%',
-						}}
-					/>
-					<div
-						style={{
-							borderBottom: '8px solid transparent',
-							borderLeft: `12px solid ${COLORS.indigo}`,
-							borderTop: '8px solid transparent',
-							opacity: flow,
-							position: 'absolute',
-							right: -1,
-						}}
-					/>
-				</div>
-
-				<Surface
-					color={COLORS.indigo}
+			<Surface style={{ marginTop: 72, overflow: 'hidden', ...popIn(frame, 6) }}>
+				<div
 					style={{
-						minHeight: 530,
-						opacity: progress(frame, 28, 18),
-						padding: '28px 26px',
+						alignItems: 'center',
+						borderBottom: `1px solid ${COLORS.border}`,
+						display: 'flex',
+						gap: 10,
+						padding: '16px 22px',
 					}}
 				>
-					<div
-						style={{
-							color: COLORS.muted,
-							fontSize: 19,
-							letterSpacing: '0.08em',
-							textTransform: 'uppercase',
-						}}
-					>
-						Reported
-					</div>
-					<div style={{ fontSize: 30, fontWeight: 620, marginTop: 14 }}>UsageFleet</div>
-					<div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 34 }}>
-						<DataChip color={COLORS.indigo} delay={45} frame={frame}>
-							token counts
-						</DataChip>
-						<DataChip color={COLORS.emerald} delay={50} frame={frame}>
-							model
-						</DataChip>
-						<DataChip color={COLORS.amber} delay={55} frame={frame}>
-							session
-						</DataChip>
-						<DataChip color={COLORS.violet} delay={60} frame={frame}>
-							machine context
-						</DataChip>
-					</div>
-					<div
-						style={{
-							background: 'rgba(16,185,129,0.1)',
-							border: '1px solid rgba(16,185,129,0.28)',
-							borderRadius: 24,
-							color: COLORS.emerald,
-							fontSize: 23,
-							fontWeight: 620,
-							lineHeight: 1.35,
-							marginTop: 42,
-							opacity: progress(frame, 66, 16),
-							padding: '22px 22px',
-						}}
-					>
-						Enough to attribute usage.
-						<br />
-						Nothing to reconstruct the work.
-					</div>
-				</Surface>
+					<span style={{ background: '#ff5f57', borderRadius: 999, height: 10, width: 10 }} />
+					<span style={{ background: '#febc2e', borderRadius: 999, height: 10, width: 10 }} />
+					<span style={{ background: '#28c840', borderRadius: 999, height: 10, width: 10 }} />
+					<span style={{ color: COLORS.muted, fontSize: 19, marginLeft: 8 }}>usagefleet watch</span>
+				</div>
+				<div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', padding: '24px 26px 28px' }}>
+					{TAIL_LINES.map((line, index) => {
+						const appear = pop(frame, 10 + index * 7)
+						return (
+							<div
+								key={line.label}
+								style={{
+									alignItems: 'center',
+									display: 'grid',
+									gridTemplateColumns: '1fr 200px 130px',
+									fontSize: 25,
+									lineHeight: 2.1,
+									opacity: Math.min(1, appear * 1.6),
+									transform: `translate3d(${(1 - appear) * -22}px, 0, 0)`,
+								}}
+							>
+								<span style={{ color: 'rgba(255,255,255,0.76)' }}>{line.label}</span>
+								<span style={{ color: line.pass ? COLORS.text : 'rgba(255,255,255,0.22)' }}>{line.value}</span>
+								<span
+									style={{
+										color: line.pass ? COLORS.emerald : COLORS.red,
+										fontWeight: 650,
+										textAlign: 'right',
+									}}
+								>
+									{line.pass ? '✓ sent' : '✕ never'}
+								</span>
+							</div>
+						)
+					})}
+				</div>
+			</Surface>
+
+			<div
+				style={{
+					color: COLORS.muted,
+					fontSize: 27,
+					lineHeight: 1.45,
+					marginTop: 40,
+					opacity: progress(frame, 42, 14),
+				}}
+			>
+				Counters and machine context go up. The work itself never does.
 			</div>
 		</AbsoluteFill>
 	)
@@ -465,125 +306,187 @@ function CollectorScene() {
 
 function DashboardScene() {
 	const frame = useCurrentFrame()
-	const duration = 180
-	const camera = interpolate(frame, [0, duration], [0.96, 1.02], clamp)
+	const duration = 112
 
 	return (
 		<AbsoluteFill
 			style={{
-				opacity: sceneOpacity(frame, duration, 14),
-				padding: '125px 52px 140px',
+				justifyContent: 'center',
+				opacity: sceneOpacity(frame, duration, 8),
+				padding: SCENE_PADDING,
 			}}
 		>
-			<Surface
-				style={{
-					minHeight: 1410,
-					opacity: progress(frame, 0, 18),
-					padding: '38px 38px',
-					transform: `scale(${camera})`,
-				}}
-			>
-				<div style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
-					<div style={{ fontSize: 29, fontWeight: 650 }}>The view I wanted</div>
-					<div style={{ alignItems: 'center', color: COLORS.muted, display: 'flex', fontSize: 20, gap: 9 }}>
-						<span style={{ background: COLORS.emerald, borderRadius: 999, height: 9, width: 9 }} />
-						live
+			<KineticTitle
+				accentColor={COLORS.emerald}
+				accentWords={['split']}
+				lines={["Anthropic's number,", 'my split']}
+				size={82}
+			/>
+
+			<Surface style={{ marginTop: 66, padding: '32px 34px', ...popIn(frame, 6) }}>
+				<div style={{ alignItems: 'baseline', display: 'flex', justifyContent: 'space-between' }}>
+					<div>
+						<div style={{ color: COLORS.muted, fontSize: 21 }}>Anthropic account total</div>
+						<div style={{ fontSize: 29, fontWeight: 610, marginTop: 8 }}>5-hour window</div>
+					</div>
+					<div
+						style={{
+							fontSize: 84,
+							fontVariantNumeric: 'tabular-nums',
+							fontWeight: 700,
+							letterSpacing: '-0.06em',
+						}}
+					>
+						{countTo(frame, 41, 8, 22)}%
 					</div>
 				</div>
-
-				<div style={{ display: 'grid', gap: 18, gridTemplateColumns: '1fr 1fr', marginTop: 40 }}>
-					<WindowCard delay={10} frame={frame} label='5-hour session' reset='resets in 2h 13m' value={41} />
-					<WindowCard delay={16} frame={frame} label='Weekly' reset='resets in 3d 8h' value={44} />
-				</div>
-
+				{/* Split bar builds group by group — the product's whole point in one element. */}
 				<div
 					style={{
-						color: COLORS.muted,
-						fontSize: 20,
-						fontWeight: 650,
-						letterSpacing: '0.09em',
-						marginTop: 38,
-						textTransform: 'uppercase',
+						background: 'rgba(255,255,255,0.09)',
+						borderRadius: 999,
+						display: 'flex',
+						height: 26,
+						marginTop: 28,
+						overflow: 'hidden',
 					}}
 				>
-					Device activity
-				</div>
-				<div style={{ display: 'grid', gap: 16, marginTop: 18 }}>
-					<DeviceRow
-						color={COLORS.indigo}
-						delay={28}
-						frame={frame}
-						kind='laptop'
-						label='MacBook'
-						value={32}
-					/>
-					<DeviceRow
-						color={COLORS.emerald}
-						delay={34}
-						frame={frame}
-						kind='desktop'
-						label='Mac Studio'
-						value={51}
-					/>
-					<DeviceRow color={COLORS.amber} delay={40} frame={frame} kind='server' label='Server' value={17} />
-				</div>
-
-				<div
-					style={{
-						background: 'linear-gradient(90deg, rgba(99,102,241,0.16), rgba(16,185,129,0.12))',
-						border: `1px solid ${COLORS.border}`,
-						borderRadius: 26,
-						fontSize: 26,
-						fontWeight: 610,
-						lineHeight: 1.4,
-						marginTop: 34,
-						opacity: progress(frame, 52, 16),
-						padding: '25px 27px',
-					}}
-				>
-					Official account utilization above.
-					<br />
-					Observed machine activity below.
+					{[
+						{ color: COLORS.indigo, delay: 18, width: 32 },
+						{ color: COLORS.emerald, delay: 26, width: 51 },
+						{ color: COLORS.amber, delay: 34, width: 17 },
+					].map(seg => (
+						<div key={seg.color} style={{ overflow: 'hidden', width: `${seg.width}%` }}>
+							<div
+								style={{
+									background: seg.color,
+									boxShadow: `0 0 20px ${seg.color}66`,
+									height: '100%',
+									transform: `scaleX(${progress(frame, seg.delay, 12)})`,
+									transformOrigin: 'left',
+									width: '100%',
+								}}
+							/>
+						</div>
+					))}
 				</div>
 			</Surface>
-		</AbsoluteFill>
-	)
-}
 
-function FeedbackEndScene() {
-	return (
-		<EndCard
-			kicker='Built in the open for heavy Claude Code users'
-			question='What would you need before installing it on your machines?'
-			title={
-				<>
-					I built the Claude
-					<br />
-					usage view I wanted.
-				</>
-			}
-		/>
+			<div style={{ display: 'grid', gap: 18, marginTop: 26 }}>
+				{[
+					{ color: COLORS.indigo, kind: 'laptop' as const, name: 'MacBook', value: 32 },
+					{ color: COLORS.emerald, kind: 'desktop' as const, name: 'Mac Studio', value: 51 },
+					{ color: COLORS.amber, kind: 'server' as const, name: 'Server', value: 17 },
+				].map((group, index) => (
+					<Surface
+						key={group.name}
+						color={group.color}
+						style={{
+							alignItems: 'center',
+							display: 'grid',
+							gap: 22,
+							gridTemplateColumns: '54px 1fr 110px',
+							padding: '22px 26px',
+							...popIn(frame, 26 + index * 6),
+						}}
+					>
+						<div style={{ color: group.color }}>
+							<DeviceIcon kind={group.kind} size={44} />
+						</div>
+						<div>
+							<div style={{ fontSize: 27, fontWeight: 590 }}>{group.name}</div>
+							<div style={{ marginTop: 13 }}>
+								<Meter
+									color={group.color}
+									delay={30 + index * 6}
+									frame={frame}
+									glow
+									height={10}
+									value={group.value}
+								/>
+							</div>
+						</div>
+						<div
+							style={{
+								fontSize: 40,
+								fontVariantNumeric: 'tabular-nums',
+								fontWeight: 680,
+								textAlign: 'right',
+							}}
+						>
+							{countTo(frame, group.value, 30 + index * 6, 20)}%
+						</div>
+					</Surface>
+				))}
+			</div>
+		</AbsoluteFill>
 	)
 }
 
 export function BuiltTheUsageView() {
 	return (
 		<VideoCanvas>
-			<Sequence from={0} durationInFrames={174}>
-				<PersonalSetupScene />
+			<Sequence from={0} durationInFrames={90}>
+				<Camera duration={90}>
+					<HookScene />
+				</Camera>
 			</Sequence>
-			<Sequence from={156} durationInFrames={150}>
-				<GuessingScene />
+			<Sequence from={82} durationInFrames={94}>
+				<Camera duration={94}>
+					<GuessingScene />
+				</Camera>
 			</Sequence>
-			<Sequence from={288} durationInFrames={162}>
-				<CollectorScene />
+			<Sequence from={168} durationInFrames={96}>
+				<Camera duration={96}>
+					<CollectorScene />
+				</Camera>
 			</Sequence>
-			<Sequence from={432} durationInFrames={180}>
-				<DashboardScene />
+			<Sequence from={256} durationInFrames={100}>
+				<Camera duration={100}>
+					<DashboardScene />
+				</Camera>
 			</Sequence>
-			<Sequence from={594} durationInFrames={216}>
-				<FeedbackEndScene />
+			<Sequence from={348} durationInFrames={102}>
+				<Camera duration={102}>
+					<EndCard
+						kicker='Built in the open for Claude Code users'
+						question='Tell me what&#39;s missing.'
+						title='Would you run this?'
+					/>
+				</Camera>
 			</Sequence>
+
+			{/* Voiceover — one clip per scene, absolute frame positions. */}
+			<Sound at={6} src='vo/v3-s1.wav' />
+			<Sound at={86} src='vo/v3-s2.wav' />
+			<Sound at={174} src='vo/v3-s3.wav' />
+			<Sound at={260} src='vo/v3-s4.wav' />
+			<Sound at={362} src='vo/v3-s5.wav' />
+
+			{/* Impact flashes ride the hit/stamp sfx. */}
+			<Impact at={40} />
+			<Impact at={100} color='rgba(255,91,87,0.14)' />
+			<Impact at={116} color='rgba(255,91,87,0.14)' />
+			<Impact at={132} color='rgba(255,91,87,0.18)' />
+			<ProgressBar />
+
+			{/* Music bed under everything; SFX punch through it. */}
+			<Sound src='sfx/music.wav' volume={0.32} />
+			<Sound at={40} src='sfx/hit.wav' volume={1} />
+			<Sound at={82} src='sfx/whoosh.wav' volume={0.6} />
+			<Sound at={100} src='sfx/pop.wav' volume={0.45} />
+			<Sound at={116} src='sfx/pop.wav' volume={0.45} />
+			<Sound at={132} src='sfx/pop.wav' volume={0.45} />
+			<Sound at={168} src='sfx/whoosh.wav' volume={0.6} />
+			<Sound at={185} src='sfx/pop.wav' volume={0.4} />
+			<Sound at={199} src='sfx/pop.wav' volume={0.4} />
+			<Sound at={256} src='sfx/whoosh.wav' volume={0.6} />
+			<Sound at={284} src='sfx/pop.wav' volume={0.45} />
+			<Sound at={294} src='sfx/pop.wav' volume={0.45} />
+			<Sound at={348} src='sfx/whoosh.wav' volume={0.6} />
+			<Sound at={370} src='sfx/ding.wav' volume={0.7} />
+
+			<GameplayStrip src='gameplay/mc-3.mp4' />
 		</VideoCanvas>
 	)
 }
