@@ -526,15 +526,7 @@ export function FromAnnoyanceToProduct() {
 			</Sequence>
 
 			{/* Voiceover + captions — one clip per scene, absolute frame positions. */}
-			<VoiceOver
-				clips={[
-					{ at: 4, src: 'vo/v4-s1.wav', text: 'This product exists because of one very specific annoyance.' },
-					{ at: 102, src: 'vo/v4-s2.wav', text: 'Day one: collect counts, never conversations.' },
-					{ at: 194, src: 'vo/v4-s3.wav', text: 'Day three: the first split that actually answered it.' },
-					{ at: 274, src: 'vo/v4-s4.wav', text: 'The hard part? Not building everything else.' },
-					{ at: 344, src: 'vo/v4-s5.wav', text: 'One job. Building it in public. usagefleet.com' },
-				]}
-			/>
+			<VoiceOver video='FromAnnoyanceToProduct' />
 
 			{/* Impact flashes ride the hit, the split reveal and the core-card slam. */}
 			<Impact at={8} color='rgba(245,158,11,0.18)' />

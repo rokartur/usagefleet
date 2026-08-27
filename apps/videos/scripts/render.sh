@@ -8,15 +8,17 @@ cd "$(dirname "$0")/.."
 # Hook-scene punchline in every video — the moment worth putting on the cover.
 THUMB_FRAME=${THUMB_FRAME:-40}
 
-# Registration order in Root.tsx is the campaign order (v1…v6 in public/vo), so
-# it also numbers the files — out/03-BuiltTheUsageView.mp4 is video 3.
-read -ra all <<<"$(bunx remotion compositions src/index.ts --quiet | tail -1)"
+# CAMPAIGN order in src/vo.ts is the campaign order (v1…v6 in public/vo), so it
+# also numbers the files — out/03-BuiltTheUsageView.mp4 is video 3.
+read -ra all <<<"$(bun -e 'import { CAMPAIGN } from "./src/vo"; console.log(CAMPAIGN.map(v => v.id).join(" "))')"
 ids=("$@")
 if [ ${#ids[@]} -eq 0 ]; then
 	ids=("${all[@]}")
 fi
 
-mkdir -p out
+# .srt + post copy for every video, from the same lines the captions burn in.
+bun scripts/captions.ts
+
 for id in "${ids[@]}"; do
 	n=1
 	for known in "${all[@]}"; do

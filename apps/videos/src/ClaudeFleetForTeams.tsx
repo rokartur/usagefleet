@@ -437,15 +437,7 @@ export function ClaudeFleetForTeams() {
 			</Sequence>
 
 			{/* Voiceover + captions — one clip per scene, absolute frame positions. */}
-			<VoiceOver
-				clips={[
-					{ at: 8, src: 'vo/v6-s1.wav', text: 'Your team shares one Claude budget.' },
-					{ at: 86, src: 'vo/v6-s2.wav', text: 'Does anyone actually know where it goes?' },
-					{ at: 166, src: 'vo/v6-s3.wav', text: 'See the 5-hour and weekly window by group. Live.' },
-					{ at: 264, src: 'vo/v6-s4.wav', text: 'Alert at 80. Guard at 100. Offline? It fails open.' },
-					{ at: 375, src: 'vo/v6-s5.wav', text: 'Built for teams using Claude Code way too much.' },
-				]}
-			/>
+			<VoiceOver video='ClaudeFleetForTeams' />
 
 			{/* Impact flashes ride the hit and the threshold slams. */}
 			<Impact at={42} />

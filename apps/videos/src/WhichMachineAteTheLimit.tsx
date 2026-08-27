@@ -550,19 +550,7 @@ export function WhichMachineAteTheLimit() {
 			</Sequence>
 
 			{/* Voiceover + captions — one clip per scene, absolute frame positions. */}
-			<VoiceOver
-				clips={[
-					{ at: 4, src: 'vo/v1-s1.wav', text: 'Claude limit: 100%.' },
-					{ at: 70, src: 'vo/v1-s2.wav', text: 'Which machine did it? Stop guessing.' },
-					{
-						at: 174,
-						src: 'vo/v1-s3.wav',
-						text: "UsageFleet splits Anthropic's official number across your machines. Live.",
-					},
-					{ at: 302, src: 'vo/v1-s4.wav', text: 'No prompts. No responses. No file contents.' },
-					{ at: 396, src: 'vo/v1-s5.wav', text: 'UsageFleet.com' },
-				]}
-			/>
+			<VoiceOver video='WhichMachineAteTheLimit' />
 
 			{/* Music bed under everything; SFX punch through it. */}
 			<Sound src='sfx/music.wav' volume={0.32} />

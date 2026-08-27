@@ -520,19 +520,7 @@ export function FocusedMicroSaaS() {
 			</Sequence>
 
 			{/* Voiceover + captions — one clip per scene, absolute frame positions. */}
-			<VoiceOver
-				clips={[
-					{ at: 6, src: 'vo/v5-s1.wav', text: "A micro-SaaS doesn't need a huge idea." },
-					{ at: 84, src: 'vo/v5-s2.wav', text: 'It needs a recurring irritation. Like this one.' },
-					{
-						at: 170,
-						src: 'vo/v5-s3.wav',
-						text: "Collector. Attribution. Dashboard. That's the whole product.",
-					},
-					{ at: 278, src: 'vo/v5-s4.wav', text: 'Not another giant AI platform. On purpose.' },
-					{ at: 364, src: 'vo/v5-s5.wav', text: 'Focused enough, or too narrow? You tell me.' },
-				]}
-			/>
+			<VoiceOver video='FocusedMicroSaaS' />
 
 			{/* Impact flashes ride the hit and the deletion beats. */}
 			<Impact at={8} color='rgba(99,102,241,0.22)' />

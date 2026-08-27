@@ -475,15 +475,7 @@ export function ClaudeCodeOnMultipleMachines() {
 			</Sequence>
 
 			{/* Voiceover + captions — one clip per scene, absolute frame positions. */}
-			<VoiceOver
-				clips={[
-					{ at: 4, src: 'vo/v2-s1.wav', text: 'Claude Code on multiple machines? One subscription.' },
-					{ at: 96, src: 'vo/v2-s2.wav', text: 'UsageFleet shows which machines are spending it.' },
-					{ at: 206, src: 'vo/v2-s3.wav', text: 'Usage and cost, split by device.' },
-					{ at: 294, src: 'vo/v2-s4.wav', text: 'Setup? Two commands.' },
-					{ at: 364, src: 'vo/v2-s5.wav', text: 'Nothing private leaves. UsageFleet.com' },
-				]}
-			/>
+			<VoiceOver video='ClaudeCodeOnMultipleMachines' />
 
 			{/* Music bed under everything; SFX punch through it. */}
 			<Sound src='sfx/music.wav' volume={0.32} />

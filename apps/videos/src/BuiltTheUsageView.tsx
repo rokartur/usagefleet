@@ -454,19 +454,7 @@ export function BuiltTheUsageView() {
 			</Sequence>
 
 			{/* Voiceover + captions — one clip per scene, absolute frame positions. */}
-			<VoiceOver
-				clips={[
-					{ at: 6, src: 'vo/v3-s1.wav', text: 'I run Claude Code on three machines.' },
-					{ at: 86, src: 'vo/v3-s2.wav', text: 'Every time the limit moved, no idea which one did it.' },
-					{ at: 174, src: 'vo/v3-s3.wav', text: 'So I built the view I wanted.' },
-					{
-						at: 260,
-						src: 'vo/v3-s4.wav',
-						text: "Anthropic's official number, attributed across my own machines.",
-					},
-					{ at: 362, src: 'vo/v3-s5.wav', text: "Would you run this? Tell me what's missing." },
-				]}
-			/>
+			<VoiceOver video='BuiltTheUsageView' />
 
 			{/* Impact flashes ride the hit/stamp sfx. */}
 			<Impact at={40} />

@@ -11,6 +11,8 @@ import {
 	useCurrentFrame,
 	useVideoConfig,
 } from 'remotion'
+import type { VideoId } from './vo'
+import { CAMPAIGN, captionChunks } from './vo'
 
 export const COLORS = {
 	amber: '#f59e0b',
@@ -246,53 +248,11 @@ export function Camera({ children, duration }: { children: ReactNode; duration: 
 	return <AbsoluteFill style={{ transform: `scale(${scale})`, transformOrigin: '50% 44%' }}>{children}</AbsoluteFill>
 }
 
-// Burned-in captions. Chunk timing comes from the text alone: the edge-tts
-// voice at rate +12% measures ~16.5 chars/s across public/vo, so a duration
-// table would be one more thing to keep in sync for ~0.2s of accuracy.
-// ponytail: constant rate; move to word timings from whisper if lines drift.
-const CHARS_PER_SECOND = 16.5
-const CAPTION_MAX_CHARS = 24
-
-// Words grouped into short lines, with a hard break after sentence-ending
-// punctuation so beats like "No prompts." get their own card.
-function chunkCaption(text: string) {
-	const chunks: string[] = []
-	let current = ''
-
-	for (const word of text.split(' ')) {
-		const joined = current ? `${current} ${word}` : word
-		if (joined.length > CAPTION_MAX_CHARS && current) {
-			chunks.push(current)
-			current = word
-		} else {
-			current = joined
-		}
-		if (/[.?!]$/.test(current)) {
-			chunks.push(current)
-			current = ''
-		}
-	}
-	if (current) {
-		chunks.push(current)
-	}
-
-	return chunks
-}
-
+// Burned-in captions, timed by captionChunks in vo.ts — the same data the .srt
+// sidecars are written from.
 function CaptionTrack({ text }: { text: string }) {
 	const frame = useCurrentFrame()
-	const { fps } = useVideoConfig()
-
-	let from = 0
-	let active: { chunk: string; from: number } | undefined
-	for (const chunk of chunkCaption(text)) {
-		const to = from + Math.max(10, Math.round((chunk.length / CHARS_PER_SECOND) * fps))
-		if (frame < to) {
-			active = { chunk, from }
-			break
-		}
-		from = to
-	}
+	const active = captionChunks(text).find(chunk => frame < chunk.to)
 
 	if (!active) {
 		return null
@@ -319,13 +279,15 @@ function CaptionTrack({ text }: { text: string }) {
 				zIndex: 2,
 			}}
 		>
-			{active.chunk}
+			{active.text}
 		</div>
 	)
 }
 
 // Voiceover clip + its captions, so a line's audio and text can't drift apart.
-export function VoiceOver({ clips }: { clips: { at: number; src: string; text: string }[] }) {
+export function VoiceOver({ video }: { video: VideoId }) {
+	const clips = CAMPAIGN.find(entry => entry.id === video)?.clips ?? []
+
 	return (
 		<>
 			{clips.map(clip => (
