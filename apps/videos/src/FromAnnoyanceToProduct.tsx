@@ -21,6 +21,7 @@ import {
 	Surface,
 	UsageFleetMark,
 	VideoCanvas,
+	VoiceOver,
 } from './CampaignKit'
 
 // Bottom bias keeps the optical centre above TikTok's caption/action overlay.
@@ -144,7 +145,9 @@ function Day1Scene() {
 					<span style={{ background: '#ff5f57', borderRadius: 999, height: 10, width: 10 }} />
 					<span style={{ background: '#febc2e', borderRadius: 999, height: 10, width: 10 }} />
 					<span style={{ background: '#28c840', borderRadius: 999, height: 10, width: 10 }} />
-					<span style={{ color: COLORS.muted, fontSize: 19, marginLeft: 8 }}>collector · tailing local records</span>
+					<span style={{ color: COLORS.muted, fontSize: 19, marginLeft: 8 }}>
+						collector · tailing local records
+					</span>
 				</div>
 				<div style={{ padding: '22px 26px 26px' }}>
 					{LOG_ROWS.map((row, index) => {
@@ -251,7 +254,14 @@ function Day3Scene() {
 
 			<div style={{ display: 'grid', gap: 24, gridTemplateColumns: '1fr 1fr', marginTop: 74 }}>
 				<Surface style={{ minHeight: 560, padding: '30px 28px', ...popIn(frame, 6) }}>
-					<div style={{ color: COLORS.muted, fontSize: 20, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+					<div
+						style={{
+							color: COLORS.muted,
+							fontSize: 20,
+							letterSpacing: '0.08em',
+							textTransform: 'uppercase',
+						}}
+					>
 						Before
 					</div>
 					<div
@@ -269,7 +279,15 @@ function Day3Scene() {
 					<div style={{ marginTop: 28 }}>
 						<Meter delay={10} frame={frame} value={41} />
 					</div>
-					<div style={{ color: COLORS.muted, fontSize: 23, lineHeight: 1.45, marginTop: 44, textAlign: 'center' }}>
+					<div
+						style={{
+							color: COLORS.muted,
+							fontSize: 23,
+							lineHeight: 1.45,
+							marginTop: 44,
+							textAlign: 'center',
+						}}
+					>
 						Account used.
 						<br />
 						That is all.
@@ -309,16 +327,35 @@ function Day3Scene() {
 						>
 							After
 						</div>
-						<div style={{ display: 'grid', gap: 22, marginTop: 52, transform: `scale(${0.96 + snap * 0.04})` }}>
+						<div
+							style={{
+								display: 'grid',
+								gap: 22,
+								marginTop: 52,
+								transform: `scale(${0.96 + snap * 0.04})`,
+							}}
+						>
 							{[
 								['MacBook', 32, COLORS.indigo],
 								['Studio', 51, COLORS.emerald],
 								['Server', 17, COLORS.amber],
 							].map(([name, value, color], index) => (
 								<div key={name as string} style={{ opacity: progress(frame, 32 + index * 5, 12) }}>
-									<div style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
+									<div
+										style={{
+											alignItems: 'center',
+											display: 'flex',
+											justifyContent: 'space-between',
+										}}
+									>
 										<span style={{ fontSize: 25, fontWeight: 600 }}>{name}</span>
-										<span style={{ fontSize: 30, fontVariantNumeric: 'tabular-nums', fontWeight: 680 }}>
+										<span
+											style={{
+												fontSize: 30,
+												fontVariantNumeric: 'tabular-nums',
+												fontWeight: 680,
+											}}
+										>
 											{countTo(frame, value as number, 34 + index * 5, 18)}%
 										</span>
 									</div>
@@ -488,12 +525,16 @@ export function FromAnnoyanceToProduct() {
 				</Camera>
 			</Sequence>
 
-			{/* Voiceover — one clip per scene, absolute frame positions. */}
-			<Sound at={4} src='vo/v4-s1.wav' />
-			<Sound at={102} src='vo/v4-s2.wav' />
-			<Sound at={194} src='vo/v4-s3.wav' />
-			<Sound at={274} src='vo/v4-s4.wav' />
-			<Sound at={344} src='vo/v4-s5.wav' />
+			{/* Voiceover + captions — one clip per scene, absolute frame positions. */}
+			<VoiceOver
+				clips={[
+					{ at: 4, src: 'vo/v4-s1.wav', text: 'This product exists because of one very specific annoyance.' },
+					{ at: 102, src: 'vo/v4-s2.wav', text: 'Day one: collect counts, never conversations.' },
+					{ at: 194, src: 'vo/v4-s3.wav', text: 'Day three: the first split that actually answered it.' },
+					{ at: 274, src: 'vo/v4-s4.wav', text: 'The hard part? Not building everything else.' },
+					{ at: 344, src: 'vo/v4-s5.wav', text: 'One job. Building it in public. usagefleet.com' },
+				]}
+			/>
 
 			{/* Impact flashes ride the hit, the split reveal and the core-card slam. */}
 			<Impact at={8} color='rgba(245,158,11,0.18)' />

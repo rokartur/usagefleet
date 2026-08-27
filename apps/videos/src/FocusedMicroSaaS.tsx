@@ -22,6 +22,7 @@ import {
 	Surface,
 	UsageFleetMark,
 	VideoCanvas,
+	VoiceOver,
 } from './CampaignKit'
 
 // Bottom bias keeps the optical centre above TikTok's caption/action overlay.
@@ -96,7 +97,9 @@ function HookScene() {
 						<div style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
 							<div>
 								<div style={{ color: COLORS.muted, fontSize: 20 }}>{layer.label}</div>
-								<div style={{ fontSize: 30, fontWeight: 620, marginTop: 8 }}>Claude usage moved again</div>
+								<div style={{ fontSize: 30, fontWeight: 620, marginTop: 8 }}>
+									Claude usage moved again
+								</div>
 							</div>
 							<div
 								style={{
@@ -110,7 +113,14 @@ function HookScene() {
 							</div>
 						</div>
 						<div style={{ marginTop: 24 }}>
-							<Meter color={COLORS.indigo} delay={20} frame={frame} glow={layer.offset === 0} height={14} value={41} />
+							<Meter
+								color={COLORS.indigo}
+								delay={20}
+								frame={frame}
+								glow={layer.offset === 0}
+								height={14}
+								value={41}
+							/>
 						</div>
 					</Surface>
 				))}
@@ -509,12 +519,20 @@ export function FocusedMicroSaaS() {
 				</Camera>
 			</Sequence>
 
-			{/* Voiceover — one clip per scene, absolute frame positions. */}
-			<Sound at={6} src='vo/v5-s1.wav' />
-			<Sound at={84} src='vo/v5-s2.wav' />
-			<Sound at={170} src='vo/v5-s3.wav' />
-			<Sound at={278} src='vo/v5-s4.wav' />
-			<Sound at={364} src='vo/v5-s5.wav' />
+			{/* Voiceover + captions — one clip per scene, absolute frame positions. */}
+			<VoiceOver
+				clips={[
+					{ at: 6, src: 'vo/v5-s1.wav', text: "A micro-SaaS doesn't need a huge idea." },
+					{ at: 84, src: 'vo/v5-s2.wav', text: 'It needs a recurring irritation. Like this one.' },
+					{
+						at: 170,
+						src: 'vo/v5-s3.wav',
+						text: "Collector. Attribution. Dashboard. That's the whole product.",
+					},
+					{ at: 278, src: 'vo/v5-s4.wav', text: 'Not another giant AI platform. On purpose.' },
+					{ at: 364, src: 'vo/v5-s5.wav', text: 'Focused enough, or too narrow? You tell me.' },
+				]}
+			/>
 
 			{/* Impact flashes ride the hit and the deletion beats. */}
 			<Impact at={8} color='rgba(99,102,241,0.22)' />

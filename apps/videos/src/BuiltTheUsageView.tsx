@@ -21,6 +21,7 @@ import {
 	Sound,
 	Surface,
 	VideoCanvas,
+	VoiceOver,
 	clamp,
 } from './CampaignKit'
 
@@ -37,9 +38,7 @@ function HookScene() {
 	const frame = useCurrentFrame()
 	const duration = 90
 	// Meter rises in uneven steps — each machine's activity lands separately.
-	const total = Math.round(
-		interpolate(frame, [16, 22, 28, 34, 40, 46], [0, 12, 12, 29, 29, 41], { ...clamp })
-	)
+	const total = Math.round(interpolate(frame, [16, 22, 28, 34, 40, 46], [0, 12, 12, 29, 29, 41], { ...clamp }))
 	const kick = shake(frame, 40)
 	// Number swells on the final jump so the eye lands where the hit lands.
 	const swell = 1 + interpolate(frame, [40, 44, 54], [0, 0.16, 0], clamp)
@@ -127,13 +126,7 @@ function HookScene() {
 	)
 }
 
-function GuessCard({
-	color,
-	frame,
-	index,
-	kind,
-	name,
-}: (typeof SETUP)[number] & { frame: number; index: number }) {
+function GuessCard({ color, frame, index, kind, name }: (typeof SETUP)[number] & { frame: number; index: number }) {
 	const stamp = pop(frame, 18 + index * 16, 240)
 	const stamped = frame >= 18 + index * 16
 
@@ -256,7 +249,9 @@ function CollectorScene() {
 					<span style={{ background: '#28c840', borderRadius: 999, height: 10, width: 10 }} />
 					<span style={{ color: COLORS.muted, fontSize: 19, marginLeft: 8 }}>usagefleet watch</span>
 				</div>
-				<div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', padding: '24px 26px 28px' }}>
+				<div
+					style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', padding: '24px 26px 28px' }}
+				>
 					{TAIL_LINES.map((line, index) => {
 						const appear = pop(frame, 10 + index * 7)
 						return (
@@ -273,7 +268,9 @@ function CollectorScene() {
 								}}
 							>
 								<span style={{ color: 'rgba(255,255,255,0.76)' }}>{line.label}</span>
-								<span style={{ color: line.pass ? COLORS.text : 'rgba(255,255,255,0.22)' }}>{line.value}</span>
+								<span style={{ color: line.pass ? COLORS.text : 'rgba(255,255,255,0.22)' }}>
+									{line.value}
+								</span>
 								<span
 									style={{
 										color: line.pass ? COLORS.emerald : COLORS.red,
@@ -456,12 +453,20 @@ export function BuiltTheUsageView() {
 				</Camera>
 			</Sequence>
 
-			{/* Voiceover — one clip per scene, absolute frame positions. */}
-			<Sound at={6} src='vo/v3-s1.wav' />
-			<Sound at={86} src='vo/v3-s2.wav' />
-			<Sound at={174} src='vo/v3-s3.wav' />
-			<Sound at={260} src='vo/v3-s4.wav' />
-			<Sound at={362} src='vo/v3-s5.wav' />
+			{/* Voiceover + captions — one clip per scene, absolute frame positions. */}
+			<VoiceOver
+				clips={[
+					{ at: 6, src: 'vo/v3-s1.wav', text: 'I run Claude Code on three machines.' },
+					{ at: 86, src: 'vo/v3-s2.wav', text: 'Every time the limit moved, no idea which one did it.' },
+					{ at: 174, src: 'vo/v3-s3.wav', text: 'So I built the view I wanted.' },
+					{
+						at: 260,
+						src: 'vo/v3-s4.wav',
+						text: "Anthropic's official number, attributed across my own machines.",
+					},
+					{ at: 362, src: 'vo/v3-s5.wav', text: "Would you run this? Tell me what's missing." },
+				]}
+			/>
 
 			{/* Impact flashes ride the hit/stamp sfx. */}
 			<Impact at={40} />

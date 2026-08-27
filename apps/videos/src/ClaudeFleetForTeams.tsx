@@ -20,6 +20,7 @@ import {
 	Sound,
 	Surface,
 	VideoCanvas,
+	VoiceOver,
 } from './CampaignKit'
 
 // Bottom bias keeps the optical centre above TikTok's caption/action overlay.
@@ -204,7 +205,14 @@ function GroupsScene() {
 				padding: SCENE_PADDING,
 			}}
 		>
-			<div style={{ ...popIn(frame, 0, 24), alignItems: 'center', display: 'flex', justifyContent: 'space-between' }}>
+			<div
+				style={{
+					...popIn(frame, 0, 24),
+					alignItems: 'center',
+					display: 'flex',
+					justifyContent: 'space-between',
+				}}
+			>
 				<Pill>
 					<span style={{ background: COLORS.emerald, borderRadius: 999, height: 10, width: 10 }} />
 					UsageFleet · live
@@ -428,12 +436,16 @@ export function ClaudeFleetForTeams() {
 				</Camera>
 			</Sequence>
 
-			{/* Voiceover — one clip per scene, absolute frame positions. */}
-			<Sound at={8} src='vo/v6-s1.wav' />
-			<Sound at={86} src='vo/v6-s2.wav' />
-			<Sound at={166} src='vo/v6-s3.wav' />
-			<Sound at={264} src='vo/v6-s4.wav' />
-			<Sound at={375} src='vo/v6-s5.wav' />
+			{/* Voiceover + captions — one clip per scene, absolute frame positions. */}
+			<VoiceOver
+				clips={[
+					{ at: 8, src: 'vo/v6-s1.wav', text: 'Your team shares one Claude budget.' },
+					{ at: 86, src: 'vo/v6-s2.wav', text: 'Does anyone actually know where it goes?' },
+					{ at: 166, src: 'vo/v6-s3.wav', text: 'See the 5-hour and weekly window by group. Live.' },
+					{ at: 264, src: 'vo/v6-s4.wav', text: 'Alert at 80. Guard at 100. Offline? It fails open.' },
+					{ at: 375, src: 'vo/v6-s5.wav', text: 'Built for teams using Claude Code way too much.' },
+				]}
+			/>
 
 			{/* Impact flashes ride the hit and the threshold slams. */}
 			<Impact at={42} />

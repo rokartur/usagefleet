@@ -18,6 +18,7 @@ import {
 	Surface,
 	UsageFleetMark,
 	VideoCanvas,
+	VoiceOver,
 	clamp,
 } from './CampaignKit'
 
@@ -332,7 +333,13 @@ function DashboardScene() {
 								{item.value}%
 							</div>
 							<div style={{ marginTop: 12 }}>
-								<Meter color={COLORS.text} delay={item.delay} frame={frame} height={10} value={item.value} />
+								<Meter
+									color={COLORS.text}
+									delay={item.delay}
+									frame={frame}
+									height={10}
+									value={item.value}
+								/>
 							</div>
 							<div style={{ color: COLORS.muted, fontSize: 19, marginTop: 14 }}>
 								resets in {item.label === 'Weekly' ? '3d 8h' : '2h 13m'}
@@ -542,12 +549,20 @@ export function WhichMachineAteTheLimit() {
 				</Camera>
 			</Sequence>
 
-			{/* Voiceover — one clip per scene, absolute frame positions. */}
-			<Sound at={4} src='vo/v1-s1.wav' />
-			<Sound at={70} src='vo/v1-s2.wav' />
-			<Sound at={174} src='vo/v1-s3.wav' />
-			<Sound at={302} src='vo/v1-s4.wav' />
-			<Sound at={396} src='vo/v1-s5.wav' />
+			{/* Voiceover + captions — one clip per scene, absolute frame positions. */}
+			<VoiceOver
+				clips={[
+					{ at: 4, src: 'vo/v1-s1.wav', text: 'Claude limit: 100%.' },
+					{ at: 70, src: 'vo/v1-s2.wav', text: 'Which machine did it? Stop guessing.' },
+					{
+						at: 174,
+						src: 'vo/v1-s3.wav',
+						text: "UsageFleet splits Anthropic's official number across your machines. Live.",
+					},
+					{ at: 302, src: 'vo/v1-s4.wav', text: 'No prompts. No responses. No file contents.' },
+					{ at: 396, src: 'vo/v1-s5.wav', text: 'UsageFleet.com' },
+				]}
+			/>
 
 			{/* Music bed under everything; SFX punch through it. */}
 			<Sound src='sfx/music.wav' volume={0.32} />

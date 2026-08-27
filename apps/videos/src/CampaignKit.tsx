@@ -161,7 +161,9 @@ export function ProgressBar() {
 	const { durationInFrames } = useVideoConfig()
 
 	return (
-		<div style={{ background: 'rgba(255,255,255,0.14)', height: 5, left: 0, position: 'absolute', right: 0, top: 0 }}>
+		<div
+			style={{ background: 'rgba(255,255,255,0.14)', height: 5, left: 0, position: 'absolute', right: 0, top: 0 }}
+		>
 			<div
 				style={{
 					background: COLORS.text,
@@ -217,7 +219,16 @@ export function VideoCanvas({ children }: { children: ReactNode }) {
 // strip. Clips live in public/gameplay/, pre-cropped to 1080×560.
 export function GameplayStrip({ src }: { src: string }) {
 	return (
-		<div style={{ borderTop: `1px solid ${COLORS.border}`, bottom: 0, height: 560, left: 0, position: 'absolute', right: 0 }}>
+		<div
+			style={{
+				borderTop: `1px solid ${COLORS.border}`,
+				bottom: 0,
+				height: 560,
+				left: 0,
+				position: 'absolute',
+				right: 0,
+			}}
+		>
 			<OffthreadVideo muted src={staticFile(src)} style={{ height: '100%', objectFit: 'cover', width: '100%' }} />
 		</div>
 	)
@@ -232,8 +243,98 @@ export function Camera({ children, duration }: { children: ReactNode; duration: 
 	const exit = progress(frame, duration - 10, 10)
 	const scale = (1.08 - punch * 0.08) * interpolate(frame, [0, duration], [1, 1.04], clamp) * (1 + exit * 0.05)
 
+	return <AbsoluteFill style={{ transform: `scale(${scale})`, transformOrigin: '50% 44%' }}>{children}</AbsoluteFill>
+}
+
+// Burned-in captions. Chunk timing comes from the text alone: the edge-tts
+// voice at rate +12% measures ~16.5 chars/s across public/vo, so a duration
+// table would be one more thing to keep in sync for ~0.2s of accuracy.
+// ponytail: constant rate; move to word timings from whisper if lines drift.
+const CHARS_PER_SECOND = 16.5
+const CAPTION_MAX_CHARS = 24
+
+// Words grouped into short lines, with a hard break after sentence-ending
+// punctuation so beats like "No prompts." get their own card.
+function chunkCaption(text: string) {
+	const chunks: string[] = []
+	let current = ''
+
+	for (const word of text.split(' ')) {
+		const joined = current ? `${current} ${word}` : word
+		if (joined.length > CAPTION_MAX_CHARS && current) {
+			chunks.push(current)
+			current = word
+		} else {
+			current = joined
+		}
+		if (/[.?!]$/.test(current)) {
+			chunks.push(current)
+			current = ''
+		}
+	}
+	if (current) {
+		chunks.push(current)
+	}
+
+	return chunks
+}
+
+function CaptionTrack({ text }: { text: string }) {
+	const frame = useCurrentFrame()
+	const { fps } = useVideoConfig()
+
+	let from = 0
+	let active: { chunk: string; from: number } | undefined
+	for (const chunk of chunkCaption(text)) {
+		const to = from + Math.max(10, Math.round((chunk.length / CHARS_PER_SECOND) * fps))
+		if (frame < to) {
+			active = { chunk, from }
+			break
+		}
+		from = to
+	}
+
+	if (!active) {
+		return null
+	}
+	const p = progress(frame, active.from, 4)
+
 	return (
-		<AbsoluteFill style={{ transform: `scale(${scale})`, transformOrigin: '50% 44%' }}>{children}</AbsoluteFill>
+		<div
+			style={{
+				// Over the gameplay strip (top y 1360), clear of TikTok's own UI.
+				bottom: 440,
+				fontSize: 54,
+				fontWeight: 720,
+				left: 72,
+				letterSpacing: '-0.035em',
+				lineHeight: 1.12,
+				position: 'absolute',
+				right: 72,
+				textAlign: 'center',
+				textShadow: '0 4px 26px rgba(0,0,0,0.85), 0 1px 3px rgba(0,0,0,0.9)',
+				textWrap: 'balance',
+				transform: `scale(${0.96 + p * 0.04})`,
+				// Above GameplayStrip, which mounts later in the tree.
+				zIndex: 2,
+			}}
+		>
+			{active.chunk}
+		</div>
+	)
+}
+
+// Voiceover clip + its captions, so a line's audio and text can't drift apart.
+export function VoiceOver({ clips }: { clips: { at: number; src: string; text: string }[] }) {
+	return (
+		<>
+			{clips.map(clip => (
+				<Sequence key={clip.src} from={clip.at}>
+					<Audio src={staticFile(clip.src)} />
+					<CaptionTrack text={clip.text} />
+				</Sequence>
+			))}
+		</>
 	)
 }
 
