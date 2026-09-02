@@ -2,7 +2,13 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { looksLikeCompiledBinary, shadowingBinary, windowsLauncherVbs, windowsTaskXml } from './service.js'
+import {
+	looksLikeCompiledBinary,
+	shadowingBinary,
+	stableNodePath,
+	windowsLauncherVbs,
+	windowsTaskXml,
+} from './service.js'
 
 describe(shadowingBinary, () => {
 	// npm's global bin is a symlink into the package, so the install being checked
@@ -34,6 +40,46 @@ describe(shadowingBinary, () => {
 
 		expect(shadowingBinary([old, npm].join(delimiter), self)).toBe(join(old, 'usagefleet'))
 		expect(shadowingBinary([npm, old].join(delimiter), self)).toBeNull()
+	})
+})
+
+describe(stableNodePath, () => {
+	// `brew upgrade node` deletes the old keg, and a service definition pointing
+	// into it can never be spawned again. The opt link is the name brew maintains.
+	it('swaps a Homebrew keg path for the formula opt link', () => {
+		const prefix = mkdtempSync(join(tmpdir(), 'uf-brew-'))
+		const keg = join(prefix, 'Cellar', 'node', '26.7.0')
+		mkdirSync(join(keg, 'bin'), { recursive: true })
+		writeFileSync(join(keg, 'bin', 'node'), 'node')
+		mkdirSync(join(prefix, 'opt'))
+		symlinkSync(keg, join(prefix, 'opt', 'node'))
+
+		expect(stableNodePath(join(keg, 'bin', 'node'))).toBe(join(prefix, 'opt', 'node', 'bin', 'node'))
+	})
+
+	it('keeps a versioned formula on its own opt link', () => {
+		const prefix = mkdtempSync(join(tmpdir(), 'uf-brew-'))
+		const keg = join(prefix, 'Cellar', 'node@22', '22.14.0')
+		mkdirSync(join(keg, 'bin'), { recursive: true })
+		writeFileSync(join(keg, 'bin', 'node'), 'node')
+		mkdirSync(join(prefix, 'opt'))
+		symlinkSync(keg, join(prefix, 'opt', 'node@22'))
+
+		expect(stableNodePath(join(keg, 'bin', 'node'))).toBe(join(prefix, 'opt', 'node@22', 'bin', 'node'))
+	})
+
+	it('leaves a keg path alone when brew has no opt link for it', () => {
+		const prefix = mkdtempSync(join(tmpdir(), 'uf-brew-'))
+		const exec = join(prefix, 'Cellar', 'node', '26.7.0', 'bin', 'node')
+
+		expect(stableNodePath(exec)).toBe(exec)
+	})
+
+	// nvm and friends keep every installed version, so their paths stay valid.
+	it('leaves other managers untouched', () => {
+		const nvm = '/Users/me/.nvm/versions/node/v26.7.0/bin/node'
+		expect(stableNodePath(nvm)).toBe(nvm)
+		expect(stableNodePath('/usr/local/bin/node')).toBe('/usr/local/bin/node')
 	})
 })
 

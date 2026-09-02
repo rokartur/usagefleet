@@ -174,8 +174,13 @@ User-scoped on every OS, never root: launchd `LaunchAgents` plist (macOS),
 systemd `--user` unit (Linux), Scheduled Task at logon driven by a hidden VBS
 launcher (Windows, because a compiled console binary would flash a window).
 Installs resolve the binary through a stable bin dir, since the service starts
-with a nearly empty PATH. `uninstall` removes the agent/unit/task, the guard
-hook and the pi guard extension.
+with a nearly empty PATH. The node baked into the definition is Homebrew's
+`<prefix>/opt/node/bin/node` link rather than the versioned keg `execPath`
+reports (`stableNodePath`): `brew upgrade` deletes the old keg, the running
+collector survives on its open file, and the first time it stops launchd can
+never spawn it again (`EX_CONFIG`) — the machine then drops off the fleet with
+no error anywhere but `launchctl print`. `uninstall` removes the
+agent/unit/task, the guard hook and the pi guard extension.
 
 ## Self-update
 

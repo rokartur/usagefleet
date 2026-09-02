@@ -73,19 +73,20 @@ export function looksLikeCompiledBinary(scriptPath: string | undefined, execPath
 	return false
 }
 
+function real(p: string): string {
+	try {
+		return realpathSync(p)
+	} catch {
+		return p
+	}
+}
+
 /** The `usagefleet` a shell would run, when that is NOT this install — e.g. the
  *  standalone binary a pre-npm release left in /usr/local/bin, which sits ahead
  *  of the npm prefix on most PATHs and would keep answering after an upgrade.
  *  Only the first hit matters: that is the one the shell picks. */
 export function shadowingBinary(pathEnv: string | undefined, self: string): string | null {
 	const name = process.platform === 'win32' ? 'usagefleet.exe' : 'usagefleet'
-	const real = (p: string): string => {
-		try {
-			return realpathSync(p)
-		} catch {
-			return p
-		}
-	}
 	for (const dir of (pathEnv || '').split(delimiter).filter(Boolean)) {
 		const candidate = join(dir, name)
 		if (existsSync(candidate)) {
@@ -93,6 +94,27 @@ export function shadowingBinary(pathEnv: string | undefined, self: string): stri
 		}
 	}
 	return null
+}
+
+/** The node path to bake into the service definition. `execPath` is the real
+ *  binary, and under Homebrew that is a versioned keg
+ *  (`/opt/homebrew/Cellar/node/26.7.0/bin/node`) which the next `brew upgrade`
+ *  deletes. The running collector survives on its open file, but the moment it
+ *  stops launchd can no longer spawn it (EX_CONFIG, penalty box) and the
+ *  machine silently drops off the fleet until the next `login` — every prompt
+ *  it sends from then on reads as unattributed. Brew keeps
+ *  `<prefix>/opt/<formula>` pointing at the formula's current keg, so that name
+ *  is what survives. Not verified against `execPath`: after an upgrade the two
+ *  differ by design, and the version brew now links is the one to run. Other
+ *  managers (nvm, fnm, asdf) keep old versions installed, so their versioned
+ *  paths are left alone. */
+export function stableNodePath(execPath: string): string {
+	const keg = /^(.*)\/Cellar\/(node(?:@[^/]+)?)\/[^/]+\/bin\/node$/.exec(execPath)
+	if (!keg) {
+		return execPath
+	}
+	const stable = join(keg[1], 'opt', keg[2], 'bin', 'node')
+	return existsSync(stable) ? stable : execPath
 }
 
 /** Program + leading args to launch `watch`. npm installs a script, so this is
@@ -105,7 +127,7 @@ function programArgs(): string[] {
 		// re-invokable script, so the service launches the executable itself.
 		return [process.execPath, 'watch']
 	}
-	return [process.execPath, script as string, 'watch']
+	return [stableNodePath(process.execPath), script as string, 'watch']
 }
 
 function macPlistPath(): string {
