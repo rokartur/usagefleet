@@ -58,7 +58,8 @@ shell once. `uninstall` removes both again, and self-update keeps them current.
 - **Token usage** — Claude Code (`~/.claude/projects/**/*.jsonl`), Claude
   Desktop agent-mode (Cowork) sessions, and the
   [pi](https://github.com/badlogic/pi-mono) agent (`~/.pi/agent/sessions`,
-  Anthropic-provider records only; other providers don't touch Claude limits).
+  `anthropic` and `claude-bridge` provider records only; other providers don't
+  touch Claude limits).
   A per-file byte offset in the config file means each line is sent once;
   rotation and truncation are handled and partial lines are never sent. Delivery
   is at-least-once — the server dedups on `uuid`.

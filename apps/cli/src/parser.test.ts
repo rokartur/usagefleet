@@ -72,7 +72,7 @@ describe(parseLine, () => {
 		expect(r.cacheCreation1h).toBeNull()
 	})
 
-	it('parses pi agent lines, keeping only anthropic-provider usage', () => {
+	it('parses pi agent lines, keeping only usage that hits the Claude account', () => {
 		const piLine = (provider: string) =>
 			JSON.stringify({
 				id: '0f442440',
@@ -96,6 +96,8 @@ describe(parseLine, () => {
 		expect(r.cacheCreationTokens).toBe(50)
 		expect(r.cacheReadTokens).toBe(12_800)
 		expect(r.source).toBe('pi')
+		// claude-bridge goes through Claude Code's login, so it burns the same limits
+		expect(parseLine(piLine('claude-bridge'), 'pi')?.model).toBe('claude-opus-5')
 		// other providers don't touch the Claude account
 		expect(parseLine(piLine('openai-codex'), 'pi')).toBeNull()
 		// a Claude Code line read with source "pi" must not parse (wrong schema)

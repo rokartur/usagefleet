@@ -39,7 +39,10 @@ function cacheCreation(u: RawUsage): { total: number; five: number | null; oneHo
 
 /** pi agent session line: `{type:"message", id, timestamp, message:{role:"assistant",
  *  provider, model, responseId, usage:{input, output, cacheRead, cacheWrite}}}`.
- *  Only provider "anthropic" hits the user's Claude account — other providers
+ *  Only requests that land on the user's Claude subscription count: provider
+ *  "anthropic" (pi's own client) and "claude-bridge" (the extension that routes
+ *  through Claude Code's OAuth login, so it burns the same limits — and writes no
+ *  responseId, so those lines key by id+timestamp). Other providers
  *  (openai-codex, openrouter, …) are skipped. `output` already includes reasoning
  *  tokens (totalTokens = input + output + cacheRead + cacheWrite).
  *  The line carries no working directory; `sessionCwd` comes from the file's
@@ -62,7 +65,7 @@ function parsePiLine(o: Record<string, unknown>, sessionCwd: string | null): Usa
 				}
 		  }
 		| undefined
-	if (!m || m.role !== 'assistant' || m.provider !== 'anthropic') {
+	if (!m || m.role !== 'assistant' || (m.provider !== 'anthropic' && m.provider !== 'claude-bridge')) {
 		return null
 	}
 	const u = m.usage

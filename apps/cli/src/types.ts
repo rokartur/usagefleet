@@ -7,7 +7,7 @@ export type OsName = 'mac' | 'linux' | 'windows' | 'other'
  *  `desktop` = Claude Desktop agent-mode/Cowork sessions (same JSONL format under
  *  the app's `local-agent-mode-sessions/<session>/.claude/projects`);
  *  `pi` = the pi coding agent (`~/.pi/agent/sessions`, its own JSONL format —
- *  only records with provider "anthropic" count against Claude limits). */
+ *  only providers "anthropic" and "claude-bridge" count against Claude limits). */
 export type UsageSource = 'cli' | 'desktop' | 'pi'
 
 /** Wire record sent to POST /api/v1/usage. Field names match the server's
