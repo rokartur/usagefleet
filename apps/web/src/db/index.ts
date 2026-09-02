@@ -12,6 +12,19 @@ const connectionString =
 			})()
 		: 'postgresql://app:app@localhost:5432/app')
 
+// A stray DATABASE_URL in the shell outranks .env, so a local `vite dev` can
+// silently sign users up in the deployed database. Refuse a non-local host in
+// development rather than discover it from the rows afterwards. Tests import
+// this module for its types and never open the socket, so they are exempt.
+if (process.env.NODE_ENV === 'development' && process.env.ALLOW_REMOTE_DB !== '1') {
+	const { hostname } = new URL(connectionString)
+	if (hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== 'db') {
+		throw new Error(
+			`Refusing to run in development against ${hostname}. Point DATABASE_URL at localhost, or set ALLOW_REMOTE_DB=1 if you meant it.`,
+		)
+	}
+}
+
 // Reuse a single client across hot-reloads in dev.
 // max 10 matches one standalone server; connect/idle timeouts avoid hung sockets
 // against managed Postgres. SSL is taken from the URL (e.g. ?sslmode=require).

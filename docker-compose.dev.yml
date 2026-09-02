@@ -1,5 +1,14 @@
 ---
+# Override, not a standalone file. Host-side development is
+# `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db`
+# followed by `bun run dev` on the host.
 services:
+  db:
+    # The base file keeps Postgres off the host on purpose. `vite dev` runs
+    # outside the compose network, so here the port has to be published.
+    ports:
+      - "${DB_PORT:-5432}:5432"
+
   web:
     # Own tag: sharing the default one with the production build makes
     # `docker compose up` reuse whichever image was built last.

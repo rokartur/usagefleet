@@ -163,7 +163,10 @@ varies with seats. Prices live in Stripe, never in the catalog.
 
 ## Local development
 
-`docker compose -f docker-compose.dev.yml up` for Postgres, then `bun run dev`.
+`docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db` for
+Postgres on `localhost:5432`, then `bun run dev`. Point `DATABASE_URL` at that
+local instance: a `.env` aimed at the deployed database makes every local signup
+and every agent-driven experiment a production write.
 Schema changes are always a committed migration: `bun run db:generate`, then
 `bun run db:migrate` locally (the container runs it at boot). Commands live in
 `package.json`; env in `.env.example`.
