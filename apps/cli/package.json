@@ -1,6 +1,6 @@
 {
 	"name": "@usagefleet/cli",
-	"version": "1.2.110",
+	"version": "1.2.111",
 	"description": "Tails Claude Code, Claude Desktop, and pi agent JSONL logs and reports token usage to a UsageFleet server.",
 	"keywords": [
 		"claude",
