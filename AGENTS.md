@@ -49,7 +49,7 @@ Break one of these and the product silently reports wrong numbers or leaks acces
   gate is the invariant. Never ship weights without it: a fleet whose rises come
   from machines outside it will happily fit noise. The gate only means something
   if the fit reads the series the split reads, so both go through `mergePoints()`
-  and both apply `lagMs`; every consumer of a split (live cards *and* the
+  and both place events with `anchorTs()` and `lagMs`; every consumer of a split (live cards *and* the
   past-windows card) uses the same weights, or one window reads two ways.
 - **Everything limit-shaped is per Anthropic account, not per user.** Anthropic
   meters each subscription separately, so percentages live on `claude_account`

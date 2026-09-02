@@ -6,6 +6,11 @@ export interface UsageRecord {
 	requestId: string | null
 	model: string | null
 	ts: Date
+	/** When the message's first streamed segment was written, i.e. about when
+	 *  the request started; `ts` is the last segment, the response's end. Set by
+	 *  the fold. Absent on raw rows and ingest records, where `ts` is the only
+	 *  instant known. */
+	startedAt?: Date
 	inputTokens: number
 	outputTokens: number
 	cacheCreationTokens: number

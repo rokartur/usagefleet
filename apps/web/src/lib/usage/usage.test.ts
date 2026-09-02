@@ -79,6 +79,10 @@ describe('fold', () => {
 		expect(folded).toHaveLength(1)
 		expect(folded[0].uuid).toBe('u1c')
 		expect(recordTotal(folded[0])).toBe(6 + 312 + 13_240 + 17_499) // 31057
+		// The last segment's time is the response's end; the first's is its start.
+		expect(folded[0].ts.toISOString()).toBe('2026-06-18T10:15:02.000Z')
+		expect(folded[0].startedAt?.toISOString()).toBe('2026-06-18T10:15:00.000Z')
+		expect(foldEvents(folded)[0].startedAt?.toISOString()).toBe('2026-06-18T10:15:00.000Z')
 	})
 
 	it('folds lines without a messageId by uuid', () => {

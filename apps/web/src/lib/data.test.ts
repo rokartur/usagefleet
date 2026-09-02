@@ -371,6 +371,26 @@ describe(splitByShare, () => {
 		expect(lagged.get('b')?.exactPct).toBe(0)
 	})
 
+	it('places a long response at its start when the fitted anchor says so', () => {
+		// a's response streamed from 10:58 to 11:03 and the 20pp it cost surfaced at
+		// the 11:00 reading, while b sent one small prompt. Anchored at its end (the
+		// default) a's cost lands after the rise, which then reads as b's; anchored at
+		// its start, as this account's fit found, the rise splits by cost inside the
+		// interval and is almost entirely a's.
+		const events = [
+			{
+				...ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T11:03:00Z')),
+				startedAt: new Date('2026-06-18T10:58:00Z'),
+			},
+			ev('b', 'claude-sonnet-4', 1000, new Date('2026-06-18T10:59:00Z')),
+		]
+		const points = [pt('2026-06-18T10:57:00Z', 0), pt('2026-06-18T11:00:00Z', 20)]
+		expect(splitByShare(events, WIN_START, NOW, 20, '5m', points).get('b')?.exactPct).toBeCloseTo(20, 6)
+		const s = splitByShare(events, WIN_START, NOW, 20, '5m', points, calibrated({ anchor: 'start' }))
+		expect(s.get('a')?.exactPct).toBeCloseTo((20 * 1_000_000) / 1_001_000, 6)
+		expect(s.get('b')?.exactPct).toBeCloseTo((20 * 1000) / 1_001_000, 6)
+	})
+
 	it('caps a backlogged device at the rises of the intervals it worked in', () => {
 		// Why per-model limits record change points too: `late` uploads a day's worth
 		// of events at once, dwarfing `live` on cost. Whole-window cost share lets that

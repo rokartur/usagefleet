@@ -81,6 +81,25 @@ describe(fitCalibration, () => {
 		expect(recovered / (truth.output / truth.cacheRead)).toBeLessThan(1.25)
 		expect(fit!.mape).toBeLessThan(fit!.baselineMape * 0.9)
 		expect(fit!.lagMs).toBe(0)
+		// Nothing here spans an interval, so the two anchors tie and the default holds.
+		expect(fit!.anchor).toBe('end')
+	})
+
+	it('anchors cost at the request start when the rises follow starts, not ends', () => {
+		const truth: BucketWeights = { cacheRead: 0.02, cacheWrite: 0.5, input: 1, output: 1.4 }
+		const stride = 10 * 60_000
+		const { events, points } = history(truth, 60, stride)
+		// Every response streams for a whole interval: it starts where the fixture put
+		// it and ends one interval later. The meter moved at the start, so pairing
+		// rises with ends (at any non-negative lag) misreads every interval.
+		const long = events.map(e => ({ ...e, startedAt: e.ts, ts: new Date(e.ts.getTime() + stride) }))
+		const fit = fitCalibration(points, long, '5m')
+		expect(fit).not.toBeNull()
+		expect(fit!.anchor).toBe('start')
+		expect(fit!.lagMs).toBe(0)
+		const recovered = fit!.weights.output / fit!.weights.cacheRead
+		expect(recovered / (truth.output / truth.cacheRead)).toBeGreaterThan(0.8)
+		expect(recovered / (truth.output / truth.cacheRead)).toBeLessThan(1.25)
 	})
 
 	it('keeps list prices when the rises have nothing to do with the fleet', () => {

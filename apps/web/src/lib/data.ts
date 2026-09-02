@@ -14,6 +14,7 @@ import {
 import type { ClaudeAccount as ClaudeAccountRow, LimitWindow, PointWindow, StoredModelLimit } from '@/db/schema'
 import { createPromiseCache } from '@/lib/promise-cache'
 import {
+	anchorTs,
 	billableTokens,
 	costBuckets,
 	costForTokens,
@@ -116,6 +117,7 @@ export async function loadRecentEvents(
       ${usageEvents.model} AS model,
       ${usageEvents.source} AS source,
       ${usageEvents.ts} AS ts,
+      MIN(${usageEvents.ts}) OVER (PARTITION BY ${FOLD_KEY}) AS started_at,
       ${usageEvents.deviceId} AS device_id,
       d.group_id AS group_id,
       ${usageEvents.inputTokens} AS input_tokens,
@@ -147,6 +149,7 @@ export async function loadRecentEvents(
 		// i.e. on every dashboard load. int4 does arrive as a number, so it is not
 		// wrapped.
 		ts: string | Date
+		started_at: string | Date
 		device_id: string | null
 		group_id: string | null
 		input_tokens: number
@@ -171,6 +174,7 @@ export async function loadRecentEvents(
 		outputTokens: r.output_tokens,
 		requestId: r.request_id,
 		source: r.source,
+		startedAt: new Date(r.started_at),
 		ts: new Date(r.ts),
 		uuid: r.uuid,
 	}))
@@ -500,7 +504,9 @@ function riseWeights(
 			bounds.push({ at: nowMs, pct: targetPct })
 		}
 	}
-	const events = timeline.toSorted((a, b) => a.ts - b.ts)
+	// Anchored at its start, a message that straddled the reset belongs to the
+	// window it started in; the window filter upstream only sees its end.
+	const events = timeline.filter(e => e.ts >= startMs).toSorted((a, b) => a.ts - b.ts)
 	const weights = new Map<string | null, number>()
 	let totalRise = 0
 	let i = 0
@@ -591,7 +597,7 @@ export function splitByShare(
 	const totalByKey = new Map<string | null, number>()
 	const costByKey = new Map<string | null, number>()
 	const modelsByKey = new Map<string | null, ModelUsage[]>()
-	// Per-message cost with its timestamp, across all keys — what riseWeights
+	// Per-message cost at its anchored instant, across all keys — what riseWeights
 	// slices into attribution intervals.
 	const timeline: { ts: number; key: string | null; cost: number }[] = []
 	let totalCost = 0
@@ -608,7 +614,7 @@ export function splitByShare(
 		for (const e of folded) {
 			const c = calibration ? weightedCost(costBuckets(e, e.model, ttl), calibration.weights) : costUsd(e, ttl)
 			cost += c
-			timeline.push({ cost: c, key: k, ts: e.ts.getTime() })
+			timeline.push({ cost: c, key: k, ts: anchorTs(e, calibration?.anchor) })
 		}
 		costByKey.set(k, cost)
 		// `folded`, not `evs`: modelBreakdown folds internally anyway, so handing it

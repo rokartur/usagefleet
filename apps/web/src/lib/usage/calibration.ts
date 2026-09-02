@@ -10,6 +10,21 @@ import type { UsageRecord } from './types'
  *  does — so an account with enough of its own history fits its own. */
 export type BucketWeights = CostBuckets
 
+/** Which instant of a message its cost sits at when matched against a rise. A
+ *  folded message spans its first segment (`startedAt`, about when the request
+ *  began) to its last (`ts`, when the response finished). Where inside that
+ *  span Anthropic's meter moves is not documented, and for a response longer
+ *  than the reading interval the two ends land in different intervals — so the
+ *  account's own rises pick, like the lag. `end` is what the split did before
+ *  there was a choice, so an absent field reads as `end`. */
+export type CostAnchor = 'start' | 'end'
+
+/** The instant `anchor` places a message at. Shared by the split and the fit
+ *  so a fit can only certify the placement the split then uses. */
+export function anchorTs(e: UsageRecord, anchor: CostAnchor | undefined): number {
+	return (anchor === 'start' ? (e.startedAt ?? e.ts) : e.ts).getTime()
+}
+
 /** What one account's recorded history says about how Anthropic meters it.
  *  Only stored when it beats list prices on data it was not fitted to, so a
  *  fleet whose rises are driven by machines outside it keeps the plain split
@@ -26,6 +41,8 @@ export interface Calibration {
 	 *  Picked by held-out error like everything else, so it stays 0 unless a
 	 *  delay actually shows in the data. */
 	lagMs: number
+	/** See {@link CostAnchor}; absent on fits stored before it existed. */
+	anchor?: CostAnchor
 	/** Held-out mean absolute percentage error of the fitted weights. */
 	mape: number
 	weights: BucketWeights
@@ -37,6 +54,11 @@ const BUCKETS = ['input', 'output', 'cacheWrite', 'cacheRead'] as const
  *  in an interval whose events have long since ended, which delta attribution
  *  cannot represent anyway. */
 const LAGS_MS = [0, 60_000, 120_000, 180_000]
+
+/** `end` first: a later candidate must strictly beat the incumbent, so on
+ *  history where the two cannot be told apart (every response inside one
+ *  interval) the split keeps its pre-anchor placement. */
+const ANCHORS: CostAnchor[] = ['end', 'start']
 
 /** Below this many rises the held-out slice is a handful of points and its
  *  error says more about which day the split fell on than about the weights. */
@@ -185,57 +207,60 @@ export function fitCalibration(
 	// of what actually ships rather than of a full-resolution series production
 	// never sees.
 	const merged = mergePoints(points)
-	// Priced once, outside the lag loop: the lag moves the interval bounds, not
-	// the events.
-	const priced = events
-		.map(e => ({ b: costBuckets(e, e.model, ttl), ts: e.ts.getTime() }))
-		.toSorted((a, b) => a.ts - b.ts)
+	// Priced once, outside the search: the anchor and the lag move where an event
+	// sits, not what it costs.
+	const priced = events.map(e => ({ b: costBuckets(e, e.model, ttl), e }))
 	let best: Calibration | null = null
-	// Each lag scores on its own held-out slice, so lags are ranked by their gain
-	// over list prices rather than by raw error; seeding the best gain with the
-	// gate makes "good enough to store" and "better than the last lag" one test.
+	// Each candidate scores on its own held-out slice, so candidates are ranked by
+	// their gain over list prices rather than by raw error; seeding the best gain
+	// with the gate makes "good enough to store" and "better than the last
+	// candidate" one test.
 	let bestGain = REQUIRED_GAIN
-	for (const lagMs of LAGS_MS) {
-		const samples = samplesFor(merged, priced, lagMs)
-		if (samples.length < MIN_SAMPLES) {
-			continue
-		}
-		// Split by time, not at random: the question is whether weights fitted on
-		// what an account did last week still describe what it does today.
-		const cut = Math.floor(samples.length * TRAIN_FRACTION)
-		const train = samples.slice(0, cut)
-		const test = samples.slice(cut)
-		if (test.length === 0) {
-			continue
-		}
-		const actual = test.map(s => s.rise)
-		const k = scalarFit(train)
-		const fitted = nnls(
-			train.map(s => s.buckets),
-			train.map(s => s.rise),
-			k * MAX_BUCKET_MULTIPLE,
-		)
-		const error = mape(
-			test.map(s => s.buckets.reduce((a, v, j) => a + v * fitted[j], 0)),
-			actual,
-		)
-		const baseline = mape(
-			test.map(s => k * s.buckets.reduce((a, b) => a + b, 0)),
-			actual,
-		)
-		// A baseline that is already exact leaves nothing to gain and no ratio to
-		// rank by.
-		if (baseline <= 0 || error / baseline >= bestGain) {
-			continue
-		}
-		bestGain = error / baseline
-		const [input, output, cacheWrite, cacheRead] = fitted // BUCKETS order
-		best = {
-			at: now.toISOString(),
-			baselineMape: baseline,
-			lagMs,
-			mape: error,
-			weights: { cacheRead, cacheWrite, input, output },
+	for (const anchor of ANCHORS) {
+		const anchored = priced.map(p => ({ b: p.b, ts: anchorTs(p.e, anchor) })).toSorted((a, b) => a.ts - b.ts)
+		for (const lagMs of LAGS_MS) {
+			const samples = samplesFor(merged, anchored, lagMs)
+			if (samples.length < MIN_SAMPLES) {
+				continue
+			}
+			// Split by time, not at random: the question is whether weights fitted on
+			// what an account did last week still describe what it does today.
+			const cut = Math.floor(samples.length * TRAIN_FRACTION)
+			const train = samples.slice(0, cut)
+			const test = samples.slice(cut)
+			if (test.length === 0) {
+				continue
+			}
+			const actual = test.map(s => s.rise)
+			const k = scalarFit(train)
+			const fitted = nnls(
+				train.map(s => s.buckets),
+				train.map(s => s.rise),
+				k * MAX_BUCKET_MULTIPLE,
+			)
+			const error = mape(
+				test.map(s => s.buckets.reduce((a, v, j) => a + v * fitted[j], 0)),
+				actual,
+			)
+			const baseline = mape(
+				test.map(s => k * s.buckets.reduce((a, b) => a + b, 0)),
+				actual,
+			)
+			// A baseline that is already exact leaves nothing to gain and no ratio to
+			// rank by.
+			if (baseline <= 0 || error / baseline >= bestGain) {
+				continue
+			}
+			bestGain = error / baseline
+			const [input, output, cacheWrite, cacheRead] = fitted // BUCKETS order
+			best = {
+				anchor,
+				at: now.toISOString(),
+				baselineMape: baseline,
+				lagMs,
+				mape: error,
+				weights: { cacheRead, cacheWrite, input, output },
+			}
 		}
 	}
 	return best

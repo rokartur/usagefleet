@@ -12,7 +12,9 @@ double-counts by a large factor.
 
 `foldEvents()` keys by `(messageId, requestId)` — falling back to the row's own
 `uuid` — and keeps the row with the **largest** total, i.e. the terminal segment.
-`sumTokens()` is for already-folded input only.
+Its `ts` is therefore the response's end; the first segment's time survives as
+`startedAt` (`MIN(ts) OVER` the fold key in `loadRecentEvents`), which is about
+when the request started. `sumTokens()` is for already-folded input only.
 
 SQL aggregates do the same fold in-database (`loadRecentEvents`,
 `loadDailyAggregates`, `loadWindowAggregates`, `getProjectUsage`):
@@ -112,6 +114,12 @@ in the morning. Details that matter:
   corrected by a stale offset. Unmeasurable
   drift (collector too old to send `sentAt`, offset too large to be a clock)
   holds the last known value and the future-clamp stays as the guard.
+- A message is placed at one instant when matched against a rise: its end by
+  default, its start when the account's calibration says so (`anchorTs`). The
+  two differ only for a response that streamed across a reading, but those are
+  the expensive ones, and with the wrong anchor their rise lands in an interval
+  with no events and reads as unattributed. Which end Anthropic's meter moves
+  at is not documented, so it is fitted, not guessed.
 - Every rise is stored; readings closer than **one minute** merge into one
   interval at read time. A minute is the collector's poll period, so two
   readings inside it are one moment seen by two machines. This used to be five
@@ -151,8 +159,8 @@ limits post — there is no scheduler, and reports arrive every minute anyway).
 Each interval between two change points is a labelled example: Anthropic's own
 rise, against the list-price cost of what the fleet did in between, split into
 four buckets (input, output, cache write, cache read). Non-negative least
-squares fits one multiplier per bucket, plus a meter lag chosen from the same
-candidates. On the account this was developed against, that halves held-out
+squares fits one multiplier per bucket, plus a meter lag and a cost anchor
+(response start or end) chosen by the same held-out score. On the account this was developed against, that halves held-out
 error versus list prices (35% → 18% MAPE), almost entirely by discovering that
 **cache reads barely move the limit at all** — the price list charges them 1/50
 of an output token, the meter closer to 1/800.

@@ -16,15 +16,21 @@ export function recordTotal(t: TokenCounts): number {
  * (messageId, requestId) and keep the row with the largest token total — the
  * terminal/most-complete segment. Lines without a messageId fall back to their
  * unique uuid (already 1:1).
+ *
+ * The kept row's `ts` is therefore the response's end. The first segment's time
+ * survives as `startedAt`, so the split can place a long response where it
+ * started (see `anchorTs`). Idempotent: refolding SQL-folded rows keeps the
+ * earlier of the two starts.
  */
 export function foldEvents(events: UsageRecord[]): UsageRecord[] {
 	const byKey = new Map<string, UsageRecord>()
+	const startOf = (e: UsageRecord) => (e.startedAt ?? e.ts).getTime()
 	for (const e of events) {
 		const key = e.messageId ? `m:${e.messageId}::${e.requestId ?? ''}` : `u:${e.uuid}`
 		const prev = byKey.get(key)
-		if (!prev || recordTotal(e) > recordTotal(prev)) {
-			byKey.set(key, e)
-		}
+		const best = !prev || recordTotal(e) > recordTotal(prev) ? e : prev
+		const startedAt = new Date(prev ? Math.min(startOf(prev), startOf(e)) : startOf(e))
+		byKey.set(key, { ...best, startedAt })
 	}
 	return [...byKey.values()]
 }
