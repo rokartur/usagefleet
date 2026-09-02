@@ -1,5 +1,6 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from '@tanstack/react-router'
+import { useTranslations } from 'use-intl'
 import type { FormAction } from '@/components/ActionForm'
 import {
 	AlertDialog,
@@ -37,6 +38,7 @@ export function ConfirmAction({
 	/** Trigger button content. */
 	children: React.ReactNode
 }) {
+	const t = useTranslations('dash.actions')
 	const [open, setOpen] = useState(false)
 	const [pending, startTransition] = useTransition()
 	const router = useRouter()
@@ -49,7 +51,7 @@ export function ConfirmAction({
 					<AlertDialogDescription>{description}</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+					<AlertDialogCancel disabled={pending}>{t('cancel')}</AlertDialogCancel>
 					<AlertDialogAction
 						variant='destructive'
 						disabled={pending}
@@ -62,11 +64,11 @@ export function ConfirmAction({
 										action({ data: fd }).then(() => router.invalidate()),
 										{
 											error: {
-												description: 'Please try again.',
+												description: t('retry'),
 												priority: 'high',
-												title: 'Action failed',
+												title: t('failedTitle'),
 											},
-											loading: { title: 'Working…' },
+											loading: { title: t('working') },
 											success: { title: successMessage },
 										},
 									)
@@ -77,7 +79,7 @@ export function ConfirmAction({
 							})
 						}
 					>
-						{pending ? 'Working…' : confirmLabel}
+						{pending ? t('working') : confirmLabel}
 					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>

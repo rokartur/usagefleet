@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Ban } from 'lucide-react'
+import { useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -18,6 +19,7 @@ export function DeviceGroupSelect({
 	groupId: string | null
 	groups: { id: string; name: string }[]
 }) {
+	const t = useTranslations('dash.devices')
 	const form = useRef<HTMLFormElement>(null)
 	const [selected, setSelected] = useState(groupId ?? '')
 	const items = groups.map(g => ({ label: g.name, value: g.id }))
@@ -34,13 +36,13 @@ export function DeviceGroupSelect({
 		<ActionForm
 			ref={form}
 			action={assignDeviceGroup}
-			loadingMessage={`Moving ${deviceName}…`}
-			successMessage={`${deviceName} moved`}
-			errorMessage={`Couldn't move ${deviceName}. Please try again.`}
+			loadingMessage={t('moving', { name: deviceName })}
+			successMessage={t('moved', { name: deviceName })}
+			errorMessage={t('moveFailed', { name: deviceName })}
 		>
 			<input type='hidden' name='deviceId' value={deviceId} />
 			<Select name='groupId' value={selected} onValueChange={next => setSelected(next ?? '')} items={items}>
-				<SelectTrigger size='sm' aria-label={`Group for ${deviceName}`}>
+				<SelectTrigger size='sm' aria-label={t('groupLabel', { name: deviceName })}>
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
@@ -66,6 +68,7 @@ export function DeviceBlockingToggle({
 	deviceName: string
 	enabled: boolean
 }) {
+	const t = useTranslations('dash.devices')
 	const form = useRef<HTMLFormElement>(null)
 	const [checked, setChecked] = useState(enabled)
 
@@ -80,20 +83,20 @@ export function DeviceBlockingToggle({
 		<ActionForm
 			ref={form}
 			action={setDeviceBlocking}
-			loadingMessage={`Updating ${deviceName}…`}
-			successMessage={checked ? `${deviceName} can be blocked` : `${deviceName} exempt from blocking`}
-			errorMessage={`Couldn't update ${deviceName}. Please try again.`}
+			loadingMessage={t('updating', { name: deviceName })}
+			successMessage={t(checked ? 'canBeBlocked' : 'notBlocked', { name: deviceName })}
+			errorMessage={t('updateFailed', { name: deviceName })}
 		>
 			<input type='hidden' name='deviceId' value={deviceId} />
 			{checked && <input type='hidden' name='enabled' value='on' />}
 			{/* The switch carries its own accessible name; the text is a visual cue. */}
 			<span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-				blocking
+				{t('blocking')}
 				<Switch
 					size='sm'
 					checked={checked}
 					onCheckedChange={setChecked}
-					aria-label={`Blocking for ${deviceName}`}
+					aria-label={t('blockingLabel', { name: deviceName })}
 				/>
 			</span>
 		</ActionForm>
@@ -102,17 +105,18 @@ export function DeviceBlockingToggle({
 
 /** The only exit for a device: revoking is one-way and rows are never deleted. */
 export function RevokeDeviceButton({ id, name }: { id: string; name: string }) {
+	const t = useTranslations('dash.devices')
 	return (
 		<ConfirmAction
 			action={revokeDevice}
 			id={id}
-			title={`Revoke ${name}?`}
-			description='Its token stops working immediately and the collector on that machine can no longer report usage. Past usage is kept.'
-			confirmLabel='Revoke'
-			successMessage={`${name} revoked`}
+			title={t('revokeTitle', { name })}
+			description={t('revokeDescription')}
+			confirmLabel={t('revoke')}
+			successMessage={t('revokedDevice', { name })}
 		>
 			<Ban />
-			Revoke
+			{t('revoke')}
 		</ConfirmAction>
 	)
 }

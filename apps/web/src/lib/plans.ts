@@ -35,10 +35,16 @@ export const PLANS = {
 
 export type PaidPlan = keyof typeof PLANS
 
-/** Monthly price in cents behind each plan's `priceIdEnv`: the whole tier for
- *  the fixed plans, one device for `custom`. Fetched in lib/stripe-prices.ts and
- *  handed down through route loaders, so client components stay pure data. */
-export type PlanPrices = Record<PaidPlan, number>
+/** Monthly price in each plan's minor unit behind its `priceIdEnv`: the whole
+ *  tier for the fixed plans, one device for `custom`. Fetched in
+ *  lib/stripe-prices.ts and handed down through route loaders, so client
+ *  components stay pure data. The currency travels with the amounts because a
+ *  number without one is a price waiting to be rendered wrong. */
+export interface PlanPrices {
+	/** ISO 4217, lower-case, as Stripe reports it. */
+	currency: string
+	amounts: Record<PaidPlan, number>
+}
 
 export type PlanId = PaidPlan | 'free'
 
@@ -94,11 +100,21 @@ export const planPriceCents = (plan: PlanId, seats: number | null, prices: PlanP
 		return 0
 	}
 	if (plan === 'custom') {
-		return planDevices(plan, seats) * prices.custom
+		return planDevices(plan, seats) * prices.amounts.custom
 	}
-	return prices[plan]
+	return prices.amounts[plan]
 }
 
-/** Prices render as "$3" but "$4.40" — trailing cents only when there are any. */
-export const formatPlanPrice = (cents: number): string =>
-	cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`
+/** Prices render as "$3" but "$4.40" — trailing cents only when there are any —
+ *  and as "12 zł" / "12,99 zł" once the locale is Polish. Symbol, separator and
+ *  placement all come from Intl rather than a template, because "zł$" is the
+ *  kind of thing a hand-rolled formatter ships. */
+export const formatPlanPrice = (cents: number, { currency }: PlanPrices, locale: string): string => {
+	const fractionDigits = cents % 100 === 0 ? 0 : 2
+	return new Intl.NumberFormat(locale, {
+		currency,
+		maximumFractionDigits: fractionDigits,
+		minimumFractionDigits: fractionDigits,
+		style: 'currency',
+	}).format(cents / 100)
+}

@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { desc, eq, inArray, sql } from 'drizzle-orm'
+import { useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
 import { RelativeTime } from '@/components/RelativeTime'
 import { Badge } from '@/components/ui/badge'
@@ -89,22 +90,22 @@ export const Route = createFileRoute('/_dash/admin')({
 })
 
 function AdminPage() {
+	const t = useTranslations('dash.admin')
+	const tActions = useTranslations('dash.actions')
 	const accounts = Route.useLoaderData()
 	return (
 		<>
 			<p className='text-sm text-muted-foreground'>
-				{accounts.length} newest account{accounts.length === 1 ? '' : 's'}. The free allowance applies only
-				while an account has no subscription; paid caps come from Stripe. Blank means the default of{' '}
-				{FREE_DEVICES}.
+				{t('lead', { count: accounts.length, fallback: FREE_DEVICES })}
 			</p>
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead>Account</TableHead>
-						<TableHead>Joined</TableHead>
-						<TableHead>Plan</TableHead>
-						<TableHead className='text-right'>Devices</TableHead>
-						<TableHead className='w-52'>Free allowance</TableHead>
+						<TableHead>{t('account')}</TableHead>
+						<TableHead>{t('joined')}</TableHead>
+						<TableHead>{t('plan')}</TableHead>
+						<TableHead className='text-right'>{t('devices')}</TableHead>
+						<TableHead className='w-52'>{t('freeAllowance')}</TableHead>
 						<TableHead />
 					</TableRow>
 				</TableHeader>
@@ -115,7 +116,7 @@ function AdminPage() {
 								<span className='font-medium'>{a.email}</span>
 								{!a.emailVerified && (
 									<Badge variant='outline' className='ml-2 font-normal'>
-										unverified
+										{t('unverified')}
 									</Badge>
 								)}
 								{a.username && <p className='text-xs text-muted-foreground'>{a.username}</p>}
@@ -137,13 +138,13 @@ function AdminPage() {
 								<ActionForm
 									action={setFreeDeviceLimit}
 									className='flex items-center gap-2'
-									loadingMessage={`Updating ${a.email}…`}
-									successMessage={`${a.email} updated`}
-									errorMessage={`Couldn't update ${a.email}. Please try again.`}
+									loadingMessage={t('updating', { email: a.email })}
+									successMessage={t('updated', { email: a.email })}
+									errorMessage={t('updateFailed', { email: a.email })}
 								>
 									<input type='hidden' name='userId' value={a.id} />
 									<Input
-										aria-label={`Free devices for ${a.email}`}
+										aria-label={t('limitLabel', { email: a.email })}
 										className='w-20'
 										defaultValue={a.freeDeviceLimit ?? ''}
 										inputMode='numeric'
@@ -154,7 +155,7 @@ function AdminPage() {
 										type='number'
 									/>
 									<Button type='submit' variant='outline' size='sm'>
-										Save
+										{tActions('save')}
 									</Button>
 								</ActionForm>
 							</TableCell>
@@ -164,7 +165,7 @@ function AdminPage() {
 									variant='outline'
 									size='sm'
 								>
-									View
+									{t('view')}
 								</Button>
 							</TableCell>
 						</TableRow>

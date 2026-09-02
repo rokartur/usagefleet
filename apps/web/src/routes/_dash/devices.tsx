@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { MonitorSmartphoneIcon } from 'lucide-react'
+import { useTranslations } from 'use-intl'
 import { AddDeviceForm } from '@/components/AddDeviceForm'
 import { AutoRefresh } from '@/components/AutoRefresh'
 import { DeviceBlockingToggle, DeviceGroupSelect, RevokeDeviceButton } from '@/components/devices/DeviceActions'
@@ -29,6 +30,7 @@ export const Route = createFileRoute('/_dash/devices')({
 })
 
 function DevicesPage() {
+	const t = useTranslations('dash.devices')
 	const { devices, groups, plan } = Route.useLoaderData()
 	const [showRevoked, setShowRevoked] = useState(false)
 	// Revoked devices don't hold a slot — must match createDevice's count.
@@ -57,7 +59,7 @@ function DevicesPage() {
 		})),
 		{
 			key: 'ungrouped',
-			name: 'Ungrouped',
+			name: t('ungrouped'),
 			color: '#94a3b8',
 			items: ordered.filter(d => !groups.some(g => g.id === d.groupId)),
 		},
@@ -68,24 +70,24 @@ function DevicesPage() {
 			<AutoRefresh />
 			<div className='flex flex-wrap items-center justify-between gap-3'>
 				<p className='text-sm text-muted-foreground'>
-					<span className='tabular-nums'>
-						{active} / {plan.deviceLimit}
-					</span>{' '}
-					active devices on {planLabel(plan.plan)}
+					<span className='tabular-nums'>{t('count', { active, limit: plan.deviceLimit })}</span>{' '}
+					{t('slots', { count: active, plan: planLabel(plan.plan) })}
 					{atCap && (
 						<span className='text-amber-600 dark:text-amber-500'>
-							{' '}
-							· limit reached, revoke one or{' '}
-							<Link to='/billing' className='underline underline-offset-2'>
-								upgrade
-							</Link>
+							{t.rich('atCap', {
+								upgrade: chunks => (
+									<Link to='/billing' className='underline underline-offset-2'>
+										{chunks}
+									</Link>
+								),
+							})}
 						</span>
 					)}
 				</p>
 				<div className='flex items-center gap-2'>
 					{devices.length > active && (
 						<Button variant='ghost' size='sm' onClick={() => setShowRevoked(!showRevoked)}>
-							{showRevoked ? 'Hide' : 'Show'} {devices.length - active} revoked
+							{t(showRevoked ? 'hideRevoked' : 'showRevoked', { count: devices.length - active })}
 						</Button>
 					)}
 					{/* When there are none, the empty state below carries the button. */}
@@ -99,17 +101,12 @@ function DevicesPage() {
 						<EmptyMedia variant='icon'>
 							<MonitorSmartphoneIcon />
 						</EmptyMedia>
-						<EmptyTitle>No devices yet</EmptyTitle>
-						<EmptyDescription>
-							A device is one machine you use Claude on. Adding it here gives you a token and the one-line
-							installer for that machine.
-						</EmptyDescription>
+						<EmptyTitle>{t('emptyTitle')}</EmptyTitle>
+						<EmptyDescription>{t('emptyDescription')}</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
 						<AddDeviceForm groups={groupOptions} atCap={atCap} />
-						<p className='text-xs text-muted-foreground'>
-							Takes about a minute. The dashboard stays empty until one device reports.
-						</p>
+						<p className='text-xs text-muted-foreground'>{t('emptyHint')}</p>
 					</EmptyContent>
 				</Empty>
 			) : (
@@ -121,12 +118,12 @@ function DevicesPage() {
 							{/* Counts active devices only, like the page header — revoked
                   ones don't hold a slot, and are hidden unless asked for. */}
 							<span className='font-normal text-muted-foreground'>
-								{s.items.filter(d => !d.revoked).length} active
+								{t('active', { count: s.items.filter(d => !d.revoked).length })}
 							</span>
 						</h2>
 						{s.items.length === 0 ? (
 							<p className='mt-2 border-t border-b py-3.5 text-sm text-muted-foreground'>
-								No devices in this group. Move one here with the group picker on any row.
+								{t('noneInGroup')}
 							</p>
 						) : (
 							<ul className='mt-2 [&>li:last-child]:border-b'>
@@ -140,14 +137,14 @@ function DevicesPage() {
 														{OS_LABEL[d.os] ?? d.os}
 													</Badge>
 												)}
-												{d.revoked && <Badge variant='destructive'>revoked</Badge>}
+												{d.revoked && <Badge variant='destructive'>{t('revoked')}</Badge>}
 												{parked.has(d.id) && (
-													<Badge variant='destructive'>over plan limit</Badge>
+													<Badge variant='destructive'>{t('overLimit')}</Badge>
 												)}
 											</div>
 											<p className='mt-0.5 text-xs text-muted-foreground'>
 												{d.hostname ? `${d.hostname} · ` : ''}
-												token {d.tokenPrefix}…
+												{t('token', { prefix: d.tokenPrefix })}
 												{d.collectorVersion ? ` · v${d.collectorVersion}` : ''}
 											</p>
 										</div>

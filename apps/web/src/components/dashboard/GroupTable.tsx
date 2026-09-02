@@ -1,5 +1,6 @@
 import { Fragment } from 'react'
 import { ChevronRightIcon } from 'lucide-react'
+import { useTranslations } from 'use-intl'
 import { Badge } from '@/components/ui/badge'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -13,6 +14,7 @@ import { cn } from '@/lib/utils'
 /** One group's per-model tokens, session (5h) and weekly side by side. Models
  *  active in either window appear; a window with no activity reads "—". */
 function ModelCompare({ session, weekly }: { session: ModelUsage[]; weekly: ModelUsage[] }) {
+	const t = useTranslations('dash.usage')
 	const byKey = new Map<string, { model: string; label: string; session?: ModelUsage; weekly?: ModelUsage }>()
 	for (const m of weekly) {
 		byKey.set(m.model, { label: m.label, model: m.model, weekly: m })
@@ -31,7 +33,7 @@ function ModelCompare({ session, weekly }: { session: ModelUsage[]; weekly: Mode
 			(b.session?.billableTokens ?? 0) - (a.session?.billableTokens ?? 0),
 	)
 	if (rows.length === 0) {
-		return <p className='text-xs text-muted-foreground'>No model activity in the current windows yet.</p>
+		return <p className='text-xs text-muted-foreground'>{t('noModelActivity')}</p>
 	}
 	const cell = (u: ModelUsage | undefined) =>
 		u ? (
@@ -45,7 +47,7 @@ function ModelCompare({ session, weekly }: { session: ModelUsage[]; weekly: Mode
 		)
 	return (
 		<div className='flex flex-col gap-1.5'>
-			<p className='text-[11px] text-muted-foreground'>Per model — billable / total tokens</p>
+			<p className='text-[11px] text-muted-foreground'>{t('perModel')}</p>
 			<dl className='grid gap-x-8 text-xs sm:grid-cols-2'>
 				{rows.map(r => (
 					<div
@@ -79,6 +81,7 @@ function WindowCell({
 	tokens: number
 	totalTokens: number
 }) {
+	const t = useTranslations('dash')
 	return (
 		<div className='flex min-w-48 items-center gap-3'>
 			<UsageBar pct={pct} className='w-20 shrink-0' />
@@ -88,11 +91,11 @@ function WindowCell({
 					{costPct !== pct && (
 						<>
 							{' '}
-							· <Num value={costPct} format={approxPct} /> by cost
+							· <Num value={costPct} format={approxPct} /> {t('overview.byCost')}
 						</>
 					)}{' '}
 					· <Num value={tokens} format={formatTokens} /> (<Num value={totalTokens} format={formatTokens} />{' '}
-					total)
+					{t('usage.total')})
 				</span>
 			</span>
 		</div>
@@ -101,17 +104,14 @@ function WindowCell({
 
 /** Column header with a tooltip explaining what the percentage measures. */
 function WindowHead({ label }: { label: string }) {
+	const t = useTranslations('dash.usage')
 	return (
 		<TableHead>
 			<Tooltip>
 				<TooltipTrigger render={<span className='underline decoration-dotted underline-offset-4' />}>
 					{label}
 				</TooltipTrigger>
-				<TooltipContent>
-					Percentage of this group&apos;s own slice of the account limit, attributed by when the official
-					meter rose; &quot;by cost&quot; is the same slice split by cost share alone, shown when the two
-					disagree. Tokens are billable, with the cache-read-inclusive total in brackets.
-				</TooltipContent>
+				<TooltipContent>{t('windowHint')}</TooltipContent>
 			</Tooltip>
 		</TableHead>
 	)
@@ -137,13 +137,14 @@ export function GroupTable({
 	expanded: Set<string>
 	onToggle: (key: string) => void
 }) {
+	const t = useTranslations('dash.usage')
 	const showAccount = groups.some(g => g.account)
 	if (groups.length === 0) {
 		return (
 			<Empty className='border'>
 				<EmptyHeader>
-					<EmptyTitle>No activity yet</EmptyTitle>
-					<EmptyDescription>No device has reported usage in the current windows.</EmptyDescription>
+					<EmptyTitle>{t('groupsEmptyTitle')}</EmptyTitle>
+					<EmptyDescription>{t('groupsEmptyDescription')}</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
 		)
@@ -152,10 +153,10 @@ export function GroupTable({
 		<Table>
 			<TableHeader>
 				<TableRow>
-					<TableHead>Group</TableHead>
-					{showAccount && <TableHead>Account</TableHead>}
-					<WindowHead label='Session (5h)' />
-					<WindowHead label='Weekly' />
+					<TableHead>{t('tableGroup')}</TableHead>
+					{showAccount && <TableHead>{t('tableAccount')}</TableHead>}
+					<WindowHead label={t('session')} />
+					<WindowHead label={t('weekly')} />
 				</TableRow>
 			</TableHeader>
 			<TableBody>
@@ -186,7 +187,7 @@ export function GroupTable({
 										/>
 										<span className='font-medium'>{g.name}</span>
 										<Badge variant='secondary' className='font-normal'>
-											{modelCount} model{modelCount === 1 ? '' : 's'}
+											{t('modelCount', { count: modelCount })}
 										</Badge>
 									</button>
 								</TableCell>

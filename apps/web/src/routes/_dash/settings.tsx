@@ -3,6 +3,7 @@ import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { eq } from 'drizzle-orm'
 import { KeyRound } from 'lucide-react'
+import { useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
 import { PROVIDERS, ProviderMark } from '@/components/OAuthSignIn'
 import type { ProviderId } from '@/components/OAuthSignIn'
@@ -63,51 +64,42 @@ export const Route = createFileRoute('/_dash/settings')({
 	component: SettingsPage,
 })
 
-const TTLS = [
-	{ value: '5m', label: '5m (1.25× input)' },
-	{ value: '1h', label: '1h (2× input)' },
-]
-
 function SettingsPage() {
+	const t = useTranslations('dash.settings')
+	const tActions = useTranslations('dash.actions')
 	const { settings, email, connected, entitlement, isAdmin } = Route.useLoaderData()
 	const { error } = Route.useSearch()
+	const ttls = [
+		{ value: '5m', label: t('cacheTtl5m') },
+		{ value: '1h', label: t('cacheTtl1h') },
+	]
 
 	return (
 		<div className='flex flex-col gap-4'>
 			<Card>
 				<CardHeader className='border-b'>
-					<CardTitle>Pricing</CardTitle>
-					<CardDescription>
-						Assumptions used to estimate cost at public API list prices, which also decides how each
-						group&apos;s share of a limit is split.
-					</CardDescription>
+					<CardTitle>{t('pricing')}</CardTitle>
+					<CardDescription>{t('pricingDescription')}</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<ActionForm
-						action={updateCacheTtl}
-						loadingMessage='Saving pricing settings…'
-						successMessage='Pricing settings saved'
-					>
+					<ActionForm action={updateCacheTtl} loadingMessage={t('saving')} successMessage={t('saved')}>
 						<Field orientation='responsive'>
 							<FieldContent>
-								<FieldLabel htmlFor='cacheWriteTtl'>Cache-write TTL</FieldLabel>
-								<FieldDescription>
-									Rate used to price cache writes. Claude Code writes 5m caches unless you set
-									ENABLE_PROMPT_CACHING_1H=1.
-								</FieldDescription>
+								<FieldLabel htmlFor='cacheWriteTtl'>{t('cacheTtl')}</FieldLabel>
+								<FieldDescription>{t('cacheTtlDescription')}</FieldDescription>
 							</FieldContent>
 							<div className='flex items-center gap-2'>
 								<Select
 									key={settings.cacheWriteTtl}
 									name='cacheWriteTtl'
 									defaultValue={settings.cacheWriteTtl}
-									items={TTLS}
+									items={ttls}
 								>
 									<SelectTrigger id='cacheWriteTtl'>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
-										{TTLS.map(ttl => (
+										{ttls.map(ttl => (
 											<SelectItem key={ttl.value} value={ttl.value}>
 												{ttl.label}
 											</SelectItem>
@@ -115,7 +107,7 @@ function SettingsPage() {
 									</SelectContent>
 								</Select>
 								<Button type='submit' variant='outline'>
-									Save
+									{tActions('save')}
 								</Button>
 							</div>
 						</Field>
@@ -127,8 +119,8 @@ function SettingsPage() {
           content section: CardAction keeps the button at its own width. */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Appearance</CardTitle>
-					<CardDescription>Light or dark palette, this browser only.</CardDescription>
+					<CardTitle>{t('appearance')}</CardTitle>
+					<CardDescription>{t('appearanceDescription')}</CardDescription>
 					<CardAction>
 						<ThemeToggle />
 					</CardAction>
@@ -143,18 +135,19 @@ function SettingsPage() {
 
 const PROVIDER_IDS = Object.keys(PROVIDERS) as ProviderId[]
 
-/** Codes better-auth appends to errorCallbackURL when a link attempt fails.
- *  Anything unrecognised falls back rather than leaking a raw code. */
-function linkErrorMessage(code: string, accountEmail: string): string {
+/** Codes better-auth appends to errorCallbackURL when a link attempt fails,
+ *  mapped to a message key. Anything unrecognised falls back rather than
+ *  leaking a raw code. */
+function linkErrorKey(code: string) {
 	switch (code.toLowerCase()) {
 		case "email_doesn't_match": {
-			return `That provider signs in with a different email. Connect the account that uses ${accountEmail}.`
+			return 'linkErrorMismatch' as const
 		}
 		case 'account_already_linked': {
-			return 'That provider account is already connected to another user.'
+			return 'linkErrorAlreadyLinked' as const
 		}
 		default: {
-			return 'Could not connect that provider. Please try again.'
+			return 'linkErrorGeneric' as const
 		}
 	}
 }
@@ -174,6 +167,8 @@ function SignInMethodsCard({
 	connected: { id: string; providerId: string }[]
 	linkError?: string
 }) {
+	const t = useTranslations('dash.settings')
+	const tActions = useTranslations('dash.actions')
 	const router = useRouter()
 	const [busy, setBusy] = useState<ProviderId | 'password' | null>(null)
 	const linkedCount = connected.filter(row => PROVIDER_IDS.some(id => id === row.providerId)).length
@@ -189,8 +184,8 @@ function SignInMethodsCard({
 		setBusy(null)
 		if (error) {
 			toast.add({
-				title: 'Could not update sign-in methods',
-				description: error.message ?? 'Please try again.',
+				title: t('updateFailed'),
+				description: error.message ?? tActions('retry'),
 				priority: 'high',
 			})
 			return
@@ -208,13 +203,13 @@ function SignInMethodsCard({
 		toast.add(
 			error
 				? {
-						title: 'Could not send the link',
-						description: error.message ?? 'Please try again.',
+						title: t('mailFailed'),
+						description: error.message ?? tActions('retry'),
 						priority: 'high',
 					}
 				: {
-						title: 'Check your email',
-						description: `A link to set your password is on its way to ${email}. It expires in an hour.`,
+						title: t('mailSent'),
+						description: t('mailSentHint', { email }),
 					},
 		)
 	}
@@ -222,15 +217,17 @@ function SignInMethodsCard({
 	return (
 		<Card className='gap-0'>
 			<CardHeader className='border-b'>
-				<CardTitle>Sign-in methods</CardTitle>
+				<CardTitle>{t('signInMethods')}</CardTitle>
 				<CardDescription>
-					Ways to sign in to <span className='text-foreground'>{email}</span>. A provider can only be
-					connected while its verified address matches this one.
+					{t.rich('signInMethodsDescription', {
+						email,
+						mark: chunks => <span className='text-foreground'>{chunks}</span>,
+					})}
 				</CardDescription>
 			</CardHeader>
 			{linkError && (
 				<p role='alert' className='border-b px-6 py-3 text-sm text-destructive'>
-					{linkErrorMessage(linkError, email)}
+					{t(linkErrorKey(linkError), { email })}
 				</p>
 			)}
 			<CardContent className='flex flex-col divide-y px-0'>
@@ -246,18 +243,14 @@ function SignInMethodsCard({
 							</div>
 							<div className='flex items-center gap-3'>
 								<span className='text-sm text-muted-foreground'>
-									{isConnected ? 'Connected' : 'Not connected'}
+									{isConnected ? t('connected') : t('notConnected')}
 								</span>
 								<Button
 									variant='outline'
 									size='sm'
 									disabled={busy !== null || isLast}
 									// Removing the only way in would lock the account out for good.
-									title={
-										isLast
-											? 'Connect another provider or set a password before disconnecting this one'
-											: undefined
-									}
+									title={isLast ? t('unlinkLastHint') : undefined}
 									onClick={() =>
 										run(id, () =>
 											linked
@@ -273,7 +266,7 @@ function SignInMethodsCard({
 										)
 									}
 								>
-									{busy === id ? 'Working…' : isConnected ? 'Disconnect' : 'Connect'}
+									{busy === id ? tActions('working') : isConnected ? t('disconnect') : t('connect')}
 								</Button>
 							</div>
 						</div>
@@ -282,14 +275,18 @@ function SignInMethodsCard({
 				<div className='flex items-center justify-between gap-4 px-(--card-spacing) py-3.5'>
 					<div className='flex items-center gap-2'>
 						<KeyRound aria-hidden='true' className='size-4' />
-						<span>Password</span>
+						<span>{t('password')}</span>
 					</div>
 					<div className='flex items-center gap-3'>
-						<span className='text-sm text-muted-foreground'>{hasPassword ? 'Set' : 'Not set'}</span>
+						<span className='text-sm text-muted-foreground'>{hasPassword ? t('set') : t('notSet')}</span>
 						{/* No "remove password": it is the fallback that keeps unlinking
 						    the last provider from locking the account out. */}
 						<Button variant='outline' size='sm' disabled={busy !== null} onClick={mailPasswordLink}>
-							{busy === 'password' ? 'Working…' : hasPassword ? 'Change' : 'Set password'}
+							{busy === 'password'
+								? tActions('working')
+								: hasPassword
+									? t('passwordChange')
+									: t('passwordSet')}
 						</Button>
 					</div>
 				</div>
@@ -304,46 +301,46 @@ function SignInMethodsCard({
  *  Both rules are enforced in auth.ts's beforeDelete hook — this card only
  *  saves the user a round-trip. */
 function DeleteAccountCard({ plan, isAdmin }: { plan: string; isAdmin: boolean }) {
+	const t = useTranslations('dash.settings.delete')
+	const tActions = useTranslations('dash.actions')
 	const [pending, setPending] = useState(false)
 	const subscribed = plan !== 'free'
 
 	return (
 		<Card className='ring-destructive/25 dark:ring-destructive/25'>
 			<CardHeader className='border-b border-destructive/20'>
-				<CardTitle className='text-destructive'>Delete account</CardTitle>
-				<CardDescription>
-					Removes your devices, groups and every usage record. This cannot be undone.
-				</CardDescription>
+				<CardTitle className='text-destructive'>{t('title')}</CardTitle>
+				<CardDescription>{t('description')}</CardDescription>
 			</CardHeader>
 			<CardContent>
 				{isAdmin ? (
 					<p className='text-sm text-muted-foreground'>
-						This address is listed in <span className='text-foreground'>ADMIN_EMAILS</span>. Remove it from
-						that list first, deleting the account here would leave the admin panel without a way back in.
+						{t.rich('adminBlocked', { env: chunks => <span className='text-foreground'>{chunks}</span> })}
 					</p>
 				) : subscribed ? (
 					<p className='text-sm text-muted-foreground'>
-						Your <span className='text-foreground'>{plan}</span> subscription is still active.{' '}
-						<Link to='/billing' className='text-foreground underline underline-offset-4'>
-							Cancel it
-						</Link>{' '}
-						first, deleting the account here cannot stop Stripe from billing you.
+						{t.rich('subscribed', {
+							cancel: chunks => (
+								<Link to='/billing' className='text-foreground underline underline-offset-4'>
+									{chunks}
+								</Link>
+							),
+							mark: chunks => <span className='text-foreground'>{chunks}</span>,
+							plan,
+						})}
 					</p>
 				) : (
 					<AlertDialog>
 						<AlertDialogTrigger render={<Button variant='destructive' disabled={pending} />}>
-							Delete account
+							{t('title')}
 						</AlertDialogTrigger>
 						<AlertDialogContent>
 							<AlertDialogHeader>
-								<AlertDialogTitle>Delete your account?</AlertDialogTitle>
-								<AlertDialogDescription>
-									Every device, group and usage record is deleted immediately. Collectors still
-									running will stop being accepted. This cannot be undone.
-								</AlertDialogDescription>
+								<AlertDialogTitle>{t('confirmTitle')}</AlertDialogTitle>
+								<AlertDialogDescription>{t('confirmDescription')}</AlertDialogDescription>
 							</AlertDialogHeader>
 							<AlertDialogFooter>
-								<AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+								<AlertDialogCancel disabled={pending}>{tActions('cancel')}</AlertDialogCancel>
 								<AlertDialogAction
 									variant='destructive'
 									disabled={pending}
@@ -356,10 +353,10 @@ function DeleteAccountCard({ plan, isAdmin }: { plan: string; isAdmin: boolean }
 										if (error) {
 											setPending(false)
 											toast.add({
-												title: 'Account not deleted',
+												title: t('failed'),
 												// better-auth rejects a stale session on sensitive
 												// routes, and its message says so.
-												description: error.message ?? 'Please try again.',
+												description: error.message ?? tActions('retry'),
 												priority: 'high',
 											})
 											return
@@ -369,7 +366,7 @@ function DeleteAccountCard({ plan, isAdmin }: { plan: string; isAdmin: boolean }
 										window.location.href = '/'
 									}}
 								>
-									{pending ? 'Deleting…' : 'Delete account'}
+									{pending ? t('deleting') : t('title')}
 								</AlertDialogAction>
 							</AlertDialogFooter>
 						</AlertDialogContent>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { CheckIcon, CopyIcon, PlusIcon } from 'lucide-react'
+import { useTranslations } from 'use-intl'
 import { InstallCommand } from '@/components/InstallCommand'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,47 +24,43 @@ import { createDevice } from '@/lib/actions'
  *  what the user copies is the install command with the token already in it —
  *  the raw token stays available underneath for manual setups. */
 function TokenReveal({ token, deviceName }: { token: string; deviceName: string }) {
+	const t = useTranslations('dash.devices')
 	const [copied, setCopied] = useState(false)
 	return (
 		<div className='flex flex-col gap-5'>
 			<div className='flex flex-col gap-2'>
-				<p className='text-sm font-medium'>1. Install and start the collector on {deviceName}</p>
+				<p className='text-sm font-medium'>{t('tokenStep1', { name: deviceName })}</p>
 				<InstallCommand token={token} />
-				<FieldDescription>
-					It installs the collector, starts it at login and reads your Claude login on that machine. Nothing
-					to paste back here.
-				</FieldDescription>
+				<FieldDescription>{t('tokenStep1Hint')}</FieldDescription>
 			</div>
 
 			<div className='flex flex-col gap-2'>
-				<p className='text-sm font-medium'>2. Confirm it found your Claude login</p>
+				<p className='text-sm font-medium'>{t('tokenStep2')}</p>
 				<code className='rounded-lg bg-muted p-3 font-mono text-xs'>usagefleet status</code>
-				<FieldDescription>
-					Then the dashboard fills in within a minute, and updates every five.
-				</FieldDescription>
+				<FieldDescription>{t('tokenStep2Hint')}</FieldDescription>
 			</div>
 
 			<details className='flex flex-col gap-2'>
-				<summary className='cursor-pointer text-sm text-muted-foreground'>Raw token, for manual setup</summary>
+				<summary className='cursor-pointer text-sm text-muted-foreground'>{t('tokenRaw')}</summary>
 				<div className='mt-2 flex items-start gap-2'>
 					<code className='min-w-0 flex-1 rounded-lg bg-muted p-3 font-mono text-xs break-all'>{token}</code>
 					<Button
 						variant='outline'
 						size='icon'
-						aria-label='Copy token'
+						aria-label={t('copyToken')}
 						onClick={async () => {
 							try {
 								await navigator.clipboard.writeText(token)
 								setCopied(true)
 								toast.add({
-									title: 'Token copied to clipboard',
+									title: t('tokenCopied'),
 									type: 'success',
 								})
 							} catch {
 								toast.add({
-									description: 'Select the token and copy it manually.',
+									description: t('copyTokenFailedHint'),
 									priority: 'high',
-									title: "Couldn't copy token",
+									title: t('copyTokenFailed'),
 									type: 'error',
 								})
 							}
@@ -78,6 +75,8 @@ function TokenReveal({ token, deviceName }: { token: string; deviceName: string 
 }
 
 export function AddDeviceForm({ groups, atCap }: { groups: { id: string; name: string }[]; atCap: boolean }) {
+	const t = useTranslations('dash.devices')
+	const tActions = useTranslations('dash.actions')
 	const [open, setOpen] = useState(false)
 	const router = useRouter()
 	const [name, setName] = useState('')
@@ -85,7 +84,7 @@ export function AddDeviceForm({ groups, atCap }: { groups: { id: string; name: s
 	const [groupId, setGroupId] = useState(groups[0]?.id ?? '')
 	const groupItems = groups.length
 		? groups.map(g => ({ label: g.name, value: g.id }))
-		: [{ label: 'Default (created automatically)', value: '' }]
+		: [{ label: t('groupFallback'), value: '' }]
 	// Kept together so the token step can still name the device after the form
 	// input is cleared.
 	const [created, setCreated] = useState<{
@@ -102,12 +101,12 @@ export function AddDeviceForm({ groups, atCap }: { groups: { id: string; name: s
 		try {
 			const res = await toast.promise(createDevice({ data: { groupId: groupId || null, name } }), {
 				error: {
-					description: 'Please try again.',
+					description: tActions('retry'),
 					priority: 'high',
-					title: 'Failed to create device',
+					title: t('createFailed'),
 				},
-				loading: { title: 'Creating device…' },
-				success: { title: 'Device created' },
+				loading: { title: t('creatingToast') },
+				success: { title: t('created') },
 			})
 			setCreated({ name, token: res.token })
 			setName('')
@@ -115,7 +114,7 @@ export function AddDeviceForm({ groups, atCap }: { groups: { id: string; name: s
 			// show up behind the dialog.
 			await router.invalidate()
 		} catch {
-			setError('Failed to create device. Please try again.')
+			setError(t('createFailedRetry'))
 		} finally {
 			setLoading(false)
 		}
@@ -134,44 +133,40 @@ export function AddDeviceForm({ groups, atCap }: { groups: { id: string; name: s
 		>
 			<DialogTrigger render={<Button disabled={atCap} />}>
 				<PlusIcon />
-				Add device
+				{t('addDevice')}
 			</DialogTrigger>
 			<DialogContent>
 				{created ? (
 					<>
 						<DialogHeader>
-							<DialogTitle>{created.name} is registered</DialogTitle>
-							<DialogDescription>One command left. The token inside it is shown once.</DialogDescription>
+							<DialogTitle>{t('registered', { name: created.name })}</DialogTitle>
+							<DialogDescription>{t('registeredHint')}</DialogDescription>
 						</DialogHeader>
 						<TokenReveal token={created.token} deviceName={created.name} />
 						<DialogFooter>
-							<DialogClose render={<Button variant='outline' />}>Done</DialogClose>
+							<DialogClose render={<Button variant='outline' />}>{t('done')}</DialogClose>
 						</DialogFooter>
 					</>
 				) : (
 					<form onSubmit={onSubmit} className='grid gap-4'>
 						<DialogHeader>
-							<DialogTitle>Add device</DialogTitle>
-							<DialogDescription>
-								Creates an API token for one machine running the collector.
-							</DialogDescription>
+							<DialogTitle>{t('addDevice')}</DialogTitle>
+							<DialogDescription>{t('dialogDescription')}</DialogDescription>
 						</DialogHeader>
 						<FieldGroup>
 							<Field>
-								<FieldLabel htmlFor='device-name'>Device name</FieldLabel>
+								<FieldLabel htmlFor='device-name'>{t('name')}</FieldLabel>
 								<Input
 									id='device-name'
 									required
 									value={name}
 									onChange={e => setName(e.target.value)}
-									placeholder='e.g. work-macbook'
+									placeholder={t('namePlaceholder')}
 								/>
-								<FieldDescription>
-									Just a label, so you recognise the machine in these lists.
-								</FieldDescription>
+								<FieldDescription>{t('nameDescription')}</FieldDescription>
 							</Field>
 							<Field>
-								<FieldLabel htmlFor='device-group'>Group</FieldLabel>
+								<FieldLabel htmlFor='device-group'>{t('group')}</FieldLabel>
 								{/* `items` is what lets the trigger show a group name rather
                     than the raw id it stores. */}
 								<Select
@@ -190,16 +185,14 @@ export function AddDeviceForm({ groups, atCap }: { groups: { id: string; name: s
 										))}
 									</SelectContent>
 								</Select>
-								<FieldDescription>
-									The group whose limit share this device counts against.
-								</FieldDescription>
+								<FieldDescription>{t('groupDescription')}</FieldDescription>
 							</Field>
 							{error && <FieldDescription className='text-destructive'>{error}</FieldDescription>}
 						</FieldGroup>
 						<DialogFooter>
-							<DialogClose render={<Button variant='outline' type='button' />}>Cancel</DialogClose>
+							<DialogClose render={<Button variant='outline' type='button' />}>{t('cancel')}</DialogClose>
 							<Button type='submit' disabled={loading}>
-								{loading ? 'Creating…' : 'Create device'}
+								{t(loading ? 'creating' : 'create')}
 							</Button>
 						</DialogFooter>
 					</form>

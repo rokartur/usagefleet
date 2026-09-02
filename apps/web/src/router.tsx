@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { createRouter, Link, useRouterState } from '@tanstack/react-router'
 import { TriangleAlertIcon } from 'lucide-react'
+import { useTranslations } from 'use-intl'
 import { SiteFooter } from '@/components/site-footer'
 import { SiteHeader } from '@/components/site-header'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -26,6 +27,7 @@ export function getRouter() {
 /** One boundary for the whole app: the root shell always renders, so a failed
  *  loader or render lands here instead of on an unstyled error screen. */
 function RouteError({ error, reset }: { error: Error; reset: () => void }) {
+	const t = useTranslations('common.error')
 	useEffect(() => {
 		console.error(error)
 	}, [error])
@@ -37,11 +39,11 @@ function RouteError({ error, reset }: { error: Error; reset: () => void }) {
 					<EmptyMedia variant='icon'>
 						<TriangleAlertIcon />
 					</EmptyMedia>
-					<EmptyTitle>Something went wrong</EmptyTitle>
-					<EmptyDescription>We couldn&apos;t load this page. This is usually temporary.</EmptyDescription>
+					<EmptyTitle>{t('title')}</EmptyTitle>
+					<EmptyDescription>{t('description')}</EmptyDescription>
 				</EmptyHeader>
 				<EmptyContent>
-					<Button onClick={reset}>Try again</Button>
+					<Button onClick={reset}>{t('retry')}</Button>
 				</EmptyContent>
 			</Empty>
 		</Card>
@@ -51,6 +53,7 @@ function RouteError({ error, reset }: { error: Error; reset: () => void }) {
 /** Unknown URL, or a route that threw notFound(). Public-page frame, and the
  *  failure itself reported the way the collector would report it. */
 function RouteNotFound() {
+	const t = useTranslations('common.notFound')
 	const pathname = useRouterState({ select: s => s.location.pathname })
 
 	return (
@@ -69,27 +72,25 @@ function RouteNotFound() {
 									<span className='text-muted-foreground/60'>$</span> usagefleet open {pathname}
 								</p>
 								<dl className='mt-2 grid grid-cols-[8rem_1fr] text-muted-foreground'>
-									<dt>resolving route</dt>
-									<dd className='text-destructive'>not found</dd>
-									<dt>status</dt>
+									<dt>{t('resolving')}</dt>
+									<dd className='text-destructive'>{t('notFound')}</dd>
+									<dt>{t('status')}</dt>
 									<dd className='text-destructive'>404</dd>
-									<dt>devices</dt>
-									<dd>reporting, unaffected</dd>
-									<dt>usage</dt>
-									<dd>nothing lost</dd>
+									<dt>{t('devicesLabel')}</dt>
+									<dd>{t('devices')}</dd>
+									<dt>{t('usageLabel')}</dt>
+									<dd>{t('usage')}</dd>
 								</dl>
 							</div>
 						</div>
-						<h1 className='mt-7 text-2xl font-semibold tracking-[-0.035em]'>No route by that name.</h1>
-						<p className='mt-2.5 text-sm leading-relaxed text-muted-foreground'>
-							The link is dead or the page moved. Your collectors kept running the whole time.
-						</p>
+						<h1 className='mt-7 text-2xl font-semibold tracking-[-0.035em]'>{t('title')}</h1>
+						<p className='mt-2.5 text-sm leading-relaxed text-muted-foreground'>{t('lead')}</p>
 						<div className='mt-6 flex flex-wrap gap-3'>
 							<Link to='/dashboard' className={buttonVariants()}>
-								Go to dashboard
+								{t('goToDashboard')}
 							</Link>
 							<Link to='/' className={buttonVariants({ variant: 'ghost' })}>
-								Home
+								{t('home')}
 							</Link>
 						</div>
 					</div>
@@ -103,8 +104,10 @@ function RouteNotFound() {
 /** Shown once a loader outruns defaultPendingMs. Mirrors the dashboard shape
  *  (status line → KPI pair → table card) so the swap doesn't jump. */
 function RoutePending() {
+	const t = useTranslations('common')
+
 	return (
-		<div className='flex flex-1 flex-col gap-6' aria-busy='true' aria-label='Loading'>
+		<div className='flex flex-1 flex-col gap-6' aria-busy='true' aria-label={t('loading')}>
 			<Skeleton className='h-5 w-64' />
 			<div className='grid gap-4 sm:grid-cols-2'>
 				<Skeleton className='h-28 rounded-xl' />

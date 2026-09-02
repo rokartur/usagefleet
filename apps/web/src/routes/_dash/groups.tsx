@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { LayersIcon, Trash2 } from 'lucide-react'
+import { useTranslations } from 'use-intl'
 import { AutoRefresh } from '@/components/AutoRefresh'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { GroupFormDialog } from '@/components/groups/GroupFormDialog'
@@ -36,6 +37,7 @@ export const Route = createFileRoute('/_dash/groups')({
 })
 
 function GroupsPage() {
+	const t = useTranslations('dash.groups')
 	const { groups, groupLimit } = Route.useLoaderData()
 	const atCap = groups.length >= groupLimit
 
@@ -47,13 +49,8 @@ function GroupsPage() {
 					<span className='tabular-nums'>
 						{groups.length} / {groupLimit}
 					</span>{' '}
-					groups · each is measured against a 1/{Math.max(1, groups.length)} slice of the account limit
-					{atCap && (
-						<span className='text-amber-600 dark:text-amber-500'>
-							{' '}
-							· plan limit reached, delete one or upgrade in Billing
-						</span>
-					)}
+					{t('slots', { share: Math.max(1, groups.length) })}
+					{atCap && <span className='text-amber-600 dark:text-amber-500'>{t('atCap')}</span>}
 				</p>
 				{/* When there are none, the empty state below carries the button. */}
 				{groups.length > 0 && <GroupFormDialog atCap={atCap} />}
@@ -65,11 +62,8 @@ function GroupsPage() {
 						<EmptyMedia variant='icon'>
 							<LayersIcon />
 						</EmptyMedia>
-						<EmptyTitle>No groups yet</EmptyTitle>
-						<EmptyDescription>
-							A group is a set of devices sharing one slice of your limits, e.g. &quot;Laptops&quot;.
-							Create one, then pick it on a device.
-						</EmptyDescription>
+						<EmptyTitle>{t('emptyTitle')}</EmptyTitle>
+						<EmptyDescription>{t('emptyDescription')}</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
 						<GroupFormDialog atCap={atCap} />
@@ -87,21 +81,23 @@ function GroupsPage() {
 							<div className='min-w-0 flex-1'>
 								<p className='text-sm font-medium'>{g.name}</p>
 								<p className='mt-0.5 truncate text-xs text-muted-foreground'>
-									{g.deviceNames.length > 0
-										? g.deviceNames.join(', ')
-										: 'Empty, so its slice of the limit goes unused.'}
+									{g.deviceNames.length > 0 ? g.deviceNames.join(', ') : t('empty')}
 								</p>
 							</div>
 							{(g.blockOnSessionLimit || g.blockOnWeeklyLimit) && (
 								<span className='text-xs text-muted-foreground'>
-									blocks at 100% ·{' '}
-									{[g.blockOnSessionLimit && '5h', g.blockOnWeeklyLimit && 'weekly']
-										.filter(Boolean)
-										.join(' + ')}
+									{t('blocksAt', {
+										windows: [
+											g.blockOnSessionLimit && t('blocksSession'),
+											g.blockOnWeeklyLimit && t('blocksWeekly'),
+										]
+											.filter(Boolean)
+											.join(' + '),
+									})}
 								</span>
 							)}
 							<span className='text-sm text-muted-foreground tabular-nums'>
-								{g.deviceNames.length} {g.deviceNames.length === 1 ? 'device' : 'devices'}
+								{t('deviceCount', { count: g.deviceNames.length })}
 							</span>
 							<div className='flex gap-1'>
 								<GroupFormDialog
@@ -116,13 +112,13 @@ function GroupsPage() {
 								<ConfirmAction
 									action={deleteGroup}
 									id={g.id}
-									title={`Delete ${g.name}?`}
-									description='Its devices move to another group (a fresh Default is created if this was the last one). Reported usage is kept.'
-									confirmLabel='Delete'
-									successMessage={`${g.name} deleted`}
+									title={t('deleteTitle', { name: g.name })}
+									description={t('deleteDescription')}
+									confirmLabel={t('delete')}
+									successMessage={t('deleted', { name: g.name })}
 								>
 									<Trash2 />
-									Delete
+									{t('delete')}
 								</ConfirmAction>
 							</div>
 						</li>

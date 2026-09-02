@@ -11,6 +11,7 @@ import {
 	SlashIcon,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useTranslations } from 'use-intl'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
 	Sidebar,
@@ -29,20 +30,23 @@ import { toast } from '@/components/ui/toast'
 import { UsageFleetMark } from '@/components/usage-fleet-mark'
 import { signOut } from '@/lib/auth-client'
 
-const NAV: { href: string; label: string; icon: LucideIcon }[] = [
-	{ href: '/dashboard', icon: GaugeIcon, label: 'Dashboard' },
-	{ href: '/groups', icon: LayersIcon, label: 'Groups' },
-	{ href: '/devices', icon: MonitorSmartphoneIcon, label: 'Devices' },
-	{ href: '/billing', icon: CreditCardIcon, label: 'Billing' },
-	{ href: '/settings', icon: Settings2Icon, label: 'Settings' },
+// `key` indexes common.nav, so a label never gets written twice. Kept literal
+// (no widening annotation) so a typo fails the `t()` call at compile time.
+const NAV = [
+	{ href: '/dashboard', icon: GaugeIcon, key: 'dashboard' },
+	{ href: '/groups', icon: LayersIcon, key: 'groups' },
+	{ href: '/devices', icon: MonitorSmartphoneIcon, key: 'devices' },
+	{ href: '/billing', icon: CreditCardIcon, key: 'billing' },
+	{ href: '/settings', icon: Settings2Icon, key: 'settings' },
 	// Rendered only for ADMIN_EMAILS accounts, but listed here unconditionally so
 	// PageTitle can name the page it is on.
-	{ href: '/admin', icon: ShieldIcon, label: 'Admin' },
-]
+	{ href: '/admin', icon: ShieldIcon, key: 'admin' },
+] as const satisfies { href: string; key: string; icon: LucideIcon }[]
 
 /** The shell's single <h1>: the current section's name, derived from the route
  *  so pages don't each repeat their own title. */
 export function PageTitle() {
+	const t = useTranslations('common.nav')
 	const pathname = useRouterState({
 		select: state => state.location.pathname,
 	})
@@ -54,12 +58,13 @@ export function PageTitle() {
 				UsageFleet
 			</span>
 			<SlashIcon className='hidden size-3 text-muted-foreground/50 sm:inline' aria-hidden />
-			<h1 className='truncate font-heading font-medium'>{current?.label ?? 'Dashboard'}</h1>
+			<h1 className='truncate font-heading font-medium'>{t(current?.key ?? 'dashboard')}</h1>
 		</div>
 	)
 }
 
 function NavUser({ email }: { email: string }) {
+	const t = useTranslations('common.user')
 	const router = useRouter()
 	const [pending, setPending] = useState(false)
 	return (
@@ -75,7 +80,7 @@ function NavUser({ email }: { email: string }) {
 				</span>
 				<span className='grid flex-1 text-left text-sm leading-tight'>
 					<span className='truncate font-medium'>{email}</span>
-					<span className='truncate text-xs text-muted-foreground'>Signed in</span>
+					<span className='truncate text-xs text-muted-foreground'>{t('signedIn')}</span>
 				</span>
 				<ChevronsUpDownIcon className='ml-auto size-4' />
 			</DropdownMenuTrigger>
@@ -93,12 +98,12 @@ function NavUser({ email }: { email: string }) {
 						try {
 							await toast.promise(request, {
 								error: {
-									description: 'Please sign in again if your session remains active.',
+									description: t('signOutFailedHint'),
 									priority: 'high',
-									title: "Couldn't sign out",
+									title: t('signOutFailed'),
 								},
-								loading: { title: 'Signing out…' },
-								success: { title: 'Signed out' },
+								loading: { title: t('signingOut') },
+								success: { title: t('signedOut') },
 							})
 						} catch {
 							// Keep the existing best-effort redirect; the toast reports the failure.
@@ -109,7 +114,7 @@ function NavUser({ email }: { email: string }) {
 						}
 					}}
 				>
-					Sign out
+					{t('signOut')}
 				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>
@@ -117,6 +122,7 @@ function NavUser({ email }: { email: string }) {
 }
 
 export function AppSidebar({ email, isAdmin }: { email: string; isAdmin: boolean }) {
+	const t = useTranslations('common')
 	const pathname = useRouterState({
 		select: state => state.location.pathname,
 	})
@@ -138,9 +144,7 @@ export function AppSidebar({ email, isAdmin }: { email: string; isAdmin: boolean
 							</span>
 							<span className='grid flex-1 text-left leading-tight'>
 								<span className='truncate font-heading font-medium'>UsageFleet</span>
-								<span className='truncate text-xs text-muted-foreground'>
-									Usage across groups and devices
-								</span>
+								<span className='truncate text-xs text-muted-foreground'>{t('tagline')}</span>
 							</span>
 						</SidebarMenuButton>
 					</SidebarMenuItem>
@@ -148,18 +152,18 @@ export function AppSidebar({ email, isAdmin }: { email: string; isAdmin: boolean
 			</SidebarHeader>
 			<SidebarContent>
 				<SidebarGroup>
-					<SidebarGroupLabel>Overview</SidebarGroupLabel>
+					<SidebarGroupLabel>{t('nav.overview')}</SidebarGroupLabel>
 					<SidebarGroupContent>
 						<SidebarMenu>
 							{NAV.filter(n => isAdmin || n.href !== '/admin').map(n => (
 								<SidebarMenuItem key={n.href}>
 									<SidebarMenuButton
 										isActive={pathname.startsWith(n.href)}
-										tooltip={n.label}
+										tooltip={t(`nav.${n.key}`)}
 										render={<Link to={n.href} />}
 									>
 										<n.icon />
-										<span>{n.label}</span>
+										<span>{t(`nav.${n.key}`)}</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
 							))}

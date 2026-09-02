@@ -1,12 +1,15 @@
 import type { FormEvent } from 'react'
 import { useState } from 'react'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
+import { useTranslations } from 'use-intl'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { authClient } from '@/lib/auth-client'
+import { detectLocale } from '@/lib/i18n'
 import { SITE_NAME } from '@/lib/site'
+import { MESSAGES } from '@/messages'
 
 /** Both halves of a reset live on this one path, because that is what the mail
  *  link forces: better-auth's /reset-password/:token callback checks the token
@@ -27,34 +30,36 @@ export const Route = createFileRoute('/reset-password')({
 	validateSearch,
 	// A one-time token in the URL has no business in a search index.
 	head: () => ({
-		meta: [{ title: `Reset password — ${SITE_NAME}` }, { name: 'robots', content: 'noindex, nofollow' }],
+		meta: [
+			{ title: `${MESSAGES[detectLocale()].auth.title.reset} — ${SITE_NAME}` },
+			{ name: 'robots', content: 'noindex, nofollow' },
+		],
 	}),
 	component: ResetPasswordPage,
 })
 
 function ResetPasswordPage() {
+	const t = useTranslations('auth.reset')
 	const { token, error: linkError } = Route.useSearch()
 	return (
 		<div className='flex flex-1 items-center justify-center p-6'>
 			<Card className='w-full max-w-sm [--card-spacing:--spacing(6)]'>
 				<CardHeader>
-					<CardTitle className='text-lg'>{token ? 'Choose a new password' : 'Reset password'}</CardTitle>
-					<CardDescription>
-						{token
-							? 'This signs out every other session on the account.'
-							: 'We email a link that lets you set a new one.'}
-					</CardDescription>
+					<CardTitle className='text-lg'>{token ? t('titleToken') : t('title')}</CardTitle>
+					<CardDescription>{token ? t('descriptionToken') : t('description')}</CardDescription>
 				</CardHeader>
 				<CardContent className='flex flex-col gap-6'>
 					{linkError && (
 						<p role='alert' className='text-sm text-destructive'>
-							That link has expired or was already used. Request a new one below.
+							{t('linkExpired')}
 						</p>
 					)}
 					{token && !linkError ? <NewPasswordForm token={token} /> : <RequestLinkForm />}
 					<Link to='/login' className='text-center text-sm text-muted-foreground'>
-						Back to{' '}
-						<span className='font-medium text-foreground underline underline-offset-4'>sign in</span>
+						{t('backTo')}
+						<span className='font-medium text-foreground underline underline-offset-4'>
+							{t('backToSignIn')}
+						</span>
 					</Link>
 				</CardContent>
 			</Card>
@@ -66,6 +71,7 @@ function ResetPasswordPage() {
  *  so this must not branch on the result either: telling the two apart here
  *  would hand back the account enumeration better-auth deliberately withholds. */
 function RequestLinkForm() {
+	const t = useTranslations('auth.reset')
 	const [pending, setPending] = useState(false)
 	const [sent, setSent] = useState(false)
 
@@ -81,18 +87,14 @@ function RequestLinkForm() {
 	}
 
 	if (sent) {
-		return (
-			<output className='text-sm text-muted-foreground'>
-				If that address has an account, a reset link is on its way. It expires in an hour.
-			</output>
-		)
+		return <output className='text-sm text-muted-foreground'>{t('sent')}</output>
 	}
 
 	return (
 		<form onSubmit={onSubmit}>
 			<FieldGroup>
 				<Field>
-					<FieldLabel htmlFor='email'>Email</FieldLabel>
+					<FieldLabel htmlFor='email'>{t('email')}</FieldLabel>
 					{/* The username is no use here: only an address can be mailed. */}
 					<Input
 						id='email'
@@ -100,11 +102,11 @@ function RequestLinkForm() {
 						type='email'
 						required
 						autoComplete='email'
-						placeholder='you@example.com'
+						placeholder={t('emailPlaceholder')}
 					/>
 				</Field>
 				<Button type='submit' size='lg' disabled={pending}>
-					{pending ? 'Please wait…' : 'Send reset link'}
+					{pending ? t('pending') : t('sendLink')}
 				</Button>
 			</FieldGroup>
 		</form>
@@ -113,6 +115,7 @@ function RequestLinkForm() {
 
 /** Step two, reached only from the mail link. */
 function NewPasswordForm({ token }: { token: string }) {
+	const t = useTranslations('auth.reset')
 	const router = useRouter()
 	const [pending, setPending] = useState(false)
 	const [error, setError] = useState<string | null>(null)
@@ -127,7 +130,7 @@ function NewPasswordForm({ token }: { token: string }) {
 		})
 		setPending(false)
 		if (error) {
-			setError(error.message ?? 'That link is no longer valid. Request a new one.')
+			setError(error.message ?? t('invalidToken'))
 			return
 		}
 		// Resetting does not sign anyone in, by design: the new password still has
@@ -139,7 +142,7 @@ function NewPasswordForm({ token }: { token: string }) {
 		<form onSubmit={onSubmit}>
 			<FieldGroup>
 				<Field>
-					<FieldLabel htmlFor='password'>New password</FieldLabel>
+					<FieldLabel htmlFor='password'>{t('newPassword')}</FieldLabel>
 					<Input
 						id='password'
 						name='password'
@@ -147,12 +150,12 @@ function NewPasswordForm({ token }: { token: string }) {
 						required
 						minLength={8}
 						autoComplete='new-password'
-						placeholder='At least 8 characters'
+						placeholder={t('passwordPlaceholder')}
 					/>
 				</Field>
 				{error && <FieldError>{error}</FieldError>}
 				<Button type='submit' size='lg' disabled={pending}>
-					{pending ? 'Please wait…' : 'Set password'}
+					{pending ? t('pending') : t('setPassword')}
 				</Button>
 			</FieldGroup>
 		</form>

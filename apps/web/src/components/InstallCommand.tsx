@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { CheckIcon, CopyIcon } from 'lucide-react'
+import { useTranslations } from 'use-intl'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/toast'
@@ -9,6 +10,7 @@ import { installCommands } from '@/lib/install-command'
  *  shell, with a copy button. Used on the token dialog (real token) and on the
  *  dashboard setup rail (placeholder token, since it is shown only once). */
 export function InstallCommand({ token }: { token: string }) {
+	const t = useTranslations('dash.devices')
 	const commands = installCommands(token)
 	const [platform, setPlatform] = useState<string>(commands[0].id)
 	const [copied, setCopied] = useState<string | null>(null)
@@ -17,12 +19,12 @@ export function InstallCommand({ token }: { token: string }) {
 		try {
 			await navigator.clipboard.writeText(command)
 			setCopied(id)
-			toast.add({ title: 'Command copied', type: 'success' })
+			toast.add({ title: t('commandCopied'), type: 'success' })
 		} catch {
 			toast.add({
-				description: 'Select the command and copy it manually.',
+				description: t('copyCommandFailedHint'),
 				priority: 'high',
-				title: "Couldn't copy",
+				title: t('copyCommandFailed'),
 				type: 'error',
 			})
 		}
@@ -49,7 +51,7 @@ export function InstallCommand({ token }: { token: string }) {
 						<Button
 							variant='outline'
 							size='icon'
-							aria-label={`Copy ${c.label} install command`}
+							aria-label={t('copyCommand', { name: c.label })}
 							onClick={() => copy(c.command, c.id)}
 						>
 							{copied === c.id ? <CheckIcon /> : <CopyIcon />}

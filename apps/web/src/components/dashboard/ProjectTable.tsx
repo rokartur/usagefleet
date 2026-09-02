@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { IconEye, IconEyeOff } from '@tabler/icons-react'
 import { type } from 'arktype'
+import { useTranslations } from 'use-intl'
 import { RelativeTime } from '@/components/RelativeTime'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,7 +20,9 @@ const PREFS_KEY = 'usagefleet:projects'
 const Prefs = type('string.json.parse').to({ 'hidden?': 'string[]', 'merge?': 'boolean' })
 
 /** Group filter off. A literal because a group could be named "All groups"; it
- *  would collide, and losing that one name is cheaper than a wrapper type. */
+ *  would collide, and losing that one name is cheaper than a wrapper type.
+ *  Stays English in every locale: it is the sentinel value the filter compares
+ *  against, not the label the user reads. */
 const ALL_GROUPS = 'All groups'
 
 /** How many projects the table lists at once. The rest still count towards the
@@ -36,7 +39,8 @@ const ROWS = 12
 export function splitPath(path: string | null): { name: string; parent: string } {
 	if (!path) {
 		// Not a project: Claude Desktop and pi log no working directory, so their
-		// whole usage lands in this one bucket.
+		// whole usage lands in this one bucket. Left in English because the name
+		// doubles as the merge key; the table translates it when it renders.
 		return { name: 'No project', parent: 'logged without a working directory' }
 	}
 	const sep = path.includes('\\') ? '\\' : '/'
@@ -106,6 +110,7 @@ function searchable(r: Row): string {
  * answers "what am I burning the subscription on lately" without a date picker.
  */
 export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
+	const t = useTranslations('dash.projects')
 	const [query, setQuery] = useState('')
 	const [group, setGroup] = useState(ALL_GROUPS)
 	const [showHidden, setShowHidden] = useState(false)
@@ -152,28 +157,28 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 
 	return (
 		<Section
-			title={`Projects · last ${PROJECT_DAYS} days`}
+			title={t('title', { days: PROJECT_DAYS })}
 			actions={
 				<div className='flex flex-wrap items-center gap-2'>
 					<Input
 						value={query}
 						onChange={e => setQuery(e.target.value)}
-						placeholder='Filter by path or group'
-						aria-label='Filter projects by path or group'
+						placeholder={t('filterPlaceholder')}
+						aria-label={t('filterLabel')}
 						className='h-8 w-56'
 					/>
 					<Select
 						value={group}
 						onValueChange={v => v && setGroup(v)}
-						items={groupOptions.map(g => ({ label: g, value: g }))}
+						items={groupOptions.map(g => ({ label: g === ALL_GROUPS ? t('allGroups') : g, value: g }))}
 					>
-						<SelectTrigger size='sm' aria-label='Group'>
+						<SelectTrigger size='sm' aria-label={t('group')}>
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
 							{groupOptions.map(g => (
 								<SelectItem key={g} value={g}>
-									{g}
+									{g === ALL_GROUPS ? t('allGroups') : g}
 								</SelectItem>
 							))}
 						</SelectContent>
@@ -184,7 +189,7 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 						aria-pressed={merge}
 						onClick={() => persist({ merge: !merge })}
 					>
-						Merge by name
+						{t('mergeByName')}
 					</Button>
 					{hidden.length > 0 && (
 						<Button
@@ -193,7 +198,7 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 							aria-pressed={hiddenView}
 							onClick={() => setShowHidden(!hiddenView)}
 						>
-							{hidden.length} hidden
+							{t('hidden', { count: hidden.length })}
 						</Button>
 					)}
 				</div>
@@ -202,14 +207,14 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead>Project</TableHead>
-						<TableHead>Group</TableHead>
-						<TableHead className='text-right'>Billable</TableHead>
-						<TableHead className='text-right'>Total</TableHead>
-						<TableHead className='text-right'>Cost</TableHead>
-						<TableHead className='text-right'>Last used</TableHead>
+						<TableHead>{t('project')}</TableHead>
+						<TableHead>{t('group')}</TableHead>
+						<TableHead className='text-right'>{t('billable')}</TableHead>
+						<TableHead className='text-right'>{t('total')}</TableHead>
+						<TableHead className='text-right'>{t('cost')}</TableHead>
+						<TableHead className='text-right'>{t('lastUsed')}</TableHead>
 						<TableHead>
-							<span className='sr-only'>Actions</span>
+							<span className='sr-only'>{t('actions')}</span>
 						</TableHead>
 					</TableRow>
 				</TableHeader>
@@ -220,10 +225,14 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 						return (
 							<TableRow key={keys.join(' ')} className='group/row'>
 								<TableCell className='max-w-96 truncate' title={p.paths.join(', ')}>
-									<span className='font-medium'>{name}</span>
+									<span className='font-medium'>{p.path ? name : t('noProject')}</span>
 									{/* Merged rows span several paths, so the count replaces the parent. */}
 									<span className='ml-2 text-muted-foreground'>
-										{p.paths.length > 1 ? `${p.paths.length} paths` : parent}
+										{p.paths.length > 1
+											? t('pathCount', { count: p.paths.length })
+											: p.path
+												? parent
+												: t('noProjectHint')}
 									</span>
 								</TableCell>
 								<TableCell className='text-muted-foreground'>
@@ -260,7 +269,7 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 										size='icon-sm'
 										// Keyboard users get it on focus; a mouse only needs it on the row it is over.
 										className='text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100'
-										aria-label={hiddenView ? `Unhide ${name}` : `Hide ${name}`}
+										aria-label={t(hiddenView ? 'unhide' : 'hide', { name })}
 										onClick={() =>
 											persist({
 												hidden: hiddenView
@@ -278,7 +287,7 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 					{shown.length === 0 && (
 						<TableRow>
 							<TableCell colSpan={7} className='text-muted-foreground'>
-								{q ? `No project matches “${query.trim()}”.` : 'No project matches these filters.'}
+								{q ? t('noMatchQuery', { query: query.trim() }) : t('noMatch')}
 							</TableCell>
 						</TableRow>
 					)}
@@ -286,11 +295,11 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 				<TableFooter>
 					<TableRow>
 						<TableCell>
-							{hiddenView ? 'Hidden total' : 'Total'}
+							{t(hiddenView ? 'hiddenTotal' : 'total')}
 							<span className='ml-2 font-normal text-muted-foreground'>
 								{[
-									matched.length > shown.length && `across ${matched.length} projects`,
-									!hiddenView && hidden.length > 0 && `${hidden.length} hidden excluded`,
+									matched.length > shown.length && t('scope', { count: matched.length }),
+									!hiddenView && hidden.length > 0 && t('hiddenExcluded', { count: hidden.length }),
 								]
 									.filter(Boolean)
 									.join(', ')}

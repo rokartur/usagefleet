@@ -2,12 +2,15 @@ import { randomUUID } from 'node:crypto'
 import { createServerFn } from '@tanstack/react-start'
 import { type } from 'arktype'
 import { and, asc, eq, ne, sql } from 'drizzle-orm'
+import { createTranslator } from 'use-intl'
 import { db } from '@/db'
 import { devices, groups, userSettings } from '@/db/schema'
 import { accountPlan } from '@/lib/billing'
 import { ensureDefaultGroup, ensureSettings } from '@/lib/data'
 import { generateDeviceToken } from '@/lib/device-token'
+import { detectLocale } from '@/lib/i18n'
 import { requireUser } from '@/lib/session'
+import { MESSAGES } from '@/messages'
 
 /** Accept only a #rrggbb hex color; fall back to the default otherwise so a
  *  malformed value can't render a broken swatch or pollute stored data. */
@@ -214,7 +217,11 @@ export const createDevice = createServerFn({ method: 'POST' })
 			.where(and(eq(devices.userId, user.id), eq(devices.revoked, false)))
 		const { deviceLimit: maxDevices } = await accountPlan(user.id)
 		if (active >= maxDevices) {
-			throw new Error(`Device limit reached (${maxDevices}). Upgrade your plan on Billing.`)
+			// Thrown server-side but rendered by the client as-is, so it has to be
+			// translated here rather than at the call site.
+			const locale = detectLocale()
+			const t = createTranslator({ locale, messages: MESSAGES[locale], namespace: 'dash.limits' })
+			throw new Error(t('deviceLimitReached', { limit: maxDevices }))
 		}
 		// Devices are always grouped — fall back to the default when none is chosen.
 		const safeGroupId = (await ownedGroupId(user.id, groupId || null)) ?? (await ensureDefaultGroup(user.id)).id

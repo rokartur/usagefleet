@@ -12,7 +12,9 @@ import {
 import type { PlanPrices } from './plans'
 
 /** Stands in for what lib/stripe-prices.ts reads back from Stripe. */
-const PRICES: PlanPrices = { custom: 35, fleet: 300, solo: 100 }
+const PRICES: PlanPrices = { amounts: { custom: 35, fleet: 300, solo: 100 }, currency: 'usd' }
+
+const ZLOTY: PlanPrices = { amounts: { custom: 150, fleet: 1200, solo: 400 }, currency: 'pln' }
 
 describe('plan catalog', () => {
 	it('sells the advertised device caps', () => {
@@ -69,8 +71,15 @@ describe('plan catalog', () => {
 	})
 
 	it('shows cents only when the price has any', () => {
-		expect(formatPlanPrice(600)).toBe('$6')
-		expect(formatPlanPrice(385)).toBe('$3.85')
-		expect(formatPlanPrice(35)).toBe('$0.35')
+		expect(formatPlanPrice(600, PRICES, 'en')).toBe('$6')
+		expect(formatPlanPrice(385, PRICES, 'en')).toBe('$3.85')
+		expect(formatPlanPrice(35, PRICES, 'en')).toBe('$0.35')
+	})
+
+	it('quotes złoty the Polish way rather than in a dollar layout', () => {
+		// Symbol after the amount, comma for the decimal, space between — none of
+		// which a `${symbol}${amount}` template would have produced.
+		expect(formatPlanPrice(1200, ZLOTY, 'pl').replaceAll('\u00A0', ' ')).toBe('12 zł')
+		expect(formatPlanPrice(1250, ZLOTY, 'pl').replaceAll('\u00A0', ' ')).toBe('12,50 zł')
 	})
 })

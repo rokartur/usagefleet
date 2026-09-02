@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLocale, useTranslations } from 'use-intl'
 import { Badge } from '@/components/ui/badge'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -9,31 +10,30 @@ import type { PastWindow, WindowHistoryDTO } from '@/lib/data'
 import { formatTokens } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-const KINDS = [
-	{ key: 'sessions', label: '5-hour sessions' },
-	{ key: 'weeks', label: 'Weeks' },
-] as const
-type Kind = (typeof KINDS)[number]['key']
+const KINDS = ['sessions', 'weeks'] as const
+type Kind = (typeof KINDS)[number]
 
-const dayFmt = new Intl.DateTimeFormat('en-US', {
-	day: 'numeric',
-	month: 'short',
-	timeZone: 'UTC',
-})
-const timeFmt = new Intl.DateTimeFormat('en-US', {
-	hour: '2-digit',
-	hourCycle: 'h23',
-	minute: '2-digit',
-	timeZone: 'UTC',
-})
-
-/** "Feb 12, 10:00–15:00" for a session, "Feb 5 – Feb 12" for a week (UTC). */
-function windowLabel(w: PastWindow, kind: Kind): string {
-	const start = new Date(w.start)
-	const end = new Date(w.end)
-	return kind === 'sessions'
-		? `${dayFmt.format(start)}, ${timeFmt.format(start)}–${timeFmt.format(end)}`
-		: `${dayFmt.format(start)} – ${dayFmt.format(end)}`
+/** "Feb 12, 10:00–15:00" for a session, "Feb 5 – Feb 12" for a week.
+ *
+ *  Pinned to UTC in every locale: these are the boundaries Anthropic's own
+ *  windows use, so rendering them in the viewer's zone would shift the label
+ *  off the window it names. */
+function useWindowLabel(): (w: PastWindow, kind: Kind) => string {
+	const locale = useLocale()
+	const dayFmt = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+	const timeFmt = new Intl.DateTimeFormat(locale, {
+		hour: '2-digit',
+		hourCycle: 'h23',
+		minute: '2-digit',
+		timeZone: 'UTC',
+	})
+	return (w, kind) => {
+		const start = new Date(w.start)
+		const end = new Date(w.end)
+		return kind === 'sessions'
+			? `${dayFmt.format(start)}, ${timeFmt.format(start)}–${timeFmt.format(end)}`
+			: `${dayFmt.format(start)} – ${dayFmt.format(end)}`
+	}
 }
 
 const columnKey = (groupId: string | null) => groupId ?? 'ungrouped'
@@ -72,23 +72,23 @@ function columnsOf(windows: PastWindow[]) {
  * when the fleet reports on more than one.
  */
 export function WindowHistory({ history, account }: { history: WindowHistoryDTO; account?: string }) {
+	const t = useTranslations('dash.overview')
+	const windowLabel = useWindowLabel()
 	const [kind, setKind] = useState<Kind>('sessions')
 	const windows = history[kind]
 	const columns = columnsOf(windows)
+	const kindLabel = { sessions: t('windowsSessions'), weeks: t('windowsWeeks') }
 
 	return (
 		<Section
-			title={account ? `Past windows · ${account}` : 'Past windows'}
+			title={account ? t('pastWindowsFor', { account }) : t('pastWindows')}
 			actions={
 				<div className='flex flex-wrap items-center gap-2'>
 					<Tooltip>
 						<TooltipTrigger render={<Badge variant='outline' className='font-normal' />}>
-							Beta
+							{t('beta')}
 						</TooltipTrigger>
-						<TooltipContent>
-							Window history is new: it reconstructs closed windows from the samples the collector
-							happened to record, so a window that nobody reported during reads as tokens only.
-						</TooltipContent>
+						<TooltipContent>{t('betaHint')}</TooltipContent>
 					</Tooltip>
 					<Select
 						value={kind}
@@ -97,15 +97,15 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 								setKind(v)
 							}
 						}}
-						items={KINDS.map(k => ({ label: k.label, value: k.key }))}
+						items={KINDS.map(k => ({ label: kindLabel[k], value: k }))}
 					>
-						<SelectTrigger size='sm' aria-label='Window'>
+						<SelectTrigger size='sm' aria-label={t('window')}>
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
 							{KINDS.map(k => (
-								<SelectItem key={k.key} value={k.key}>
-									{k.label}
+								<SelectItem key={k} value={k}>
+									{kindLabel[k]}
 								</SelectItem>
 							))}
 						</SelectContent>
@@ -116,9 +116,11 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 			{windows.length === 0 ? (
 				<Empty className='border'>
 					<EmptyHeader>
-						<EmptyTitle>Nothing behind us yet</EmptyTitle>
+						<EmptyTitle>{t('historyEmptyTitle')}</EmptyTitle>
 						<EmptyDescription>
-							No completed {kind === 'sessions' ? '5-hour' : 'weekly'} window has any recorded activity.
+							{t('historyEmptyDescription', {
+								window: kind === 'sessions' ? t('fiveHour') : t('weekly'),
+							})}
 						</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
@@ -126,9 +128,9 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead>Window (UTC)</TableHead>
-							<TableHead>Account limit</TableHead>
-							<TableHead className='text-right'>Tokens</TableHead>
+							<TableHead>{t('windowUtc')}</TableHead>
+							<TableHead>{t('accountLimit')}</TableHead>
+							<TableHead className='text-right'>{t('tokens')}</TableHead>
 							{columns.map(c => (
 								<TableHead key={c.key} className='text-right'>
 									<span className='inline-flex items-center gap-2'>
@@ -149,7 +151,7 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 								<TableCell className='font-medium whitespace-nowrap'>{windowLabel(w, kind)}</TableCell>
 								<TableCell>
 									{w.accountPct === null ? (
-										<span className='text-muted-foreground'>no limit sample</span>
+										<span className='text-muted-foreground'>{t('noLimitSample')}</span>
 									) : (
 										<span className='flex min-w-36 items-center gap-3'>
 											<UsageBar pct={w.accountPct} className='w-24 shrink-0' />

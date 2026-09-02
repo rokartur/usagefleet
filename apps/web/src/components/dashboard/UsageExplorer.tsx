@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { IconPlus, IconX } from '@tabler/icons-react'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
+import { useTranslations } from 'use-intl'
 import { Button } from '@/components/ui/button'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import type { ChartConfig } from '@/components/ui/chart'
@@ -19,34 +20,44 @@ const DAY_MS = 864e5
 /** Above this many days the chart switches from daily to monthly columns. */
 const MAX_DAILY_COLUMNS = 92
 
-const PERIODS = [
-	{ key: '7d', label: 'Last 7 days' },
-	{ key: '30d', label: 'Last 30 days' },
-	{ key: '90d', label: 'Last 90 days' },
-	{ key: 'month', label: 'This month' },
-	{ key: 'today', label: 'Today' },
-	{ key: 'all', label: 'All time' },
-	{ key: 'custom', label: 'Custom range' },
-] as const
-type PeriodKey = (typeof PERIODS)[number]['key']
+// Keys only: these are the values the selects round-trip, so they stay stable
+// across locales. Their labels come off the catalog at render.
+const PERIODS = ['7d', '30d', '90d', 'month', 'today', 'all', 'custom'] as const
+type PeriodKey = (typeof PERIODS)[number]
 
-const DIMENSIONS = [
-	{ key: 'group', label: 'Group' },
-	{ key: 'model', label: 'Model' },
-	{ key: 'device', label: 'Device' },
-	{ key: 'source', label: 'Source' },
-] as const
-type Dim = (typeof DIMENSIONS)[number]['key']
+const DIMENSIONS = ['group', 'model', 'device', 'source'] as const
+type Dim = (typeof DIMENSIONS)[number]
 
-const METRICS = [
-	{ key: 'billable', label: 'Billable tokens' },
-	{ key: 'total', label: 'Total tokens' },
-	{ key: 'input', label: 'Input tokens' },
-	{ key: 'output', label: 'Output tokens' },
-	{ key: 'cacheRead', label: 'Cache-read tokens' },
-	{ key: 'cost', label: 'Cost (USD)' },
-] as const
-type Metric = (typeof METRICS)[number]['key']
+const METRICS = ['billable', 'total', 'input', 'output', 'cacheRead', 'cost'] as const
+type Metric = (typeof METRICS)[number]
+
+/** Catalog key for each select option, so the label lookups stay exhaustive:
+ *  adding a period or metric above fails to compile until it is named here. */
+const PERIOD_KEY = {
+	'7d': 'period7d',
+	'30d': 'period30d',
+	'90d': 'period90d',
+	all: 'periodAll',
+	custom: 'periodCustom',
+	month: 'periodMonth',
+	today: 'periodToday',
+} as const satisfies Record<PeriodKey, string>
+
+const DIM_KEY = {
+	device: 'dimDevice',
+	group: 'dimGroup',
+	model: 'dimModel',
+	source: 'dimSource',
+} as const satisfies Record<Dim, string>
+
+const METRIC_KEY = {
+	billable: 'metricBillable',
+	cacheRead: 'metricCacheRead',
+	cost: 'metricCost',
+	input: 'metricInput',
+	output: 'metricOutput',
+	total: 'metricTotal',
+} as const satisfies Record<Metric, string>
 
 /** Series colors for dimensions that carry no color of their own (model /
  *  device / source); groups use their configured color. */
@@ -136,6 +147,7 @@ const formatMetric = (v: number, m: Metric) => (m === 'cost' ? formatUsd(v) : fo
  *  dashboard shows no filter UI at all — active filters are the only thing that
  *  takes up room, one chip per dimension. */
 export function UsageExplorer({ history }: { history: HistoryDTO }) {
+	const t = useTranslations('dash.usage')
 	const [period, setPeriod] = useState<PeriodKey>('30d')
 	const [from, setFrom] = useState('')
 	const [to, setTo] = useState('')
@@ -152,14 +164,16 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 	const groupName = new Map(history.groups.map(g => [g.id, g.name]))
 	// Revoked machines still own their history, and a name gets reused when one is
 	// re-enrolled, so the suffix is what tells the two entries apart.
-	const deviceName = new Map(history.devices.map(d => [d.id, d.revoked ? `${d.name} (revoked)` : d.name]))
+	const deviceName = new Map(
+		history.devices.map(d => [d.id, d.revoked ? t('revokedDevice', { name: d.name }) : d.name]),
+	)
 	const label = (d: Dim, key: string): string => {
 		switch (d) {
 			case 'group': {
-				return key === 'ungrouped' ? 'Ungrouped' : (groupName.get(key) ?? 'Deleted group')
+				return key === 'ungrouped' ? t('ungrouped') : (groupName.get(key) ?? t('deletedGroup'))
 			}
 			case 'device': {
-				return key === 'unknown' ? 'Unknown device' : (deviceName.get(key) ?? 'Deleted device')
+				return key === 'unknown' ? t('unknownDevice') : (deviceName.get(key) ?? t('deletedDevice'))
 			}
 			case 'model': {
 				return modelLabel(key === 'unknown' ? null : key)
@@ -179,13 +193,13 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 		source: [],
 	}
 	for (const d of DIMENSIONS) {
-		dimValues[d.key] = [...new Set(history.rows.map(r => keyOf(r, d.key)))].toSorted((a, b) =>
-			label(d.key, a).localeCompare(label(d.key, b)),
+		dimValues[d] = [...new Set(history.rows.map(r => keyOf(r, d)))].toSorted((a, b) =>
+			label(d, a).localeCompare(label(d, b)),
 		)
 	}
 	// A dimension with a single value can't narrow anything, so it stays out of
 	// the palette.
-	const pickable = DIMENSIONS.filter(d => dimValues[d.key].length > 1)
+	const pickable = DIMENSIONS.filter(d => dimValues[d].length > 1)
 
 	const toggleFilter = (d: Dim, key: string) =>
 		setFilters(f => {
@@ -198,7 +212,7 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 	 *  fit, a count once they don't. */
 	const chipLabel = (d: Dim) =>
 		filters[d].length > 2
-			? `${filters[d].length} of ${dimValues[d].length}`
+			? t('filterChip', { count: filters[d].length, total: dimValues[d].length })
 			: filters[d].map(k => label(d, k)).join(', ')
 
 	const view = (() => {
@@ -207,7 +221,7 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 			r =>
 				r.day >= lo &&
 				r.day <= hi &&
-				DIMENSIONS.every(d => filters[d.key].length === 0 || filters[d.key].includes(keyOf(r, d.key))),
+				DIMENSIONS.every(d => filters[d].length === 0 || filters[d].includes(keyOf(r, d))),
 		)
 		if (rows.length === 0) {
 			return null
@@ -274,7 +288,7 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 
 	return (
 		<Section
-			title='Usage over time'
+			title={t('title')}
 			actions={
 				<div className='flex flex-wrap items-center gap-2'>
 					<Select
@@ -284,15 +298,15 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 								setPeriod(v)
 							}
 						}}
-						items={PERIODS.map(p => ({ label: p.label, value: p.key }))}
+						items={PERIODS.map(p => ({ label: t(PERIOD_KEY[p]), value: p }))}
 					>
-						<SelectTrigger size='sm' aria-label='Period'>
+						<SelectTrigger size='sm' aria-label={t('period')}>
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
 							{PERIODS.map(p => (
-								<SelectItem key={p.key} value={p.key}>
-									{p.label}
+								<SelectItem key={p} value={p}>
+									{t(PERIOD_KEY[p])}
 								</SelectItem>
 							))}
 						</SelectContent>
@@ -304,15 +318,15 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 								setMetric(v)
 							}
 						}}
-						items={METRICS.map(m => ({ label: m.label, value: m.key }))}
+						items={METRICS.map(m => ({ label: t(METRIC_KEY[m]), value: m }))}
 					>
-						<SelectTrigger size='sm' aria-label='Metric'>
+						<SelectTrigger size='sm' aria-label={t('metric')}>
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
 							{METRICS.map(m => (
-								<SelectItem key={m.key} value={m.key}>
-									{m.label}
+								<SelectItem key={m} value={m}>
+									{t(METRIC_KEY[m])}
 								</SelectItem>
 							))}
 						</SelectContent>
@@ -325,32 +339,32 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 							}
 						}}
 						items={DIMENSIONS.map(d => ({
-							label: `Split by ${d.label.toLowerCase()}`,
-							value: d.key,
+							label: t('splitByDim', { dim: t(DIM_KEY[d]).toLowerCase() }),
+							value: d,
 						}))}
 					>
-						<SelectTrigger size='sm' aria-label='Split by'>
+						<SelectTrigger size='sm' aria-label={t('splitBy')}>
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
 							{DIMENSIONS.map(d => (
-								<SelectItem key={d.key} value={d.key}>
-									Split by {d.label.toLowerCase()}
+								<SelectItem key={d} value={d}>
+									{t('splitByDim', { dim: t(DIM_KEY[d]).toLowerCase() })}
 								</SelectItem>
 							))}
 						</SelectContent>
 					</Select>
 					{pickable.map(
 						d =>
-							filters[d.key].length > 0 && (
+							filters[d].length > 0 && (
 								<Button
-									key={d.key}
+									key={d}
 									variant='outline'
 									size='sm'
-									onClick={() => setFilters(f => ({ ...f, [d.key]: [] }))}
+									onClick={() => setFilters(f => ({ ...f, [d]: [] }))}
 								>
-									{d.label}: {chipLabel(d.key)}
-									<IconX className='text-muted-foreground' aria-label='Clear' />
+									{t(DIM_KEY[d])}: {chipLabel(d)}
+									<IconX className='text-muted-foreground' aria-label={t('clear')} />
 								</Button>
 							),
 					)}
@@ -360,27 +374,27 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 								render={
 									<Button variant='ghost' size='sm' className='text-muted-foreground'>
 										<IconPlus />
-										Filter
+										{t('filter')}
 									</Button>
 								}
 							/>
 							<PopoverContent align='end' className='w-64 p-0'>
 								<Command>
-									<CommandInput placeholder='Group, model, device, source' />
+									<CommandInput placeholder={t('filterPlaceholder')} />
 									<CommandList>
-										<CommandEmpty>Nothing matches.</CommandEmpty>
+										<CommandEmpty>{t('nothingMatches')}</CommandEmpty>
 										{pickable.map(d => (
-											<CommandGroup key={d.key} heading={d.label}>
-												{dimValues[d.key].map(key => (
+											<CommandGroup key={d} heading={t(DIM_KEY[d])}>
+												{dimValues[d].map(key => (
 													<CommandItem
 														key={key}
 														// Prefixed so the two namespaces can't collide
 														// and so "model opus" narrows the list.
-														value={`${d.label} ${label(d.key, key)}`}
-														data-checked={filters[d.key].includes(key)}
-														onSelect={() => toggleFilter(d.key, key)}
+														value={`${t(DIM_KEY[d])} ${label(d, key)}`}
+														data-checked={filters[d].includes(key)}
+														onSelect={() => toggleFilter(d, key)}
 													>
-														{label(d.key, key)}
+														{label(d, key)}
 													</CommandItem>
 												))}
 											</CommandGroup>
@@ -400,7 +414,7 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 							type='date'
 							value={from}
 							onChange={e => setFrom(e.target.value)}
-							aria-label='From'
+							aria-label={t('from')}
 							className='w-40'
 						/>
 						<span className='text-muted-foreground'>–</span>
@@ -408,7 +422,7 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 							type='date'
 							value={to}
 							onChange={e => setTo(e.target.value)}
-							aria-label='To'
+							aria-label={t('to')}
 							className='w-40'
 						/>
 					</div>
@@ -472,10 +486,10 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>{DIMENSIONS.find(d => d.key === dim)?.label}</TableHead>
-									<TableHead className='text-right'>Billable</TableHead>
-									<TableHead className='text-right'>Total</TableHead>
-									<TableHead className='text-right'>Cost</TableHead>
+									<TableHead>{t(DIM_KEY[dim])}</TableHead>
+									<TableHead className='text-right'>{t('tableBillable')}</TableHead>
+									<TableHead className='text-right'>{t('tableTotal')}</TableHead>
+									<TableHead className='text-right'>{t('tableCost')}</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -506,7 +520,7 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 							{view.series.length > 1 && (
 								<TableFooter>
 									<TableRow>
-										<TableCell>Total</TableCell>
+										<TableCell>{t('tableTotal')}</TableCell>
 										<TableCell className='text-right tabular-nums'>
 											{formatTokens(view.sum.billable)}
 										</TableCell>
@@ -524,8 +538,8 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 				) : (
 					<Empty className='border'>
 						<EmptyHeader>
-							<EmptyTitle>Nothing to chart</EmptyTitle>
-							<EmptyDescription>No activity matches the selected period and filters.</EmptyDescription>
+							<EmptyTitle>{t('emptyTitle')}</EmptyTitle>
+							<EmptyDescription>{t('emptyDescription')}</EmptyDescription>
 						</EmptyHeader>
 					</Empty>
 				)}

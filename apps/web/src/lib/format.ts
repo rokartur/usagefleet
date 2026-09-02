@@ -19,28 +19,26 @@ export function formatUsd(n: number): string {
 	return `$${n.toFixed(2)}`
 }
 
-/** Reads the wall clock, so it cannot be rendered on both sides of hydration:
+/** How long ago, in the coarsest unit that still says something: "42 minutes
+ *  ago", "3 days ago". Intl owns the wording, so a locale that inflects the
+ *  unit (Polish: "2 minuty" vs "5 minut") gets it right without a string table.
+ *
+ *  Reads the wall clock, so it cannot be rendered on both sides of hydration:
  *  the server and the hydration pass seconds later can straddle a minute
  *  boundary. Reach for `<RelativeTime>` when the result goes into the DOM. */
-export function formatRelative(d: Date | string | null): string {
-	if (!d) {
-		return 'never'
-	}
+export function formatRelative(d: Date | string, locale: string): string {
 	const date = typeof d === 'string' ? new Date(d) : d
-	const diff = Date.now() - date.getTime()
-	const min = Math.floor(diff / 60_000)
+	const fmt = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+	const min = Math.floor((Date.now() - date.getTime()) / 60_000)
 	if (min < 1) {
-		return 'just now'
+		// numeric:'auto' turns 0 into the idiomatic "now" / "teraz".
+		return fmt.format(0, 'minute')
 	}
 	if (min < 60) {
-		return `${min}m ago`
+		return fmt.format(-min, 'minute')
 	}
 	const h = Math.floor(min / 60)
-	if (h < 24) {
-		return `${h}h ago`
-	}
-	const days = Math.floor(h / 24)
-	return `${days}d ago`
+	return h < 24 ? fmt.format(-h, 'hour') : fmt.format(-Math.floor(h / 24), 'day')
 }
 
 export const OS_LABEL: Record<string, string> = {

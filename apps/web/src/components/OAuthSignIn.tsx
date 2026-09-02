@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react'
 import { useState } from 'react'
+import { useTranslations } from 'use-intl'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { signIn } from '@/lib/auth-client'
@@ -50,6 +51,7 @@ export function OAuthSignIn({
 	/** This browser last signed in with this provider, so the button says so. */
 	lastUsed?: boolean
 }) {
+	const t = useTranslations('auth.oauth')
 	const [pending, setPending] = useState(false)
 	const { name } = PROVIDERS[provider]
 	const { callbackURL, errorCallbackURL } = signInRedirects(plan)
@@ -77,10 +79,10 @@ export function OAuthSignIn({
 			}}
 		>
 			<ProviderMark provider={provider} />
-			Continue with {name}
+			{t('continueWith', { provider: name })}
 			{lastUsed && (
 				<Badge variant='secondary' className='absolute -top-2 right-2 h-4.5 px-1.5 text-[10px] font-normal'>
-					Last used
+					{t('lastUsed')}
 				</Badge>
 			)}
 		</Button>

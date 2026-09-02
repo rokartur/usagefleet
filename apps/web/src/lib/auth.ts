@@ -10,6 +10,7 @@ import { db } from '../db'
 import * as schema from '../db/schema'
 import { accountPlan } from './billing'
 import { isAdminEmail, signupEnabled } from './flags'
+import { LOCALE_CURRENCY, resolveLocale } from './i18n'
 import { PAID_PLANS, PLANS } from './plans'
 import { proxyTrusted } from './rate-limit'
 
@@ -233,6 +234,19 @@ export const auth = betterAuth({
 			createCustomerOnSignUp: true,
 			subscription: {
 				enabled: true,
+				// Charge in the currency the pricing page quoted. Stripe reads the
+				// amount from the price's `currency_options`, so this stays a display
+				// concern turned into a billing one — no second set of price ids.
+				// A price without that currency configured makes Stripe reject the
+				// session, which is the right failure: better a loud error than a
+				// customer billed in a currency they were never shown.
+				getCheckoutSessionParams: (_data, request) => {
+					const locale = resolveLocale(
+						request?.headers.get('cookie') ?? '',
+						request?.headers.get('accept-language') ?? '',
+					)
+					return { params: { currency: LOCALE_CURRENCY[locale], locale } }
+				},
 				plans: PAID_PLANS.map(id => ({
 					name: id,
 					priceId: requiredEnv(PLANS[id].priceIdEnv),

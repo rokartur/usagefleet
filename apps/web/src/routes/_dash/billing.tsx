@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { Minus, Plus } from 'lucide-react'
+import { useFormatter, useLocale, useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
 import { BillingPortalButton, SubscribeButton } from '@/components/billing/BillingButtons'
 import { Badge } from '@/components/ui/badge'
@@ -12,23 +13,12 @@ import { accountPlan } from '@/lib/billing'
 import type { AccountPlan } from '@/lib/billing'
 import { listDevices } from '@/lib/data'
 import { devSetPlan } from '@/lib/dev-actions'
+import { detectLocale, LOCALE_CURRENCY } from '@/lib/i18n'
 import { formatPlanPrice, FREE_DEVICES, isPaidPlan, PAID_PLANS, PLANS, planLabel, planPriceCents } from '@/lib/plans'
 import type { PaidPlan, PlanPrices } from '@/lib/plans'
 import { requireUser } from '@/lib/session'
 import { planPrices } from '@/lib/stripe-prices'
 import { cn } from '@/lib/utils'
-
-const DATE = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
-
-const slotsNote = (free: number) => {
-	if (free > 0) {
-		return `${free} slot${free === 1 ? '' : 's'} left. Revoking a device frees its slot immediately.`
-	}
-	if (free === 0) {
-		return 'No slots left. Revoke a device or move up a plan to add another.'
-	}
-	return `${-free} device${free === -1 ? '' : 's'} over this plan's cap. They keep reporting, but no new device can join.`
-}
 
 /** The tiers that sell a fixed device count, free included so the grid does not
  *  special-case it. Custom is priced per device and gets its own row below. */
@@ -40,7 +30,11 @@ const TIERS = [
 
 const billingData = createServerFn().handler(async () => {
 	const user = await requireUser()
-	const [plan, devices, prices] = await Promise.all([accountPlan(user.id), listDevices(user.id), planPrices()])
+	const [plan, devices, prices] = await Promise.all([
+		accountPlan(user.id),
+		listDevices(user.id),
+		planPrices(LOCALE_CURRENCY[detectLocale()]),
+	])
 	return {
 		plan,
 		prices,
@@ -61,6 +55,9 @@ export const Route = createFileRoute('/_dash/billing')({
 function BillingPage() {
 	const { plan, prices, activeDevices } = Route.useLoaderData()
 	const { plan: preselected } = Route.useSearch()
+	const locale = useLocale()
+	const t = useTranslations('billing')
+	const format = useFormatter()
 	const subscribed = plan.plan !== 'free'
 
 	return (
@@ -68,20 +65,23 @@ function BillingPage() {
 			<section>
 				<Card>
 					<CardHeader className='border-b'>
-						<CardDescription>Current plan</CardDescription>
+						<CardDescription>{t('current.label')}</CardDescription>
 						<CardTitle className='flex items-center gap-2 text-2xl'>
 							{planLabel(plan.plan)}
-							{plan.status === 'past_due' && <Badge variant='destructive'>Payment failed</Badge>}
-							{plan.cancelAtPeriodEnd && <Badge variant='secondary'>Cancels at period end</Badge>}
+							{plan.status === 'past_due' && <Badge variant='destructive'>{t('current.pastDue')}</Badge>}
+							{plan.cancelAtPeriodEnd && <Badge variant='secondary'>{t('current.cancels')}</Badge>}
 						</CardTitle>
 						<CardAction className='text-right'>
 							<p className='text-2xl font-medium tabular-nums'>
-								{formatPlanPrice(planPriceCents(plan.plan, plan.seats, prices))}
-								<span className='text-sm font-normal text-muted-foreground'>/mo</span>
+								{formatPlanPrice(planPriceCents(plan.plan, plan.seats, prices), prices, locale)}
+								<span className='text-sm font-normal text-muted-foreground'>
+									{t('current.perMonth')}
+								</span>
 							</p>
 							{plan.periodEnd && (
 								<p className='text-xs text-muted-foreground'>
-									{plan.cancelAtPeriodEnd ? 'Ends' : 'Renews'} {DATE.format(plan.periodEnd)}
+									{plan.cancelAtPeriodEnd ? t('current.ends') : t('current.renews')}{' '}
+									{format.dateTime(plan.periodEnd, { dateStyle: 'medium' })}
 								</p>
 							)}
 						</CardAction>
@@ -100,11 +100,8 @@ function BillingPage() {
 			</section>
 
 			<section>
-				<h2 className='font-heading text-base font-medium'>Change plan</h2>
-				<p className='mt-1 mb-4 text-sm text-muted-foreground'>
-					Billed monthly, cancel any time. Revoked devices never count toward the cap, and dropping to a
-					smaller plan keeps existing devices reporting, it only blocks new ones.
-				</p>
+				<h2 className='font-heading text-base font-medium'>{t('change.title')}</h2>
+				<p className='mt-1 mb-4 text-sm text-muted-foreground'>{t('change.lead')}</p>
 
 				<div className='grid gap-3 sm:grid-cols-3'>
 					{TIERS.map(tier => {
@@ -122,15 +119,17 @@ function BillingPage() {
 								<CardHeader>
 									<CardTitle className='flex items-center justify-between gap-2'>
 										{tier.label}
-										{current && <Badge variant='secondary'>Current</Badge>}
+										{current && <Badge variant='secondary'>{t('change.current')}</Badge>}
 									</CardTitle>
 									<CardDescription className='text-xl font-medium text-foreground tabular-nums'>
-										{formatPlanPrice(planPriceCents(tier.id, null, prices))}
-										<span className='text-sm font-normal text-muted-foreground'>/mo</span>
+										{formatPlanPrice(planPriceCents(tier.id, null, prices), prices, locale)}
+										<span className='text-sm font-normal text-muted-foreground'>
+											{t('current.perMonth')}
+										</span>
 									</CardDescription>
 								</CardHeader>
 								<CardContent className='text-sm text-muted-foreground'>
-									{tier.devices} device{tier.devices === 1 ? '' : 's'}
+									{t('change.devices', { count: tier.devices })}
 								</CardContent>
 								<CardFooter>
 									<TierAction tier={tier} current={current} subscribed={subscribed} />
@@ -159,24 +158,23 @@ function BillingPage() {
  *  subtree is dropped from production bundles — the real guard is the one in
  *  `devSetPlan`, which is what actually refuses to run there. */
 function DevPlanPanel({ plan }: { plan: AccountPlan }) {
+	const t = useTranslations('billing.dev')
+
 	return (
 		<section>
-			<h2 className='font-heading text-base font-medium'>Dev tools</h2>
-			<p className='mt-1 mb-4 text-sm text-muted-foreground'>
-				Writes the subscription row the Stripe webhook would write. Clearing is local only, so a real test
-				subscription comes back on its next webhook.
-			</p>
+			<h2 className='font-heading text-base font-medium'>{t('title')}</h2>
+			<p className='mt-1 mb-4 text-sm text-muted-foreground'>{t('lead')}</p>
 
 			<Card size='sm' className='gap-3 border-dashed'>
 				<CardContent className='flex flex-wrap items-end gap-x-4 gap-y-3'>
 					<ActionForm
 						action={devSetPlan}
-						loadingMessage='Applying plan'
-						successMessage='Plan applied'
+						loadingMessage={t('applying')}
+						successMessage={t('planApplied')}
 						className='flex flex-wrap items-end gap-3'
 					>
 						<label className='flex flex-col gap-1.5 text-xs text-muted-foreground'>
-							Plan
+							{t('plan')}
 							<select
 								name='plan'
 								defaultValue={plan.plan}
@@ -192,7 +190,7 @@ function DevPlanPanel({ plan }: { plan: AccountPlan }) {
 						</label>
 
 						<label htmlFor='dev-devices' className='flex flex-col gap-1.5 text-xs text-muted-foreground'>
-							Devices (custom only)
+							{t('devices')}
 							<Input
 								id='dev-devices'
 								type='number'
@@ -204,19 +202,19 @@ function DevPlanPanel({ plan }: { plan: AccountPlan }) {
 						</label>
 
 						<Button type='submit' size='sm' variant='outline'>
-							Apply
+							{t('apply')}
 						</Button>
 					</ActionForm>
 
 					<ActionForm
 						action={devSetPlan}
-						loadingMessage='Clearing subscription'
-						successMessage='Subscription cleared'
+						loadingMessage={t('clearing')}
+						successMessage={t('cleared')}
 						className='ms-auto'
 					>
 						<input type='hidden' name='plan' value='free' />
 						<Button type='submit' size='sm' variant='ghost'>
-							Clear subscription
+							{t('clear')}
 						</Button>
 					</ActionForm>
 				</CardContent>
@@ -243,6 +241,8 @@ function CustomTier({
 	preselected: boolean
 }) {
 	const { label, minDevices, maxDevices } = PLANS.custom
+	const locale = useLocale()
+	const t = useTranslations('billing')
 	const [devices, setDevices] = useState(seats ?? minDevices)
 	const clamp = (n: number) => Math.min(Math.max(n, minDevices), maxDevices)
 	// What a click would actually buy: the field holds whatever is being typed,
@@ -250,11 +250,11 @@ function CustomTier({
 	const wanted = clamp(devices || minDevices)
 	const unchanged = current && wanted === seats
 
-	let actionLabel = 'Subscribe'
+	let actionLabel = t('change.subscribe')
 	if (current) {
-		actionLabel = 'Update devices'
+		actionLabel = t('custom.updateDevices')
 	} else if (subscribed) {
-		actionLabel = 'Switch'
+		actionLabel = t('change.switch')
 	}
 
 	return (
@@ -269,11 +269,14 @@ function CustomTier({
 			<CardHeader>
 				<CardTitle className='flex items-center justify-between gap-2'>
 					{label}
-					{current && <Badge variant='secondary'>Current</Badge>}
+					{current && <Badge variant='secondary'>{t('change.current')}</Badge>}
 				</CardTitle>
 				<CardDescription>
-					{formatPlanPrice(prices.custom)} per device, from {minDevices}. Pick any number up to {maxDevices}{' '}
-					and the price follows.
+					{t('custom.lead', {
+						price: formatPlanPrice(prices.amounts.custom, prices, locale),
+						min: minDevices,
+						max: maxDevices,
+					})}
 				</CardDescription>
 			</CardHeader>
 			<CardContent className='flex flex-wrap items-center gap-x-4 gap-y-3'>
@@ -282,7 +285,7 @@ function CustomTier({
 						variant='outline'
 						size='icon'
 						className='size-8'
-						aria-label='One device fewer'
+						aria-label={t('custom.fewer')}
 						disabled={devices <= minDevices}
 						onClick={() => setDevices(clamp(devices - 1))}
 					>
@@ -293,7 +296,7 @@ function CustomTier({
 						min={minDevices}
 						max={maxDevices}
 						value={devices}
-						aria-label='Devices'
+						aria-label={t('custom.deviceCountLabel')}
 						className='w-20 text-center tabular-nums'
 						onChange={e => setDevices(Number(e.target.value))}
 						// Snapping into range waits for blur instead of fighting the caret
@@ -304,18 +307,18 @@ function CustomTier({
 						variant='outline'
 						size='icon'
 						className='size-8'
-						aria-label='One device more'
+						aria-label={t('custom.more')}
 						disabled={devices >= maxDevices}
 						onClick={() => setDevices(clamp(devices + 1))}
 					>
 						<Plus />
 					</Button>
-					<span className='ml-1 text-sm text-muted-foreground'>devices</span>
+					<span className='ml-1 text-sm text-muted-foreground'>{t('custom.devices')}</span>
 				</div>
 
 				<p className='text-xl font-medium tabular-nums'>
-					{formatPlanPrice(planPriceCents('custom', wanted, prices))}
-					<span className='text-sm font-normal text-muted-foreground'>/mo</span>
+					{formatPlanPrice(planPriceCents('custom', wanted, prices), prices, locale)}
+					<span className='text-sm font-normal text-muted-foreground'>{t('current.perMonth')}</span>
 				</p>
 
 				<div className='ms-auto'>
@@ -342,22 +345,23 @@ function TierAction({
 	current: boolean
 	subscribed: boolean
 }) {
+	const t = useTranslations('billing.change')
 	if (current) {
 		return (
 			<Button variant='outline' size='sm' className='w-full' disabled>
-				Your plan
+				{t('yourPlan')}
 			</Button>
 		)
 	}
 	// There is no "downgrade to free" endpoint: cancelling is Stripe's job, and
 	// the portal button in the overview card opens it.
 	if (tier.id === 'free') {
-		return <p className='text-xs text-muted-foreground'>Cancel your subscription to return here.</p>
+		return <p className='text-xs text-muted-foreground'>{t('cancelToReturn')}</p>
 	}
 	return (
 		<SubscribeButton
 			plan={tier.id}
-			label={subscribed ? 'Switch' : 'Subscribe'}
+			label={subscribed ? t('switch') : t('subscribe')}
 			variant={subscribed ? 'outline' : 'default'}
 			size='sm'
 			className='w-full'
@@ -372,16 +376,22 @@ const MAX_METER_SEGMENTS = 12
 /** One segment per device the plan allows. Downgrading does not revoke devices,
  *  so `used` can legitimately exceed `limit` and the meter has to say so. */
 function DeviceMeter({ used, limit }: { used: number; limit: number }) {
+	const t = useTranslations('billing.meter')
 	const free = limit - used
 	const overCap = free < 0
+	// Three different sentences, because "-2 slots left" is not a sentence.
+	let note = t('noSlots')
+	if (free > 0) {
+		note = t('slotsLeft', { count: free })
+	} else if (overCap) {
+		note = t('overCap', { count: -free })
+	}
 
 	return (
 		<div>
 			<div className='mb-1.5 flex items-baseline justify-between text-sm'>
-				<span className='text-muted-foreground'>Active devices</span>
-				<span className='tabular-nums'>
-					{used} of {limit}
-				</span>
+				<span className='text-muted-foreground'>{t('active')}</span>
+				<span className='tabular-nums'>{t('usedOf', { used, limit })}</span>
 			</div>
 			{limit <= MAX_METER_SEGMENTS ? (
 				<div className='flex gap-1' aria-hidden>
@@ -404,7 +414,7 @@ function DeviceMeter({ used, limit }: { used: number; limit: number }) {
 					/>
 				</div>
 			)}
-			<p className='mt-2 text-xs text-muted-foreground'>{slotsNote(free)}</p>
+			<p className='mt-2 text-xs text-muted-foreground'>{note}</p>
 		</div>
 	)
 }

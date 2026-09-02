@@ -1,3 +1,4 @@
+import { useLocale, useTranslations } from 'use-intl'
 import { useMounted } from '@/hooks/use-mounted'
 import { formatRelative } from '@/lib/format'
 
@@ -11,8 +12,10 @@ import { formatRelative } from '@/lib/format'
  *  A missing date needs no clock, so "never" is safe to server-render. */
 export function RelativeTime({ date }: { date: Date | string | null }) {
 	const mounted = useMounted()
+	const locale = useLocale()
+	const t = useTranslations('dash.devices')
 	if (!date) {
-		return 'never'
+		return t('never')
 	}
-	return mounted ? formatRelative(date) : ''
+	return mounted ? formatRelative(date, locale) : ''
 }

@@ -1,6 +1,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { PencilIcon, PlusIcon } from 'lucide-react'
+import { useTranslations } from 'use-intl'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -32,17 +33,20 @@ import { cn } from '@/lib/utils'
  *  arrow-key navigation and form serialisation come for free, so the only state
  *  is the colour a new group opens on. */
 function ColorField({ selected }: { selected?: string }) {
+	const t = useTranslations('dash.groups')
 	const [initial] = useState(() => selected ?? randomGroupColor())
 	// A group saved with a hex outside the palette keeps its swatch, otherwise
-	// editing it would silently show nothing selected.
-	const swatches = GROUP_COLORS.some(c => c.hex === initial)
-		? GROUP_COLORS
-		: [{ hex: initial, name: initial }, ...GROUP_COLORS]
+	// editing it would silently show nothing selected. Its label stays the raw
+	// hex, which is the only name that off-palette colour has.
+	const swatches: { hex: string; label: string }[] = [
+		...(GROUP_COLORS.some(c => c.hex === initial) ? [] : [{ hex: initial, label: initial }]),
+		...GROUP_COLORS.map(c => ({ hex: c.hex, label: t(`color${c.name}`) })),
+	]
 
 	return (
 		<FieldSet>
 			<FieldLegend variant='label' className='mb-2'>
-				Color
+				{t('color')}
 			</FieldLegend>
 			<div className='flex flex-wrap gap-2'>
 				{swatches.map(c => (
@@ -52,7 +56,7 @@ function ColorField({ selected }: { selected?: string }) {
 							name='color'
 							value={c.hex}
 							defaultChecked={c.hex === initial}
-							aria-label={c.name}
+							aria-label={c.label}
 							className='peer sr-only'
 						/>
 						<span
@@ -66,7 +70,7 @@ function ColorField({ selected }: { selected?: string }) {
 					</label>
 				))}
 			</div>
-			<FieldDescription>Used for this group everywhere in the charts.</FieldDescription>
+			<FieldDescription>{t('colorDescription')}</FieldDescription>
 		</FieldSet>
 	)
 }
@@ -103,6 +107,8 @@ export function GroupFormDialog({
 	group?: { id: string; name: string; color: string; blockOnSessionLimit: boolean; blockOnWeeklyLimit: boolean }
 	atCap?: boolean
 }) {
+	const t = useTranslations('dash.groups')
+	const tActions = useTranslations('dash.actions')
 	const [open, setOpen] = useState(false)
 	const router = useRouter()
 	const [pending, startTransition] = useTransition()
@@ -112,7 +118,7 @@ export function GroupFormDialog({
 		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger render={editing ? <Button variant='ghost' size='sm' /> : <Button disabled={atCap} />}>
 				{editing ? <PencilIcon /> : <PlusIcon />}
-				{editing ? 'Edit' : 'New group'}
+				{t(editing ? 'edit' : 'newTitle')}
 			</DialogTrigger>
 			<DialogContent>
 				<form
@@ -127,15 +133,15 @@ export function GroupFormDialog({
 									submit({ data: formData }).then(() => router.invalidate()),
 									{
 										error: {
-											description: 'Please try again.',
+											description: tActions('retry'),
 											priority: 'high',
-											title: editing ? "Couldn't update group" : "Couldn't create group",
+											title: t(editing ? 'updateFailed' : 'createFailed'),
 										},
 										loading: {
-											title: editing ? 'Saving group…' : 'Creating group…',
+											title: t(editing ? 'savingGroup' : 'creating'),
 										},
 										success: {
-											title: editing ? 'Group updated' : 'Group created',
+											title: t(editing ? 'updated' : 'created'),
 										},
 									},
 								)
@@ -148,50 +154,47 @@ export function GroupFormDialog({
 				>
 					{editing && <input type='hidden' name='id' value={group.id} />}
 					<DialogHeader>
-						<DialogTitle>{editing ? 'Edit group' : 'New group'}</DialogTitle>
-						<DialogDescription>
-							Groups split your account limits between sets of machines.
-						</DialogDescription>
+						<DialogTitle>{t(editing ? 'editTitle' : 'newTitle')}</DialogTitle>
+						<DialogDescription>{t('dialogDescription')}</DialogDescription>
 					</DialogHeader>
 					<FieldGroup>
 						<Field>
-							<FieldLabel htmlFor='group-name'>Name</FieldLabel>
+							<FieldLabel htmlFor='group-name'>{t('name')}</FieldLabel>
 							<Input
 								id='group-name'
 								name='name'
 								required
 								maxLength={60}
 								defaultValue={group?.name}
-								placeholder='e.g. Laptops'
+								placeholder={t('namePlaceholder')}
 							/>
 						</Field>
 						<ColorField selected={group?.color} />
 						<FieldSet>
 							<FieldLegend variant='label' className='mb-2'>
-								Blocking
+								{t('blocking')}
 							</FieldLegend>
 							<BlockField
 								name='blockOnSessionLimit'
-								label='Block at 100% of the 5-hour slice'
-								description="Refuse new prompts on this group's devices until the 5-hour window resets."
+								label={t('blockSession')}
+								description={t('blockSessionDescription')}
 								defaultChecked={group?.blockOnSessionLimit}
 							/>
 							<BlockField
 								name='blockOnWeeklyLimit'
-								label='Block at 100% of the weekly slice'
-								description='Same, for the weekly window.'
+								label={t('blockWeekly')}
+								description={t('blockWeeklyDescription')}
 								defaultChecked={group?.blockOnWeeklyLimit}
 							/>
 							<FieldDescription>
-								Enforced by the collector&apos;s prompt hook, installed by <code>usagefleet login</code>
-								.
+								{t.rich('blockingHint', { cmd: chunks => <code>{chunks}</code> })}
 							</FieldDescription>
 						</FieldSet>
 					</FieldGroup>
 					<DialogFooter>
-						<DialogClose render={<Button variant='outline' type='button' />}>Cancel</DialogClose>
+						<DialogClose render={<Button variant='outline' type='button' />}>{t('cancel')}</DialogClose>
 						<Button type='submit' disabled={pending}>
-							{pending ? 'Saving…' : editing ? 'Save' : 'Create group'}
+							{pending ? t('saving') : t(editing ? 'save' : 'create')}
 						</Button>
 					</DialogFooter>
 				</form>

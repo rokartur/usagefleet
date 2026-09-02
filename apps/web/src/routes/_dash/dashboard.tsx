@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { useTranslations } from 'use-intl'
 import { AutoRefresh } from '@/components/AutoRefresh'
 import { ProjectTable } from '@/components/dashboard/ProjectTable'
 import { UsageExplorer } from '@/components/dashboard/UsageExplorer'
@@ -33,6 +34,7 @@ export const Route = createFileRoute('/_dash/dashboard')({
 })
 
 function DashboardPage() {
+	const t = useTranslations('dash.overview')
 	const { accounts, history, projects, setup } = Route.useLoaderData()
 	const multi = accounts.length > 1
 	return (
@@ -47,7 +49,7 @@ function DashboardPage() {
 					<WindowHistory
 						key={dash.accountId ?? 'unidentified'}
 						history={windows}
-						account={multi ? (dash.accountLabel ?? 'Unidentified account') : undefined}
+						account={multi ? (dash.accountLabel ?? t('unidentifiedAccount')) : undefined}
 					/>
 				) : null,
 			)}

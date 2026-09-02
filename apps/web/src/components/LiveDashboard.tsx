@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { CheckIcon } from 'lucide-react'
+import { useLocale, useTranslations } from 'use-intl'
 import { GroupTable } from '@/components/dashboard/GroupTable'
 import type { GroupRow } from '@/components/dashboard/GroupTable'
 import { InstallCommand } from '@/components/InstallCommand'
@@ -18,15 +19,13 @@ import { cn } from '@/lib/utils'
  *  ("105%") is the interesting case, even though the bar stops at full. */
 const pctText = (n: number) => `${Math.round(n)}%`
 
-/** Display label for a limit-window key: "5h" → "5-hour", "7d" → "weekly". */
-function windowLabel(window: string): string {
-	if (window === '5h') {
-		return '5-hour'
-	}
-	if (window === '7d') {
-		return 'weekly'
-	}
-	return window
+/** Display label for a limit-window key: "5h" → "5-hour", "7d" → "weekly".
+ *  Anything else is a window Anthropic added since this shipped, so it is shown
+ *  as the raw key rather than hidden. */
+function useWindowLabel(): (window: string) => string {
+	const t = useTranslations('dash.overview')
+	const known: Record<string, string> = { '5h': t('fiveHour'), '7d': t('weekly') }
+	return window => known[window] ?? window
 }
 
 const POLL_MS = 5000
@@ -62,6 +61,7 @@ function GroupSplit({
 
 /** Account-wide Weekly with the part attributed to Fable highlighted. */
 function WeeklyUsageBar({ pct, fable }: { pct: number; fable: ModelLimitDTO }) {
+	const t = useTranslations('dash.overview')
 	const contribution = Math.max(0, fable.weeklyContributionPct)
 	const barEnd = Math.min(100, Math.max(0, pct))
 	const showContribution = Math.round(contribution) > 0
@@ -84,7 +84,7 @@ function WeeklyUsageBar({ pct, fable }: { pct: number; fable: ModelLimitDTO }) {
 					<span className='size-2 bg-violet-400' aria-hidden />
 					<Num value={contribution} format={pctText} /> {fable.label}
 					<span className='text-muted-foreground'>
-						· ~<Num value={fable.weeklyCostPct} format={pctText} /> by cost
+						· ~<Num value={fable.weeklyCostPct} format={pctText} /> {t('byCost')}
 					</span>
 				</div>
 			) : null}
@@ -97,7 +97,10 @@ const groupKey = (groupId: string | null) => groupId ?? 'ungrouped'
 /** Whose subscription this card reports on. An account the collector could not
  *  name (API-key login, or a collector too old to report one) is the bucket
  *  every unidentified device falls into. */
-const accountName = (dash: DashboardDTO) => dash.accountLabel ?? 'Unidentified account'
+function useAccountName(): (dash: DashboardDTO) => string {
+	const t = useTranslations('dash.overview')
+	return dash => dash.accountLabel ?? t('unidentifiedAccount')
+}
 
 const fableOf = (dash: DashboardDTO) => dash.modelLimits.find(limit => limit.model.toLowerCase().includes('fable'))
 
@@ -117,15 +120,17 @@ const splitOf = (dash: DashboardDTO, pct: (g: LiveGroupUsage) => number) =>
  *  wall clock is not the viewer's, so an age rendered during SSR can hydrate
  *  into different text. */
 function StatusLine({ dash, now, pollDown }: { dash: DashboardDTO; now: number; pollDown: boolean }) {
+	const t = useTranslations('dash.overview')
+	const locale = useLocale()
 	const reportAge = now && dash.reportedAt ? now - Date.parse(dash.reportedAt) : 0
 	const stale = pollDown || reportAge > LIMITS_STALE_MS
-	const label = pollDown ? 'reconnecting…' : stale ? 'collector offline' : 'live'
-	const source = dash.source === 'sub' ? 'subscription' : dash.source === 'api' ? 'API key' : '—'
+	const label = pollDown ? t('reconnecting') : stale ? t('collectorOffline') : t('live')
+	const source = dash.source === 'sub' ? t('sourceSub') : dash.source === 'api' ? t('sourceApi') : t('sourceNone')
 	return (
 		<p className='flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground'>
 			<span className={cn('size-1.5 rounded-full', stale ? 'bg-amber-500' : 'bg-emerald-500')} aria-hidden />
 			<span className={stale ? 'text-amber-500' : 'text-foreground'}>{label}</span>· {source}
-			{now && dash.reportedAt ? ` · updated ${formatRelative(new Date(dash.reportedAt))}` : ''}
+			{now && dash.reportedAt ? t('updated', { age: formatRelative(dash.reportedAt, locale) }) : ''}
 		</p>
 	)
 }
@@ -169,11 +174,12 @@ function LimitCell({
 }
 
 function SpendCell({ label, period }: { label: string; period: SpendPeriod }) {
+	const t = useTranslations('dash.usage')
 	return (
 		<StatCell label={label} value={<Num value={period.costUsd} format={formatUsd} />}>
 			<div className='text-[11px] text-muted-foreground tabular-nums'>
-				<Num value={billableTokens(period.totals)} format={formatTokens} /> billable ·{' '}
-				<Num value={period.totals.totalTokens} format={formatTokens} /> total
+				<Num value={billableTokens(period.totals)} format={formatTokens} /> {t('tableBillable').toLowerCase()} ·{' '}
+				<Num value={period.totals.totalTokens} format={formatTokens} /> {t('total')}
 			</div>
 		</StatCell>
 	)
@@ -181,6 +187,7 @@ function SpendCell({ label, period }: { label: string; period: SpendPeriod }) {
 
 /** One per-model official limit on a single line. */
 function ModelLimitRow({ limit }: { limit: ModelLimitDTO }) {
+	const windowLabel = useWindowLabel()
 	return (
 		<div className='flex flex-wrap items-center gap-x-3 gap-y-1 border-b py-2 text-sm last:border-b-0'>
 			<span className='font-medium'>{limit.label}</span>
@@ -216,11 +223,13 @@ function Step({
 	n,
 	title,
 	state,
+	stateLabel,
 	children,
 }: {
 	n: number
 	title: string
 	state: 'done' | 'now' | 'waiting'
+	stateLabel: string
 	children?: React.ReactNode
 }) {
 	return (
@@ -238,9 +247,7 @@ function Step({
 				<p className={cn('text-sm', state === 'waiting' && 'text-muted-foreground')}>{title}</p>
 				{children}
 			</div>
-			<span className='shrink-0 text-sm text-muted-foreground'>
-				{state === 'done' ? 'done' : state === 'now' ? 'now' : 'waiting'}
-			</span>
+			<span className='shrink-0 text-sm text-muted-foreground'>{stateLabel}</span>
 		</li>
 	)
 }
@@ -248,64 +255,64 @@ function Step({
 /** The whole dashboard until the first report lands: which of the three setup
  *  steps you are on, and the exact command for the one you're on. */
 function SetupRail({ setup }: { setup: SetupState | null }) {
+	const t = useTranslations('dash.overview')
 	const device = setup?.deviceName
-	const machine = device ?? 'that machine'
+	const machine = device ?? t('thatMachine')
 	const reported = setup?.reportedEver ?? false
+	const stepState = reported ? 'done' : device ? 'now' : 'waiting'
 
 	return (
 		<section>
-			<h2 className='text-sm font-medium'>No data yet</h2>
-			<p className='mt-1 text-sm text-muted-foreground'>
-				Three steps, about a minute. This page fills in on its own.
-			</p>
+			<h2 className='text-sm font-medium'>{t('setupTitle')}</h2>
+			<p className='mt-1 text-sm text-muted-foreground'>{t('setupDescription')}</p>
 			<ol className='mt-5 [&>li:last-child]:border-b'>
-				<Step n={1} title={device ? `Device added: ${device}` : 'Add a device'} state={device ? 'done' : 'now'}>
+				<Step
+					n={1}
+					title={device ? t('deviceAdded', { name: device }) : t('setupStepAddDevice')}
+					state={device ? 'done' : 'now'}
+					stateLabel={t(device ? 'done' : 'now')}
+				>
 					{!device && (
 						<div className='flex flex-col gap-2'>
 							<Button render={<Link to='/devices' />} className='w-fit'>
-								Add device
+								{t('addDevice')}
 							</Button>
+							<p className='text-xs text-muted-foreground'>{t('setupDeviceHint')}</p>
+						</div>
+					)}
+				</Step>
+
+				<Step n={2} title={t('installerStep', { machine })} state={stepState} stateLabel={t(stepState)}>
+					{device && !reported && (
+						<div className='flex flex-col gap-2'>
+							<InstallCommand token={TOKEN_PLACEHOLDER} />
 							<p className='text-xs text-muted-foreground'>
-								One device is one machine you use Claude on. You get its token there.
+								{t.rich('installerHint', {
+									devices: chunks => (
+										<Link to='/devices' className='underline underline-offset-2'>
+											{chunks}
+										</Link>
+									),
+									machine,
+								})}
 							</p>
 						</div>
 					)}
 				</Step>
 
 				<Step
-					n={2}
-					title={`Run the installer on ${machine}`}
-					state={reported ? 'done' : device ? 'now' : 'waiting'}
+					n={3}
+					title={t('setupStepReport')}
+					state={reported ? 'now' : 'waiting'}
+					stateLabel={t(reported ? 'now' : 'waiting')}
 				>
-					{device && !reported && (
-						<div className='flex flex-col gap-2'>
-							<InstallCommand token={TOKEN_PLACEHOLDER} />
-							<p className='text-xs text-muted-foreground'>
-								Put in the token you copied when you added {machine}. Lost it? Tokens are shown once, so
-								add the device again on{' '}
-								<Link to='/devices' className='underline underline-offset-2'>
-									Devices
-								</Link>
-								.
-							</p>
-						</div>
-					)}
-				</Step>
-
-				<Step n={3} title='First usage report' state={reported ? 'now' : 'waiting'}>
 					<p className='text-xs text-muted-foreground'>
-						{reported ? (
-							<>
-								{machine} is reporting, but no Claude limits came with it yet. Run{' '}
-								<code className='font-mono'>usagefleet status</code> there: it prints whether it found
-								your Claude login.
-							</>
-						) : (
-							<>
-								Arrives within a minute of the installer finishing, then every five. Your 5-hour and
-								weekly numbers replace this list.
-							</>
-						)}
+						{reported
+							? t.rich('reportPending', {
+									cmd: chunks => <code className='font-mono'>{chunks}</code>,
+									machine,
+								})
+							: t('reportWaiting')}
 					</p>
 				</Step>
 			</ol>
@@ -346,6 +353,8 @@ function AccountWindow({
  *  Several subscriptions stack into a list of these instead of repeating the
  *  whole card set per account. */
 function AccountRow({ dash, now, pollDown }: { dash: DashboardDTO; now: number; pollDown: boolean }) {
+	const t = useTranslations('dash.overview')
+	const accountName = useAccountName()
 	return (
 		<div className='grid gap-x-5 gap-y-4 border-b py-4 last:border-b-0 sm:grid-cols-[minmax(0,1.2fr)_repeat(2,minmax(0,1fr))_minmax(0,0.7fr)]'>
 			<div className='flex min-w-0 flex-col gap-1.5'>
@@ -359,7 +368,7 @@ function AccountRow({ dash, now, pollDown }: { dash: DashboardDTO; now: number; 
 				groups={splitOf(dash, g => g.sessionBudgetPct)}
 			/>
 			<AccountWindow
-				label='week'
+				label={t('week')}
 				pct={dash.sevenDayPct}
 				resetsAt={dash.sevenDayResetsAt}
 				groups={splitOf(dash, g => g.weeklyBudgetPct)}
@@ -368,10 +377,10 @@ function AccountRow({ dash, now, pollDown }: { dash: DashboardDTO; now: number; 
 			<div className='flex flex-col gap-1.5'>
 				<div className='flex flex-wrap items-baseline gap-x-2'>
 					<Num value={dash.spend.week.costUsd} format={formatUsd} className='text-lg leading-none' />
-					<span className='text-[11px] text-muted-foreground'>week</span>
+					<span className='text-[11px] text-muted-foreground'>{t('week')}</span>
 				</div>
 				<span className='text-[11px] text-muted-foreground tabular-nums'>
-					<Num value={dash.spend.month.costUsd} format={formatUsd} /> month
+					<Num value={dash.spend.month.costUsd} format={formatUsd} /> {t('month')}
 				</span>
 			</div>
 		</div>
@@ -393,6 +402,8 @@ export function LiveDashboard({
 	setup: SetupState | null
 	poll?: boolean
 }) {
+	const t = useTranslations('dash.overview')
+	const accountName = useAccountName()
 	const [dashes, setDashes] = useState<DashboardDTO[]>(initial)
 	const [lastOk, setLastOk] = useState(() => Date.now())
 	// `now` advances once a second (below) so the staleness check stays a pure
@@ -484,13 +495,7 @@ export function LiveDashboard({
 		return <SetupRail setup={setup} />
 	}
 
-	const footnote = (
-		<p className='max-w-2xl text-[11px] text-muted-foreground'>
-			Headline percentages are Claude&apos;s own account utilization. Per-group percentages are budget-relative:
-			the group&apos;s usage against its equal slice of the limit, so 100% means it has eaten its slice.
-			Unattributed is account usage no reporting device explains, shown as a plain account share.
-		</p>
-	)
+	const footnote = <p className='max-w-2xl text-[11px] text-muted-foreground'>{t('footnote')}</p>
 
 	if (solo) {
 		return (
@@ -499,31 +504,31 @@ export function LiveDashboard({
 
 				<div className='grid gap-x-5 gap-y-6 border-y py-4 sm:grid-cols-4'>
 					<LimitCell
-						label='5-hour session'
+						label={t('fiveHourSession')}
 						pct={solo.fiveHourPct}
 						resetsAt={solo.fiveHourResetsAt}
 						groups={splitOf(solo, g => g.sessionBudgetPct)}
 					/>
 					<LimitCell
-						label='Weekly'
+						label={t('weekly')}
 						pct={solo.sevenDayPct}
 						resetsAt={solo.sevenDayResetsAt}
 						groups={splitOf(solo, g => g.weeklyBudgetPct)}
 						fable={fableOf(solo)}
 					/>
-					<SpendCell label='Spend, this week' period={solo.spend.week} />
-					<SpendCell label='Spend, this month' period={solo.spend.month} />
+					<SpendCell label={t('spendWeek')} period={solo.spend.week} />
+					<SpendCell label={t('spendMonth')} period={solo.spend.month} />
 				</div>
 
 				{solo.modelLimits.length > 0 && (
-					<Section title='Model limits'>
+					<Section title={t('modelLimits')}>
 						{solo.modelLimits.map(m => (
 							<ModelLimitRow key={`${m.model}-${m.window}`} limit={m} />
 						))}
 					</Section>
 				)}
 
-				<Section title='Groups'>
+				<Section title={t('groups')}>
 					<GroupTable groups={solo.groups} expanded={expanded} onToggle={toggleRow} />
 				</Section>
 
@@ -546,7 +551,10 @@ export function LiveDashboard({
 
 			{dashes.map(d =>
 				d.modelLimits.length > 0 ? (
-					<Section key={d.accountId ?? 'unidentified'} title={`Model limits · ${accountName(d)}`}>
+					<Section
+						key={d.accountId ?? 'unidentified'}
+						title={t('modelLimitsFor', { account: accountName(d) })}
+					>
 						{d.modelLimits.map(m => (
 							<ModelLimitRow key={`${m.model}-${m.window}`} limit={m} />
 						))}
@@ -554,7 +562,7 @@ export function LiveDashboard({
 				) : null,
 			)}
 
-			<Section title='Groups'>
+			<Section title={t('groups')}>
 				<GroupTable groups={rows} expanded={expanded} onToggle={toggleRow} />
 			</Section>
 

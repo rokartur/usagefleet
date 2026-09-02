@@ -15,12 +15,6 @@ export function siteUrl(): string {
 
 export const SITE_NAME = 'UsageFleet'
 
-/** Meta description for every page that does not write its own. Kept under 155
- *  characters so Google shows it whole, and phrased with the words people
- *  actually search for: coding agent, token usage, rate limits, machines. */
-export const SITE_DESCRIPTION =
-	'Track coding agent token usage and rate limits across every machine on one subscription. Live 5-hour and weekly windows, split per device and per group.'
-
 /** Where the project lives in public. Fed to the footer and to the sameAs of
  *  the structured data, which is how a crawler ties the three together. */
 export const REPO_URL = 'https://github.com/rokartur/usagefleet'

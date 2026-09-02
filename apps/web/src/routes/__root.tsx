@@ -4,12 +4,15 @@ import interLatin from '@fontsource-variable/inter/files/inter-latin-wght-normal
 /// <reference types="vite/client" />
 import { createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
 import { ThemeProvider } from 'next-themes'
+import { IntlProvider } from 'use-intl'
 import { Toaster } from '@/components/ui/toast'
 import { TooltipProvider } from '@/components/ui/tooltip'
 // Self-hosted replacement for next/font/google; sets the --font-inter var that
 // styles/globals.css feeds into --font-sans.
 import '@fontsource-variable/inter'
-import { SITE_DESCRIPTION, SITE_NAME, siteUrl } from '@/lib/site'
+import { detectLocale } from '@/lib/i18n'
+import { SITE_NAME, siteUrl } from '@/lib/site'
+import { MESSAGES } from '@/messages'
 import '@/styles/globals.css'
 
 /** Applies the stored theme before the first paint. next-themes injects the
@@ -24,7 +27,7 @@ export const Route = createRootRoute({
 			{ charSet: 'utf-8' },
 			{ name: 'viewport', content: 'width=device-width, initial-scale=1' },
 			{ title: SITE_NAME },
-			{ name: 'description', content: SITE_DESCRIPTION },
+			{ name: 'description', content: MESSAGES[detectLocale()].common.siteDescription },
 			// Browser chrome follows the same two backgrounds the app paints.
 			{
 				name: 'theme-color',
@@ -41,7 +44,7 @@ export const Route = createRootRoute({
 			{ property: 'og:site_name', content: SITE_NAME },
 			{ property: 'og:type', content: 'website' },
 			{ property: 'og:title', content: SITE_NAME },
-			{ property: 'og:description', content: SITE_DESCRIPTION },
+			{ property: 'og:description', content: MESSAGES[detectLocale()].common.siteDescription },
 			// The README banner at link-preview size. Absolute, because every
 			// scraper resolves og:image against nothing.
 			{ property: 'og:image', content: `${siteUrl()}/og.png` },
@@ -70,18 +73,21 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+	const locale = detectLocale()
 	return (
 		// suppressHydrationWarning: next-themes writes the theme class on <html>
 		// before hydration, so the server markup intentionally differs.
-		<html lang='en' suppressHydrationWarning className='h-full antialiased'>
+		<html lang={locale} suppressHydrationWarning className='h-full antialiased'>
 			<head>
 				<HeadContent />
 			</head>
 			<body className='flex min-h-full flex-col bg-background font-sans text-foreground'>
-				<ThemeProvider attribute='class' defaultTheme='dark' enableSystem>
-					<TooltipProvider>{children}</TooltipProvider>
-					<Toaster />
-				</ThemeProvider>
+				<IntlProvider locale={locale} messages={MESSAGES[locale]} timeZone='UTC'>
+					<ThemeProvider attribute='class' defaultTheme='dark' enableSystem>
+						<TooltipProvider>{children}</TooltipProvider>
+						<Toaster />
+					</ThemeProvider>
+				</IntlProvider>
 				<Scripts />
 			</body>
 		</html>

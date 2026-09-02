@@ -1,4 +1,5 @@
 import { useTransition } from 'react'
+import { useTranslations } from 'use-intl'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toast'
 import { authClient } from '@/lib/auth-client'
@@ -9,16 +10,18 @@ const BILLING_URL = '/billing'
 /** Both calls answer with a Stripe URL and the better-auth client redirects the
  *  browser there, so a success path never has to render. */
 function useStripeRedirect() {
+	const t = useTranslations('billing.buttons')
 	const [pending, startTransition] = useTransition()
-	const go = (label: string, call: () => Promise<{ error?: { message?: string } | null }>) =>
+	// Which failure it was decides the whole sentence, not a slot inside it:
+	// Polish inflects "could not open X" differently per X.
+	const go = (
+		failure: 'checkoutFailed' | 'portalFailed',
+		call: () => Promise<{ error?: { message?: string } | null }>,
+	) =>
 		startTransition(async () => {
 			const { error } = await call()
 			if (error) {
-				toast.add({
-					priority: 'high',
-					title: error.message ?? `Couldn't open ${label}. Please try again.`,
-					type: 'error',
-				})
+				toast.add({ priority: 'high', title: error.message ?? t(failure), type: 'error' })
 			}
 		})
 	return [pending, go] as const
@@ -47,7 +50,7 @@ export function SubscribeButton({
 			{...buttonProps}
 			disabled={pending || disabled}
 			onClick={() =>
-				go('checkout', () =>
+				go('checkoutFailed', () =>
 					authClient.subscription.upgrade({
 						cancelUrl: BILLING_URL,
 						plan,
@@ -65,16 +68,15 @@ export function SubscribeButton({
 
 /** Stripe's own portal — payment method, invoices, and cancellation. */
 export function BillingPortalButton() {
+	const t = useTranslations('billing.buttons')
 	const [pending, go] = useStripeRedirect()
 	return (
 		<Button
 			variant='outline'
 			disabled={pending}
-			onClick={() =>
-				go('the billing portal', () => authClient.subscription.billingPortal({ returnUrl: BILLING_URL }))
-			}
+			onClick={() => go('portalFailed', () => authClient.subscription.billingPortal({ returnUrl: BILLING_URL }))}
 		>
-			Manage billing
+			{t('manageBilling')}
 		</Button>
 	)
 }

@@ -1,5 +1,6 @@
 import { useTransition } from 'react'
 import { useRouter } from '@tanstack/react-router'
+import { useTranslations } from 'use-intl'
 import { toast } from '@/components/ui/toast'
 
 /** Structural shape of a `createServerFn` fetcher that takes a FormData. Kept
@@ -17,15 +18,10 @@ type ActionFormProps = Omit<React.ComponentProps<'form'>, 'action'> & {
 /** A server-function form that reports its promise state through the global
  *  toast and refetches the route's loaders on success (the replacement for
  *  Next's revalidatePath). */
-export function ActionForm({
-	action,
-	loadingMessage,
-	successMessage,
-	errorMessage = 'Action failed. Please try again.',
-	...props
-}: ActionFormProps) {
+export function ActionForm({ action, loadingMessage, successMessage, errorMessage, ...props }: ActionFormProps) {
 	const [pending, startTransition] = useTransition()
 	const router = useRouter()
+	const t = useTranslations('dash.actions')
 
 	return (
 		<form
@@ -39,7 +35,7 @@ export function ActionForm({
 						await toast.promise(
 							action({ data: formData }).then(() => router.invalidate()),
 							{
-								error: { priority: 'high', title: errorMessage },
+								error: { priority: 'high', title: errorMessage ?? t('failed') },
 								loading: { title: loadingMessage },
 								success: { title: successMessage },
 							},

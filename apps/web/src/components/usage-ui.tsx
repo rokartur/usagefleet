@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { animate, useReducedMotion } from 'motion/react'
+import { useTranslations } from 'use-intl'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 
@@ -95,11 +96,12 @@ export const overrun = (pct: number) => (Math.round(pct) >= 100 ? 'text-destruct
 /** A limit bar: neutral up to 70%, amber past it, destructive past 90% — so a
  *  group that is about to eat its budget is visible without reading numbers. */
 export function UsageBar({ pct, className }: { pct: number; className?: string }) {
+	const t = useTranslations('dash.usage')
 	const value = Math.min(100, Math.max(0, pct))
 	return (
 		<Progress
 			value={value}
-			aria-label={`${value}% used`}
+			aria-label={t('barLabel', { pct: value })}
 			className={cn(
 				'[&_[data-slot=progress-track]]:h-1.5',
 				pct >= 90 && '[&_[data-slot=progress-indicator]]:bg-destructive',

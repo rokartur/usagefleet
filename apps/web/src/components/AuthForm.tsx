@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react'
 import { useState } from 'react'
 import { Link, useRouter } from '@tanstack/react-router'
+import { useTranslations } from 'use-intl'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
@@ -26,6 +27,7 @@ export function AuthForm({
 	/** This browser signed in with credentials last time, so the button says so. */
 	lastUsed?: boolean
 }) {
+	const t = useTranslations('auth.form')
 	const router = useRouter()
 	const [error, setError] = useState<string | null>(null)
 	const [pending, setPending] = useState(false)
@@ -55,7 +57,7 @@ export function AuthForm({
 			})
 			setPending(false)
 			if (error) {
-				setError(error.message ?? 'Something went wrong. Try again.')
+				setError(error.message ?? t('genericError'))
 				return
 			}
 			setSent(true)
@@ -73,11 +75,7 @@ export function AuthForm({
 			setPending(false)
 			// The server already mailed a fresh link before refusing (sendOnSignIn),
 			// so this is the whole recovery path.
-			setError(
-				error.code === 'EMAIL_NOT_VERIFIED'
-					? 'Confirm your email first. We just sent a new link.'
-					: (error.message ?? 'Something went wrong. Try again.'),
-			)
+			setError(error.code === 'EMAIL_NOT_VERIFIED' ? t('unverified') : (error.message ?? t('genericError')))
 			return
 		}
 		// Retired matches keep their loader data, so signing into a second account
@@ -92,12 +90,10 @@ export function AuthForm({
 	}
 
 	if (sent) {
-		return (
-			<output className='text-sm text-muted-foreground'>
-				Check your inbox. Confirming the link finishes the account and signs you in.
-			</output>
-		)
+		return <output className='text-sm text-muted-foreground'>{t('verifySent')}</output>
 	}
+
+	const submitLabel = isSignup ? t('createAccount') : t('signInWithPassword')
 
 	return (
 		<form onSubmit={onSubmit}>
@@ -105,11 +101,11 @@ export function AuthForm({
 				{isSignup ? (
 					<>
 						<Field>
-							<FieldLabel htmlFor='name'>Name</FieldLabel>
-							<Input id='name' name='name' autoComplete='name' placeholder='Your name' />
+							<FieldLabel htmlFor='name'>{t('name')}</FieldLabel>
+							<Input id='name' name='name' autoComplete='name' placeholder={t('namePlaceholder')} />
 						</Field>
 						<Field>
-							<FieldLabel htmlFor='username'>Username</FieldLabel>
+							<FieldLabel htmlFor='username'>{t('username')}</FieldLabel>
 							{/* Mirrors the server's validator so a typo is caught before the
 							    round trip; the server stays the one that decides. */}
 							<Input
@@ -119,44 +115,44 @@ export function AuthForm({
 								minLength={3}
 								maxLength={30}
 								pattern='[a-zA-Z0-9_.]+'
-								title='Letters, digits, dots and underscores'
+								title={t('usernameTitle')}
 								autoComplete='username'
-								placeholder='yourname'
+								placeholder={t('usernamePlaceholder')}
 							/>
 						</Field>
 						<Field>
-							<FieldLabel htmlFor='email'>Email</FieldLabel>
+							<FieldLabel htmlFor='email'>{t('email')}</FieldLabel>
 							<Input
 								id='email'
 								name='email'
 								type='email'
 								required
 								autoComplete='email'
-								placeholder='you@example.com'
+								placeholder={t('emailPlaceholder')}
 							/>
 						</Field>
 					</>
 				) : (
 					<Field>
-						<FieldLabel htmlFor='identifier'>Email or username</FieldLabel>
+						<FieldLabel htmlFor='identifier'>{t('identifier')}</FieldLabel>
 						<Input
 							id='identifier'
 							name='identifier'
 							required
 							autoComplete='username'
-							placeholder='you@example.com'
+							placeholder={t('emailPlaceholder')}
 						/>
 					</Field>
 				)}
 				<Field>
 					<div className='flex items-center justify-between'>
-						<FieldLabel htmlFor='password'>Password</FieldLabel>
+						<FieldLabel htmlFor='password'>{t('password')}</FieldLabel>
 						{!isSignup && (
 							<Link
 								to='/reset-password'
 								className='text-sm text-muted-foreground underline underline-offset-4'
 							>
-								Forgot?
+								{t('forgot')}
 							</Link>
 						)}
 					</div>
@@ -167,18 +163,18 @@ export function AuthForm({
 						required
 						minLength={8}
 						autoComplete={isSignup ? 'new-password' : 'current-password'}
-						placeholder='At least 8 characters'
+						placeholder={t('passwordPlaceholder')}
 					/>
 				</Field>
 				{error && <FieldError>{error}</FieldError>}
 				<Button type='submit' size='lg' disabled={pending} className='relative'>
-					{pending ? 'Please wait…' : isSignup ? 'Create account' : 'Sign in with password'}
+					{pending ? t('pending') : submitLabel}
 					{lastUsed && !isSignup && (
 						<Badge
 							variant='secondary'
 							className='absolute -top-2 right-2 h-4.5 px-1.5 text-[10px] font-normal'
 						>
-							Last used
+							{t('lastUsed')}
 						</Badge>
 					)}
 				</Button>

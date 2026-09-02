@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react'
+import { useLocale, useTranslations } from 'use-intl'
 import { useMounted } from '@/hooks/use-mounted'
 
-function countdown(resetsAt: string | null): string {
+/** "3d 4h 5m" of remaining time, or '' when there is nothing to count down to.
+ *  The d/h/m/s suffixes are left untranslated: they are unit symbols, and every
+ *  locale we ship reads them the same way in a dense number column. */
+function remaining(resetsAt: string | null): string | null {
 	if (!resetsAt) {
-		return ''
+		return null
 	}
 	const target = new Date(resetsAt).getTime()
 	if (Number.isNaN(target)) {
-		return ''
+		return null
 	}
 	let secs = Math.round((target - Date.now()) / 1000)
 	if (secs <= 0) {
-		return 'resetting…'
+		return ''
 	}
 	const days = Math.floor(secs / 86_400)
 	secs -= days * 86_400
@@ -30,12 +34,12 @@ function countdown(resetsAt: string | null): string {
 	if (!days && !hours) {
 		parts.push(`${secs}s`)
 	} // tick by seconds when close
-	return `resets in ${parts.join(' ')}`
+	return parts.join(' ')
 }
 
-/** Live reset label: ticks every second and shows the absolute reset time in
- *  the viewer's local timezone (e.g. "resets in 3h 4m · at 04:50"). */
-function clockLabel(resetsAt: string | null): string | null {
+/** The absolute reset time in the viewer's local timezone (e.g. "04:50"),
+ *  prefixed with the weekday once it is more than a day out. */
+function clockLabel(resetsAt: string | null, locale: string): string | null {
 	if (!resetsAt) {
 		return null
 	}
@@ -43,9 +47,9 @@ function clockLabel(resetsAt: string | null): string | null {
 	if (Number.isNaN(d.getTime())) {
 		return null
 	}
-	const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+	const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 	const moreThanADay = d.getTime() - Date.now() > 24 * 60 * 60 * 1000
-	const day = moreThanADay ? `${d.toLocaleDateString([], { weekday: 'short' })} ` : ''
+	const day = moreThanADay ? `${d.toLocaleDateString(locale, { weekday: 'short' })} ` : ''
 	return `${day}${time}`
 }
 
@@ -53,6 +57,8 @@ export function ResetCountdown({ resetsAt }: { resetsAt: string | null }) {
 	// Single state bumped each second; both labels recompute from `resetsAt` and
 	// the current time, so the weekday prefix stays correct across the 24h boundary.
 	const [, setTick] = useState(0)
+	const locale = useLocale()
+	const t = useTranslations('dash.reset')
 	// Both labels read the wall clock, and one of them the viewer's timezone.
 	// Neither survives being rendered on the server, so this stays empty until the
 	// client owns the tree.
@@ -63,15 +69,15 @@ export function ResetCountdown({ resetsAt }: { resetsAt: string | null }) {
 		return () => clearInterval(id)
 	}, [])
 
-	const label = mounted ? countdown(resetsAt) : ''
-	if (!label) {
+	const left = mounted ? remaining(resetsAt) : null
+	if (left === null) {
 		return null
 	}
-	const clock = clockLabel(resetsAt)
+	const clock = clockLabel(resetsAt, locale)
 	return (
 		<span>
-			{label}
-			{clock && <span className='text-neutral-500'> · at {clock}</span>}
+			{left === '' ? t('resetting') : t('resetsIn', { left })}
+			{clock && <span className='text-neutral-500'>{t('at', { clock })}</span>}
 		</span>
 	)
 }

@@ -5,70 +5,63 @@ import { createServerFn } from '@tanstack/react-start'
 import { ArrowRight, Check, Copy } from 'lucide-react'
 import type { Variants } from 'motion/react'
 import { motion, MotionConfig, useScroll, useTransform } from 'motion/react'
+import { createTranslator, useLocale, useTranslations } from 'use-intl'
 import { OrbitMark } from '@/components/orbit-mark'
 import { SiteFooter } from '@/components/site-footer'
 import { buttonVariants } from '@/components/ui/button'
 import { UsageFleetMark } from '@/components/usage-fleet-mark'
+import { detectLocale, LOCALE_CURRENCY } from '@/lib/i18n'
+import type { Locale } from '@/lib/i18n'
 import { formatPlanPrice, FREE_DEVICES, PLANS, planPriceCents } from '@/lib/plans'
 import type { PaidPlan, PlanPrices } from '@/lib/plans'
 import { getSession } from '@/lib/session'
-import { PACKAGE_URL, REPO_URL, SITE_DESCRIPTION, SITE_NAME, siteUrl } from '@/lib/site'
+import { PACKAGE_URL, REPO_URL, SITE_NAME, siteUrl } from '@/lib/site'
 import { planPrices } from '@/lib/stripe-prices'
 import { cn } from '@/lib/utils'
+import { MESSAGES } from '@/messages'
 
 // The marketing page stays public for everyone; a signed-in visitor just gets
 // app links instead of sign-in links. Session lives in a cookie, so this has to
 // be resolved on the server — as do the prices, which come from Stripe.
 const landing = createServerFn().handler(async () => {
-	const [session, prices] = await Promise.all([getSession(), planPrices()])
+	const [session, prices] = await Promise.all([getSession(), planPrices(LOCALE_CURRENCY[detectLocale()])])
 	return { signedIn: Boolean(session), prices }
 })
 
 /** The questions that decide whether someone installs it, answered in the same
- *  words the collector uses. Every one of these is a real invariant, not copy. */
-const FAQ = [
-	{
-		q: 'Does this need an Anthropic API key?',
-		a: 'No. The collector uses the Claude login already sitting on the machine, reads the local Claude Code logs and the rate limit headers that come back with them.',
-	},
-	{
-		q: 'Can you see my prompts?',
-		a: 'No. Prompts, responses and file contents never leave the machine. What is uploaded is counters plus context: token counts, model, session id, hostname, working directory and git branch.',
-	},
-	{
-		q: 'Why do the group percentages add up past the account number?',
-		a: 'Because a group is measured against its own slice of the account, not against the whole thing. Two groups, one using half of everything, means that group reads 100% of its budget while the account reads 50%.',
-	},
-	{
-		q: 'What happens when I downgrade?',
-		a: 'Devices over the new limit are parked, not deleted. Nothing is lost, and they report again with the same token as soon as they fit.',
-	},
-	{
-		q: 'Does the guard block my work if you go down?',
-		a: 'Never. Offline, timed out, junk response or a server too old to answer all exit clean. Only an explicit refusal stops a prompt.',
-	},
-]
+ *  words the collector uses. Every one of these is a real invariant, not copy.
+ *  Message keys rather than text, because the markup and the structured data
+ *  both render them and the page has two languages to render them in. */
+const FAQ = ['apiKey', 'prompts', 'split', 'downgrade', 'guard'] as const
 
 // Under 60 characters so Google shows it whole, and leading with the words a
 // search for this product actually contains rather than with the brand alone.
-const TITLE = `Coding agent usage tracker for your whole fleet — ${SITE_NAME}`
+const title = (locale: Locale) => `${MESSAGES[locale].landing.meta.title} — ${SITE_NAME}`
 
 export const Route = createFileRoute('/')({
 	loader: () => landing(),
 	head: ({ loaderData }) => {
 		const url = `${siteUrl()}/`
+		const locale = detectLocale()
+		const description = MESSAGES[locale].common.siteDescription
+		// The markup below reads these through React; the structured data has no
+		// component around it, so it gets its own translator over the same messages.
+		const t = createTranslator({ locale, messages: MESSAGES[locale], namespace: 'landing' })
+		const pageTitle = title(locale)
 		// Offers need the Stripe prices, which only exist once the loader has run;
 		// on a client-side navigation the page is already indexed, so skip them.
-		const offered = loaderData ? [...pricingTiers(loaderData.prices), customTier(loaderData.prices)] : []
+		const offered = loaderData
+			? [...pricingTiers(loaderData.prices, locale), customTier(loaderData.prices, locale)]
+			: []
 		return {
 			meta: [
-				{ title: TITLE },
-				{ name: 'description', content: SITE_DESCRIPTION },
-				{ property: 'og:title', content: TITLE },
-				{ property: 'og:description', content: SITE_DESCRIPTION },
+				{ title: pageTitle },
+				{ name: 'description', content: description },
+				{ property: 'og:title', content: pageTitle },
+				{ property: 'og:description', content: description },
 				{ property: 'og:url', content: url },
-				{ name: 'twitter:title', content: TITLE },
-				{ name: 'twitter:description', content: SITE_DESCRIPTION },
+				{ name: 'twitter:title', content: pageTitle },
+				{ name: 'twitter:description', content: description },
 			],
 			links: [{ rel: 'canonical', href: url }],
 			// Structured data: the only page a crawler can reach, so it carries the
@@ -81,7 +74,7 @@ export const Route = createFileRoute('/')({
 						'@type': 'SoftwareApplication',
 						name: SITE_NAME,
 						url,
-						description: SITE_DESCRIPTION,
+						description,
 						applicationCategory: 'DeveloperApplication',
 						operatingSystem: 'macOS, Linux, Windows',
 						sameAs: [REPO_URL, PACKAGE_URL],
@@ -91,10 +84,10 @@ export const Route = createFileRoute('/')({
 							'@type': 'Offer',
 							name: tier.plan,
 							price: (tier.priceCents / 100).toFixed(2),
-							priceCurrency: 'USD',
-							description: `${tier.id === 'custom' ? 'from ' : ''}${tier.devices} device${
-								tier.devices === 1 ? '' : 's'
-							}`,
+							priceCurrency: (loaderData?.prices.currency ?? 'usd').toUpperCase(),
+							description: `${tier.id === 'custom' ? t('meta.offerFrom') : ''}${t('meta.offerDevices', {
+								count: tier.devices,
+							})}`,
 						})),
 					}),
 				},
@@ -105,10 +98,10 @@ export const Route = createFileRoute('/')({
 					children: JSON.stringify({
 						'@context': 'https://schema.org',
 						'@type': 'FAQPage',
-						mainEntity: FAQ.map(item => ({
+						mainEntity: FAQ.map(key => ({
 							'@type': 'Question',
-							name: item.q,
-							acceptedAnswer: { '@type': 'Answer', text: item.a },
+							name: t(`faq.${key}Q`),
+							acceptedAnswer: { '@type': 'Answer', text: t(`faq.${key}A`) },
 						})),
 					}),
 				},
@@ -124,10 +117,10 @@ export const Route = createFileRoute('/')({
 const EXAMPLE_GROUPS = [
 	// Hexes are straight out of lib/group-colors, so the mockup can only show a
 	// dot a real group could actually be wearing.
-	{ name: 'Laptops', color: '#6366f1', devices: 3, session: 62, weekly: 41, tokens: 4.2 },
-	{ name: 'Work desktops', color: '#10b981', devices: 2, session: 23, weekly: 18, tokens: 1.6 },
-	{ name: 'Home server', color: '#f59e0b', devices: 1, session: 9, weekly: 6, tokens: 0.5 },
-]
+	{ name: 'laptops', color: '#6366f1', devices: 3, session: 62, weekly: 41, tokens: 4.2 },
+	{ name: 'workDesktops', color: '#10b981', devices: 2, session: 23, weekly: 18, tokens: 1.6 },
+	{ name: 'homeServer', color: '#f59e0b', devices: 1, session: 9, weekly: 6, tokens: 0.5 },
+] as const
 
 const millions = (value: number) => `${value.toFixed(1)}M`
 
@@ -144,47 +137,19 @@ type PackageManager = keyof typeof INSTALL_COMMANDS
 const MANAGERS = Object.keys(INSTALL_COMMANDS) as PackageManager[]
 
 /** Three commands, in the order you type them. `<token>` stays a placeholder:
- *  the real one is generated per device on the Devices page. */
+ *  the real one is generated per device on the Devices page. Only the number
+ *  and the command are fixed; the prose is a message key. */
 const STEPS = [
-	{
-		n: '01',
-		title: 'Install the collector',
-		body: 'Zero runtime dependencies, Node 20 and up, the same command on every OS.',
-		command: INSTALL_COMMANDS.npm,
-	},
-	{
-		n: '02',
-		title: 'Pair the device',
-		body: 'One token from the dashboard, shown once, stored as a hash on our side.',
-		command: 'usagefleet login <token>',
-	},
-	{
-		n: '03',
-		title: 'Leave it alone',
-		body: 'Autostarts with your session, tails the local logs, updates itself within six hours.',
-		command: 'usagefleet status',
-	},
-]
+	{ n: '01', key: 'install', command: INSTALL_COMMANDS.npm },
+	{ n: '02', key: 'pair', command: 'usagefleet login <token>' },
+	{ n: '03', key: 'leave', command: 'usagefleet status' },
+] as const
 
-const SPECS = [
-	{
-		key: 'source',
-		title: 'Rate limit headers, not guesses',
-		body: "The collector uses your existing local Claude login and reads unified 5 hour and 7 day utilization straight from Anthropic's response headers.",
-	},
-	{
-		key: 'split',
-		title: 'Groups get their real share',
-		body: 'Claude Code logs are deduped by uuid and folded per request, so billable tokens decide how the official total divides between your machines.',
-	},
-	{
-		key: 'privacy',
-		title: 'Counters, not conversations',
-		// Keep this in step with the collector payload (apps/cli/src/types.ts):
-		// it also uploads cwd, git branch, hostname, model and session id.
-		body: 'Prompts, responses and file contents never leave your machine. What does: token counts, model, session id, hostname, working directory and git branch.',
-	},
-]
+// The label stays English: it is the machine-side vocabulary, same as the
+// commands above. Keep `privacy` in step with the collector payload
+// (apps/cli/src/types.ts): it also uploads cwd, git branch, hostname, model
+// and session id.
+const SPECS = ['source', 'split', 'privacy'] as const
 
 /** Max groups always equals the plan's device cap, so one number drives both
  *  rows. `highlight` marks the tier the columns lean on. */
@@ -203,13 +168,18 @@ interface Tier {
 	highlight: boolean
 }
 
-function pricingTiers(prices: PlanPrices): Tier[] {
+// Plan names stay as they are: Free, Solo, Fleet and Custom are what the
+// billing page, Stripe and the support inbox all call them.
+function pricingTiers(prices: PlanPrices, locale: Locale): Tier[] {
+	const m = MESSAGES[locale].landing.pricing
 	return [
 		{
 			id: null,
 			plan: 'Free',
-			note: 'start here',
-			price: '$0',
+			note: m.notes.free,
+			// Zero still goes through the formatter: "$0" is only right in one of
+			// the two currencies this page can be priced in.
+			price: formatPlanPrice(0, prices, locale),
 			period: null,
 			priceCents: 0,
 			devices: FREE_DEVICES,
@@ -218,20 +188,20 @@ function pricingTiers(prices: PlanPrices): Tier[] {
 		{
 			id: 'solo',
 			plan: PLANS.solo.label,
-			note: 'most people',
-			price: formatPlanPrice(prices.solo),
-			period: '/ mo',
-			priceCents: prices.solo,
+			note: m.notes.solo,
+			price: formatPlanPrice(prices.amounts.solo, prices, locale),
+			period: m.perMonth,
+			priceCents: prices.amounts.solo,
 			devices: PLANS.solo.devices,
 			highlight: true,
 		},
 		{
 			id: 'fleet',
 			plan: PLANS.fleet.label,
-			note: 'teams, CI, servers',
-			price: formatPlanPrice(prices.fleet),
-			period: '/ mo',
-			priceCents: prices.fleet,
+			note: m.notes.fleet,
+			price: formatPlanPrice(prices.amounts.fleet, prices, locale),
+			period: m.perMonth,
+			priceCents: prices.amounts.fleet,
 			devices: PLANS.fleet.devices,
 			highlight: false,
 		},
@@ -240,13 +210,14 @@ function pricingTiers(prices: PlanPrices): Tier[] {
 
 /** Priced per device rather than by tier: `devices` and `price` here are the
  *  floor, not the whole offer. */
-function customTier(prices: PlanPrices): Tier {
+function customTier(prices: PlanPrices, locale: Locale): Tier {
+	const m = MESSAGES[locale].landing.pricing
 	return {
 		id: 'custom',
 		plan: PLANS.custom.label,
-		note: 'bigger fleets',
-		price: formatPlanPrice(prices.custom),
-		period: '/ device / mo',
+		note: m.notes.custom,
+		price: formatPlanPrice(prices.amounts.custom, prices, locale),
+		period: m.perDevicePerMonth,
 		priceCents: planPriceCents('custom', PLANS.custom.minDevices, prices),
 		devices: PLANS.custom.minDevices,
 		highlight: false,
@@ -315,9 +286,11 @@ const ROLL_CHAR: Variants = {
 
 function Landing() {
 	const { signedIn, prices } = Route.useLoaderData()
-	const tiers = [...pricingTiers(prices), customTier(prices)]
+	const locale = useLocale()
+	const t = useTranslations('landing')
+	const tiers = [...pricingTiers(prices, locale), customTier(prices, locale)]
 	const appHref = signedIn ? '/dashboard' : '/login'
-	const appLabel = signedIn ? 'Dashboard' : 'Get started'
+	const appLabel = signedIn ? t('nav.app') : t('primaryCta.getStarted')
 
 	const heroRef = useRef<HTMLElement>(null)
 	const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] })
@@ -353,17 +326,17 @@ function Landing() {
 						</a>
 						<nav className='hidden gap-7 text-sm text-muted-foreground sm:flex'>
 							<a href='#how' className='transition-colors hover:text-foreground'>
-								How it works
+								{t('nav.how')}
 							</a>
 							<a href='#pricing' className='transition-colors hover:text-foreground'>
-								Pricing
+								{t('nav.pricing')}
 							</a>
 							<a href='#faq' className='transition-colors hover:text-foreground'>
-								FAQ
+								{t('nav.faq')}
 							</a>
 						</nav>
 						<Link to={appHref} className={buttonVariants()}>
-							{signedIn ? 'Dashboard' : 'Sign in'}
+							{signedIn ? t('nav.app') : t('nav.signIn')}
 						</Link>
 					</div>
 				</header>
@@ -390,12 +363,13 @@ function Landing() {
 							<h1 className='text-[clamp(1.6rem,4.1vw,3.75rem)] leading-[1] font-semibold tracking-[-0.045em]'>
 								{/* Word by word out of a blur: the one piece of choreography on
 								    the page, and it only plays once, on load. */}
-								<Word delay={0.06}>One</Word> <Word delay={0.16}>subscription,</Word>{' '}
+								<Word delay={0.06}>{t('hero.headline.one')}</Word>{' '}
+								<Word delay={0.16}>{t('hero.headline.subscription')}</Word>{' '}
 								<Word delay={0.26} className='text-muted-foreground'>
-									many
+									{t('hero.headline.many')}
 								</Word>{' '}
 								<Word delay={0.34} className='text-muted-foreground'>
-									machines.
+									{t('hero.headline.machines')}
 								</Word>
 							</h1>
 							<motion.p
@@ -404,8 +378,7 @@ function Landing() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.44, duration: 0.45, ease: EASE_OUT }}
 							>
-								Anthropic reports one usage number. UsageFleet splits it per machine, live, from
-								Claude&apos;s own headers.
+								{t('hero.lead')}
 							</motion.p>
 							<motion.div
 								className='mt-8 flex flex-wrap items-center gap-3'
@@ -422,12 +395,12 @@ function Landing() {
 								animate={{ opacity: 1 }}
 								transition={{ delay: 0.72, duration: 0.5, ease: EASE_OUT }}
 							>
-								{['Setup under a minute', 'Counters, never prompts'].map(item => (
+								{(['setup', 'prompts'] as const).map(badge => (
 									<li
-										key={item}
+										key={badge}
 										className='flex items-center gap-2 before:size-[3px] before:rounded-full before:bg-current'
 									>
-										{item}
+										{t(`hero.badges.${badge}`)}
 									</li>
 								))}
 							</motion.ul>
@@ -442,12 +415,12 @@ function Landing() {
 						<SectionHead
 							title={
 								<>
-									Three commands.
+									{t('how.title')}
 									<br />
-									<span className='text-muted-foreground'>Then it is just running.</span>
+									<span className='text-muted-foreground'>{t('how.titleSecond')}</span>
 								</>
 							}
-							lead='The collector uses the Claude login already on the machine. Nothing to configure, nothing to keep open.'
+							lead={t('how.lead')}
 						/>
 						{/* bg-border showing through the gap is what draws the hairline. */}
 						<div className='overflow-hidden rounded-xl border border-border bg-border'>
@@ -460,9 +433,11 @@ function Landing() {
 										className='bg-background px-5 py-6 transition-colors hover:bg-muted/40'
 									>
 										<span className='font-mono text-[11px] text-muted-foreground/70'>{step.n}</span>
-										<h3 className='mt-3.5 text-lg font-medium tracking-tight'>{step.title}</h3>
+										<h3 className='mt-3.5 text-lg font-medium tracking-tight'>
+											{t(`how.steps.${step.key}.title`)}
+										</h3>
 										<p className='mt-2.5 text-sm leading-relaxed text-muted-foreground'>
-											{step.body}
+											{t(`how.steps.${step.key}.body`)}
 										</p>
 										<code className='mt-3.5 block overflow-x-auto font-mono text-xs whitespace-nowrap text-muted-foreground/70'>
 											{step.command}
@@ -476,15 +451,17 @@ function Landing() {
 							<Stagger className='grid gap-px'>
 								{SPECS.map(spec => (
 									<motion.div
-										key={spec.key}
+										key={spec}
 										data-reveal
 										variants={RISE_ITEM}
 										className='grid gap-x-7 gap-y-1 bg-background px-5 py-4 transition-colors hover:bg-muted/40 sm:grid-cols-[90px_1fr]'
 									>
-										<span className='font-mono text-xs text-muted-foreground/70'>{spec.key}</span>
+										<span className='font-mono text-xs text-muted-foreground/70'>{spec}</span>
 										<p className='text-sm leading-relaxed text-muted-foreground'>
-											<span className='font-medium text-foreground'>{spec.title}.</span>{' '}
-											{spec.body}
+											<span className='font-medium text-foreground'>
+												{t(`how.specs.${spec}.title`)}.
+											</span>{' '}
+											{t(`how.specs.${spec}.body`)}
 										</p>
 									</motion.div>
 								))}
@@ -496,12 +473,12 @@ function Landing() {
 						<SectionHead
 							title={
 								<>
-									Simple plans.
+									{t('pricing.title')}
 									<br />
-									<span className='text-muted-foreground'>Exact limits.</span>
+									<span className='text-muted-foreground'>{t('pricing.titleSecond')}</span>
 								</>
 							}
-							lead='Max groups matches your device count. Cancel any time, the free plan keeps working.'
+							lead={t('pricing.lead')}
 						/>
 						<div className='overflow-hidden rounded-xl border border-border bg-border'>
 							{/* Custom rides in the grid as a fourth column instead of a stranded
@@ -537,23 +514,28 @@ function Landing() {
 												<b className='font-mono font-medium text-foreground'>{tier.devices}</b>
 												{tier.id === 'custom' ? (
 													<>
-														{' to '}
+														{t('pricing.rangeTo')}
 														<b className='font-mono font-medium text-foreground'>
 															{PLANS.custom.maxDevices}
 														</b>
 													</>
 												) : null}{' '}
-												{tier.devices === 1 ? 'device' : 'devices'}
+												{/* Custom shows a range, so the noun has to agree with the
+												    number the reader ends on, not with the floor. */}
+												{t('pricing.devices', {
+													count:
+														tier.id === 'custom' ? PLANS.custom.maxDevices : tier.devices,
+												})}
 											</li>
 											<li>
 												{tier.id === 'custom' ? (
-													'as many groups'
+													t('pricing.asManyGroups')
 												) : (
 													<>
 														<b className='font-mono font-medium text-foreground'>
 															{tier.devices}
 														</b>{' '}
-														{tier.devices === 1 ? 'group' : 'groups'}
+														{t('pricing.groups', { count: tier.devices })}
 													</>
 												)}
 											</li>
@@ -568,7 +550,9 @@ function Landing() {
 												className: 'mt-auto w-full justify-center',
 											})}
 										>
-											{tier.highlight ? `Choose ${tier.plan}` : `Start ${tier.plan}`}
+											{tier.highlight
+												? t('pricing.choose', { plan: tier.plan })
+												: t('pricing.start', { plan: tier.plan })}
 										</Link>
 									</motion.div>
 								))}
@@ -578,29 +562,28 @@ function Landing() {
 							    the shared half is stated once instead of as an "everything in the
 							    tier below" chain up the columns. */}
 							<Reveal className='mt-px flex flex-wrap items-baseline gap-x-6 gap-y-2 bg-background px-5 py-4'>
-								<span className='font-mono text-[11px] text-muted-foreground/70'>in every plan</span>
-								<span className='text-sm text-muted-foreground'>
-									Live 5h and weekly windows, the per group split, per model breakdown, history, and
-									the prompt guard.
+								<span className='font-mono text-[11px] text-muted-foreground/70'>
+									{t('pricing.everyPlan')}
 								</span>
+								<span className='text-sm text-muted-foreground'>{t('pricing.everyPlanBody')}</span>
 							</Reveal>
 						</div>
 					</section>
 
 					<section id='faq' className='scroll-mt-20 border-t border-border py-20'>
-						<SectionHead title='Questions people actually ask.' />
+						<SectionHead title={t('faq.title')} />
 						<Stagger>
-							{FAQ.map(item => (
+							{FAQ.map(key => (
 								// <details> rather than an accordion component: it opens without
 								// scripting and needs no state.
 								<motion.details
-									key={item.q}
+									key={key}
 									data-reveal
 									variants={RISE_ITEM}
 									className='group border-t border-border last:border-b'
 								>
 									<summary className='flex cursor-pointer list-none items-center justify-between gap-5 py-4.5 transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden'>
-										{item.q}
+										{t(`faq.${key}Q`)}
 										<span className='font-mono text-lg text-muted-foreground/70 group-open:hidden'>
 											+
 										</span>
@@ -609,7 +592,7 @@ function Landing() {
 										</span>
 									</summary>
 									<p className='max-w-[68ch] pb-5 text-sm leading-relaxed text-muted-foreground'>
-										{item.a}
+										{t(`faq.${key}A`)}
 									</p>
 								</motion.details>
 							))}
@@ -618,9 +601,7 @@ function Landing() {
 
 					<section className='border-t border-border py-20'>
 						<Reveal className='flex flex-wrap items-center justify-between gap-5'>
-							<h2 className='max-w-[20ch] text-3xl font-semibold tracking-[-0.03em]'>
-								Stop guessing which machine ate the window.
-							</h2>
+							<h2 className='max-w-[20ch] text-3xl font-semibold tracking-[-0.03em]'>{t('cta.title')}</h2>
 							<PrimaryCta to={appHref} label={appLabel} />
 						</Reveal>
 					</section>
@@ -749,6 +730,7 @@ function PrimaryCta({ to, label }: { to: '/dashboard' | '/login'; label: string 
 /** The install line, with the manager switchable in place. Server-renders npm,
  *  which is also the answer for anyone who never touches the tabs. */
 function InstallPicker() {
+	const t = useTranslations('landing.hero')
 	const [manager, setManager] = useState<PackageManager>('npm')
 	const [copied, setCopied] = useState(false)
 	const command = INSTALL_COMMANDS[manager]
@@ -808,7 +790,7 @@ function InstallPicker() {
 			<button
 				type='button'
 				onClick={copy}
-				aria-label={`Copy ${command}`}
+				aria-label={t('copy', { command })}
 				className='group flex h-full min-w-0 flex-1 items-center gap-2.5 px-3 text-left sm:flex-none'
 			>
 				{/* Widest command reserves the width, so switching manager never
@@ -841,7 +823,7 @@ function InstallPicker() {
 				</span>
 			</button>
 			<span aria-live='polite' className='sr-only'>
-				{copied ? 'Copied' : ''}
+				{copied ? t('copied') : ''}
 			</span>
 		</div>
 	)
@@ -941,6 +923,7 @@ function WindowStat({
 	resets: string
 	split: 'session' | 'weekly'
 }) {
+	const t = useTranslations('landing.mockup')
 	return (
 		<StatCell label={label} value={`${percent}%`}>
 			<Meter percent={percent} />
@@ -949,7 +932,7 @@ function WindowStat({
 				{EXAMPLE_GROUPS.map(group => (
 					<span key={group.name} className='flex min-w-0 items-center gap-1.5'>
 						<GroupDot color={group.color} />
-						<span className='truncate'>{group.name}</span>
+						<span className='truncate'>{t(`groupNames.${group.name}`)}</span>
 						<span className='text-foreground tabular-nums'>{group[split]}%</span>
 					</span>
 				))}
@@ -959,32 +942,43 @@ function WindowStat({
 }
 
 function DashboardMockup() {
+	const t = useTranslations('landing.mockup')
 	return (
 		<div className='overflow-hidden rounded-xl border border-border'>
 			<div className='flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-5 py-3 text-xs text-muted-foreground'>
 				<span className='size-1.5 rounded-full bg-emerald-500' aria-hidden />
-				<span className='text-foreground'>live</span>· subscription · updated 12s ago
-				<span className='ml-auto'>example account</span>
+				<span className='text-foreground'>{t('live')}</span>
+				{t('status')}
+				<span className='ml-auto'>{t('account')}</span>
 			</div>
 
 			{/* gap-px over bg-border is what draws the rules between the cells. */}
 			<Stagger className='grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-4'>
-				<WindowStat label='5-hour session' percent={account.session} resets='resets in 02:14' split='session' />
-				<WindowStat label='Weekly' percent={account.weekly} resets='resets Mon 09:00' split='weekly' />
-				<StatCell label='Devices reporting' value={String(account.devices)}>
-					<div className='text-[11px] text-muted-foreground'>across {EXAMPLE_GROUPS.length} groups</div>
+				<WindowStat
+					label={t('session')}
+					percent={account.session}
+					resets={t('resetsSession')}
+					split='session'
+				/>
+				<WindowStat label={t('weekly')} percent={account.weekly} resets={t('resetsWeekly')} split='weekly' />
+				<StatCell label={t('devicesReporting')} value={String(account.devices)}>
+					<div className='text-[11px] text-muted-foreground'>
+						{t('acrossGroups', { count: EXAMPLE_GROUPS.length })}
+					</div>
 				</StatCell>
-				<StatCell label='Tokens, this session' value={millions(account.tokens)}>
-					<div className='text-[11px] text-muted-foreground'>billable, folded per request</div>
+				<StatCell label={t('tokens')} value={millions(account.tokens)}>
+					<div className='text-[11px] text-muted-foreground'>{t('billable')}</div>
 				</StatCell>
 			</Stagger>
 
 			<div className='border-t border-border px-5 py-4'>
-				<h3 className='text-[11px] font-medium tracking-wider text-muted-foreground uppercase'>Groups</h3>
+				<h3 className='text-[11px] font-medium tracking-wider text-muted-foreground uppercase'>
+					{t('groups')}
+				</h3>
 				<div className='mt-3 hidden grid-cols-[minmax(0,1.4fr)_repeat(2,minmax(0,1fr))] gap-4 text-[11px] text-muted-foreground sm:grid'>
-					<span>Group</span>
-					<span>Session (5h)</span>
-					<span>Weekly</span>
+					<span>{t('group')}</span>
+					<span>{t('sessionShort')}</span>
+					<span>{t('weekly')}</span>
 				</div>
 				{/* Rows land one after another, the way the collector fills them. */}
 				<Stagger className='mt-1'>
@@ -997,9 +991,9 @@ function DashboardMockup() {
 						>
 							<div className='flex min-w-0 items-center gap-2 text-sm'>
 								<GroupDot color={group.color} />
-								<span className='truncate'>{group.name}</span>
+								<span className='truncate'>{t(`groupNames.${group.name}`)}</span>
 								<span className='shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums'>
-									{group.devices} device{group.devices === 1 ? '' : 's'}
+									{t('devices', { count: group.devices })}
 								</span>
 							</div>
 							<WindowCell percent={group.session} tokens={group.tokens} />

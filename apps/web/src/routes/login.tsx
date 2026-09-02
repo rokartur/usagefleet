@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { useTranslations } from 'use-intl'
 import { AuthForm } from '@/components/AuthForm'
 import { OAuthSignIn } from '@/components/OAuthSignIn'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { authClient } from '@/lib/auth-client'
 import { signupEnabled } from '@/lib/flags'
+import { detectLocale } from '@/lib/i18n'
 import { isPaidPlan } from '@/lib/plans'
 import type { PaidPlan } from '@/lib/plans'
 import { getSession } from '@/lib/session'
 import { SITE_NAME } from '@/lib/site'
+import { MESSAGES } from '@/messages'
 
 /** Signed-in visitors skip the form; ALLOW_SIGNUP is a server-side flag, so the
  *  "new accounts are off" notice has to be resolved on the server too. */
@@ -46,12 +49,23 @@ export const Route = createFileRoute('/login')({
 	// robots.txt keeps crawlers off the app itself, but this page answers 200 to
 	// anyone, and a sign-in form is not a search result worth having.
 	head: () => ({
-		meta: [{ title: `Sign in — ${SITE_NAME}` }, { name: 'robots', content: 'noindex, nofollow' }],
+		meta: [
+			{ title: `${MESSAGES[detectLocale()].auth.title.login} — ${SITE_NAME}` },
+			{ name: 'robots', content: 'noindex, nofollow' },
+		],
 	}),
 	component: LoginPage,
 })
 
+/** The better-auth error codes worth their own sentence. Anything else is a
+ *  code we do not own, so it gets the generic message. */
+const ERROR_KEYS: Record<string, 'accountNotLinked' | 'signupDisabled' | undefined> = {
+	account_not_linked: 'accountNotLinked',
+	signup_disabled: 'signupDisabled',
+}
+
 function LoginPage() {
+	const t = useTranslations('auth.login')
 	const { signupEnabled } = Route.useLoaderData()
 	const { error, plan } = Route.useSearch()
 	// Both modes share this page: the providers sign up and sign in with the same
@@ -66,12 +80,15 @@ function LoginPage() {
 		// oxlint-disable-next-line react/react-compiler -- document.cookie is only readable after mount
 		setLastMethod(authClient.getLastUsedLoginMethod())
 	}, [])
+	// better-auth picks the code and that list is not ours to fix, so anything
+	// unrecognised falls back to the generic message rather than rendering raw.
+	const errorMessage = t(ERROR_KEYS[error ?? ''] ?? 'failed')
 	return (
 		<div className='flex flex-1 items-center justify-center p-6'>
 			<Card className='w-full max-w-sm [--card-spacing:--spacing(6)]'>
 				<CardHeader>
-					<CardTitle className='text-lg'>{isSignup ? 'Create account' : 'Sign in'}</CardTitle>
-					<CardDescription>Track usage across groups and devices.</CardDescription>
+					<CardTitle className='text-lg'>{isSignup ? t('titleSignup') : t('title')}</CardTitle>
+					<CardDescription>{t('description')}</CardDescription>
 				</CardHeader>
 				<CardContent className='flex flex-col gap-6'>
 					<div className='flex flex-col gap-2'>
@@ -86,17 +103,13 @@ function LoginPage() {
 					</div>
 					<div className='flex items-center gap-3 text-xs text-muted-foreground'>
 						<Separator className='flex-1' />
-						or
+						{t('or')}
 						<Separator className='flex-1' />
 					</div>
 					<AuthForm mode={mode} plan={plan} lastUsed={lastMethod === 'email'} />
 					{error && (
 						<p role='alert' className='text-center text-sm text-destructive'>
-							{error === 'signup_disabled'
-								? 'That account does not exist here, and new accounts are turned off.'
-								: error === 'account_not_linked'
-									? 'That email already signed up a different way. Use the method you started with.'
-									: 'Sign-in failed. Try again.'}
+							{errorMessage}
 						</p>
 					)}
 					{signupEnabled ? (
@@ -105,17 +118,13 @@ function LoginPage() {
 							onClick={() => setMode(isSignup ? 'login' : 'signup')}
 							className='text-center text-sm text-muted-foreground'
 						>
-							{isSignup ? 'Already have an account? ' : 'No account? '}
+							{isSignup ? t('haveAccount') : t('noAccount')}
 							<span className='font-medium text-foreground underline underline-offset-4'>
-								{isSignup ? 'Sign in' : 'Create one'}
+								{isSignup ? t('title') : t('createOne')}
 							</span>
 						</button>
 					) : (
-						!error && (
-							<p className='text-center text-sm text-muted-foreground'>
-								New accounts are turned off on this instance.
-							</p>
-						)
+						!error && <p className='text-center text-sm text-muted-foreground'>{t('signupsOff')}</p>
 					)}
 				</CardContent>
 			</Card>
