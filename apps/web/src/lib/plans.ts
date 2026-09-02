@@ -113,6 +113,9 @@ export const formatPlanPrice = (cents: number, { currency }: PlanPrices, locale:
 	const fractionDigits = cents % 100 === 0 ? 0 : 2
 	return new Intl.NumberFormat(locale, {
 		currency,
+		// Polish spells the default symbol out as "0,35 USD", half again as wide as
+		// "$0.35" and too wide for a pricing card. narrowSymbol gives "0,35 $".
+		currencyDisplay: 'narrowSymbol',
 		maximumFractionDigits: fractionDigits,
 		minimumFractionDigits: fractionDigits,
 		style: 'currency',

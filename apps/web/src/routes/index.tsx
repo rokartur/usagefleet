@@ -671,6 +671,9 @@ function RollIn({ text, stagger = 0.045 }: { text: string; stagger?: number }) {
 			initial='hidden'
 			whileInView='visible'
 			viewport={VIEWPORT}
+			// Every character is its own inline-block, so without this the browser
+			// happily breaks a line mid-word: "0,35 USD" wrapped after the "US".
+			className='whitespace-nowrap'
 		>
 			{[...text].map((char, i) => (
 				// No height: an inline-block is exactly one line box tall, which is the
