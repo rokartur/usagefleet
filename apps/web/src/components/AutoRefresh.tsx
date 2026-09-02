@@ -9,6 +9,12 @@ export function AutoRefresh({ intervalMs = 10_000 }: { intervalMs?: number }) {
 
 	useEffect(() => {
 		const doRefresh = () => {
+			// A loader that throws puts the route in its error boundary, so a dropped
+			// connection would replace a rendered dashboard with "something went wrong".
+			// Offline: keep what's on screen, the next tick picks it up.
+			if (!navigator.onLine) {
+				return
+			}
 			lastRefresh.current = Date.now()
 			router.invalidate()
 		}
