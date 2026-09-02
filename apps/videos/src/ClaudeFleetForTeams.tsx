@@ -288,7 +288,7 @@ function GroupsScene() {
 					textAlign: 'center',
 				}}
 			>
-				Anthropic's account total, attributed across your groups.
+				Anthropic&apos;s account total, attributed across your groups.
 			</div>
 		</AbsoluteFill>
 	)

@@ -76,7 +76,9 @@ export function popIn(frame: number, delay = 0, distance = 36) {
 // Deterministic decaying shake for impact moments.
 export function shake(frame: number, at: number, amp = 9, len = 14) {
 	const t = frame - at
-	if (t < 0 || t > len) return { x: 0, y: 0 }
+	if (t < 0 || t > len) {
+		return { x: 0, y: 0 }
+	}
 	const decay = 1 - t / len
 	return { x: Math.sin(t * 2.6) * amp * decay, y: Math.cos(t * 3.4) * amp * 0.55 * decay }
 }
@@ -87,7 +89,9 @@ export function Impact({ at, color = 'rgba(255,255,255,0.2)' }: { at: number; co
 	const frame = useCurrentFrame()
 	const opacity = interpolate(frame, [at, at + 2, at + 12], [0, 1, 0], clamp)
 
-	if (opacity === 0) return null
+	if (opacity === 0) {
+		return null
+	}
 	return (
 		<AbsoluteFill
 			style={{
@@ -99,10 +103,12 @@ export function Impact({ at, color = 'rgba(255,255,255,0.2)' }: { at: number; co
 	)
 }
 
+const NO_ACCENT_WORDS: string[] = []
+
 // Word-by-word kinetic headline: each word springs in with a blur-settle.
 export function KineticTitle({
 	accentColor,
-	accentWords = [],
+	accentWords = NO_ACCENT_WORDS,
 	delay = 0,
 	lines,
 	size = 84,
