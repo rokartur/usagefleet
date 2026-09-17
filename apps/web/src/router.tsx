@@ -24,6 +24,10 @@ export function getRouter() {
 	})
 }
 
+/** A dropped connection surfaces as `TypeError: Failed to fetch` from the
+ *  serverFn client, with no status to key off. */
+const isFetchFailure = (error: Error) => error instanceof TypeError && error.message.toLowerCase().includes('fetch')
+
 /** One boundary for the whole app: the root shell always renders, so a failed
  *  loader or render lands here instead of on an unstyled error screen. */
 function RouteError({ error, reset }: { error: Error; reset: () => void }) {
@@ -31,6 +35,21 @@ function RouteError({ error, reset }: { error: Error; reset: () => void }) {
 	useEffect(() => {
 		console.error(error)
 	}, [error])
+
+	const transient = isFetchFailure(error)
+	useEffect(() => {
+		if (!transient) {
+			return
+		}
+		// Switching wifi/VPN or waking from sleep aborts in-flight loader fetches
+		// (ERR_NETWORK_CHANGED). Retry instead of parking the page on an error card.
+		const id = navigator.onLine ? setTimeout(reset, 2000) : undefined
+		window.addEventListener('online', reset)
+		return () => {
+			clearTimeout(id)
+			window.removeEventListener('online', reset)
+		}
+	}, [transient, reset])
 
 	return (
 		<Card className='py-8'>
