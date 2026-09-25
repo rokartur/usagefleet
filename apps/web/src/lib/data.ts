@@ -392,11 +392,6 @@ export interface PctPoint {
 	pct: number
 }
 
-/** Sentinel share key for official-percentage rises no monitored event can
- *  explain: usage from before the collector ran, or from a device outside the
- *  fleet (phone, unenrolled machine). Group ids are uuids, so no collision. */
-export const UNATTRIBUTED = '__unattributed__'
-
 /** Grid a limit sample's window start is snapped to — see recordLimitSample. */
 const SAMPLE_GRID_MS = 5 * 60 * 1000
 
@@ -455,7 +450,8 @@ export function shouldRecordPoint(prev: { pct: number } | undefined, pct: number
  * rise between two readings is split by the cost of the events inside that
  * interval, so a percentage point is charged to whoever was active when it was
  * actually burned instead of being smeared over the whole window by cost. A
- * rise over an interval with no priceable events goes to {@link UNATTRIBUTED}.
+ * rise over an interval with no priceable events is skipped, so normalizing to
+ * the official pct spreads it over the groups by their attributed shares.
  *
  * The window opens at 0% by definition, which anchors the first rise; a final
  * synthetic reading at (`now`, `targetPct`) carries any rise the account row
@@ -467,7 +463,7 @@ export function shouldRecordPoint(prev: { pct: number } | undefined, pct: number
  * the work that caused it rather than with whatever was running when it
  * surfaced.
  *
- * Returns null when there is no rise to weigh; callers then fall back to the
+ * Returns null when no rise has events behind it; callers then fall back to the
  * plain cost split.
  */
 function riseWeights(
@@ -508,7 +504,6 @@ function riseWeights(
 	// window it started in; the window filter upstream only sees its end.
 	const events = timeline.filter(e => e.ts >= startMs).toSorted((a, b) => a.ts - b.ts)
 	const weights = new Map<string | null, number>()
-	let totalRise = 0
 	let i = 0
 	for (let b = 1; b < bounds.length; b++) {
 		const end = bounds[b].at
@@ -527,13 +522,11 @@ function riseWeights(
 		if (rise <= 0) {
 			continue
 		}
-		totalRise += rise
 		let costSum = 0
 		for (let e = from; e < i; e++) {
 			costSum += events[e].cost
 		}
 		if (costSum === 0) {
-			weights.set(UNATTRIBUTED, (weights.get(UNATTRIBUTED) ?? 0) + rise)
 			continue
 		}
 		for (let e = from; e < i; e++) {
@@ -541,7 +534,7 @@ function riseWeights(
 			weights.set(key, (weights.get(key) ?? 0) + rise * (cost / costSum))
 		}
 	}
-	return totalRise > 0 ? weights : null
+	return weights.size > 0 ? weights : null
 }
 
 interface ShareEntry {
@@ -568,11 +561,7 @@ interface ShareEntry {
  *
  *  `calibration` replaces those list prices with what this account's own rises
  *  say Anthropic actually charges, and shifts events by its measured meter lag.
- *  Absent (or never fitted well enough to keep) the list prices stand.
- *
- *  The returned map may carry an extra {@link UNATTRIBUTED} entry — a share of
- *  the account with no group behind it. It is not a group: it holds no budget
- *  slice, so it must not go through {@link groupBudgetPct}. */
+ *  Absent (or never fitted well enough to keep) the list prices stand. */
 export function splitByShare(
 	events: UsageRecord[],
 	windowStart: Date,
@@ -627,17 +616,8 @@ export function splitByShare(
 	// Weights sum to the total recorded rise; normalizing to `target` keeps the
 	// official percentage authoritative even after a downward correction.
 	let totalWeight = 0
-	if (rise) {
-		for (const w of rise.values()) {
-			totalWeight += w
-		}
-		// A sliver under half a point is timing noise, not a device off the fleet —
-		// dropped from the denominator too, so the real keys still sum to `target`.
-		const sliver = rise.get(UNATTRIBUTED) ?? 0
-		if (sliver > 0 && target * (sliver / totalWeight) < 0.5) {
-			rise.delete(UNATTRIBUTED)
-			totalWeight -= sliver
-		}
+	for (const w of rise?.values() ?? []) {
+		totalWeight += w
 	}
 	const costShareOf = (k: string | null) => (totalCost > 0 ? target * ((costByKey.get(k) ?? 0) / totalCost) : 0)
 	const shareOf = (k: string | null) =>
@@ -652,10 +632,6 @@ export function splitByShare(
 			tokens: tok,
 			totalTokens: totalByKey.get(k) ?? 0,
 		})
-	}
-	if (rise?.has(UNATTRIBUTED)) {
-		// No event carries its cost, so its cost share is 0 by construction.
-		out.set(UNATTRIBUTED, { costPct: 0, exactPct: shareOf(UNATTRIBUTED), models: [], tokens: 0, totalTokens: 0 })
 	}
 	return out
 }
@@ -849,27 +825,20 @@ async function loadLiveDashboard(
 
 	const keys = new Set<string | null>([...sessionSplit.keys(), ...weeklySplit.keys()])
 	const labelFor = (id: string | null) => {
-		if (id === UNATTRIBUTED) {
-			return { color: '#64748b', name: 'Unattributed' }
-		}
 		const g = id === null ? undefined : groupRows.find(g => g.id === id)
 		return { color: g?.color ?? '#94a3b8', name: id === null ? 'Ungrouped' : (g?.name ?? 'Unknown') }
 	}
-	// Unattributed is not a group and holds no budget slice, so it stays on the
-	// account scale; scaling it by the group count would show a 15% remainder as
-	// 60% on a four-group account and push the split bar past the real total.
-	const budgetPctFor = (id: string | null, pct = 0) =>
-		id === UNATTRIBUTED ? Math.round(pct) : groupBudgetPct({ exactPct: pct }, budgetShares)
+	const budgetPctFor = (pct = 0) => groupBudgetPct({ exactPct: pct }, budgetShares)
 
 	const groupUsages: LiveGroupUsage[] = [...keys].map(id => ({
 		groupId: id,
 		...labelFor(id),
 		// Usage against the group's equal slice of the account limit: a group
 		// filling its share reads 100% while the account is at 50%.
-		sessionBudgetPct: budgetPctFor(id, sessionSplit.get(id)?.exactPct),
-		weeklyBudgetPct: budgetPctFor(id, weeklySplit.get(id)?.exactPct),
-		sessionCostPct: budgetPctFor(id, sessionSplit.get(id)?.costPct),
-		weeklyCostPct: budgetPctFor(id, weeklySplit.get(id)?.costPct),
+		sessionBudgetPct: budgetPctFor(sessionSplit.get(id)?.exactPct),
+		weeklyBudgetPct: budgetPctFor(weeklySplit.get(id)?.exactPct),
+		sessionCostPct: budgetPctFor(sessionSplit.get(id)?.costPct),
+		weeklyCostPct: budgetPctFor(weeklySplit.get(id)?.costPct),
 		sessionTokens: sessionSplit.get(id)?.tokens ?? 0,
 		weeklyTokens: weeklySplit.get(id)?.tokens ?? 0,
 		sessionTotalTokens: sessionSplit.get(id)?.totalTokens ?? 0,
@@ -912,9 +881,7 @@ async function loadLiveDashboard(
 		const weeklyContributionPct = weeklyShare?.exactPct ?? 0
 		const weeklyCostPct = weeklyShare?.costPct ?? 0
 		const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(([id, s]) => ({
-			// Via budgetPctFor, not groupBudgetPct: delta attribution can emit the
-			// UNATTRIBUTED sentinel, which must never reach the budget scaling.
-			budgetPct: budgetPctFor(id, s.exactPct),
+			budgetPct: budgetPctFor(s.exactPct),
 			groupId: id,
 			...labelFor(id),
 			tokens: s.tokens,

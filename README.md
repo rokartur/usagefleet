@@ -24,9 +24,8 @@ machine reads them from Anthropic's own usage endpoint (the one Claude's
 `/usage` screen uses) with the Claude login you already have there, falling
 back to the `anthropic-ratelimit-unified-*` response headers for API keys.
 UsageFleet only *splits* them — each rise of the percentage is attributed to
-the groups active when it happened, weighted by estimated cost; usage no
-monitored device produced shows up as "Unattributed" instead of being
-redistributed.
+the groups active when it happened, weighted by estimated cost; a rise no
+monitored device explains is spread over the groups in the same proportion.
 
 A group's number is measured against **its own slice** of the account (1/N with
 N groups), so "62%" means that group used 62% of its budget — not 62% of yours.

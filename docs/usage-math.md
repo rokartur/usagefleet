@@ -51,8 +51,7 @@ apportioning a percentage.
   widen the split window. A reset more than one whole window ahead is discarded
   as not this window's: `resets_at` is device-reported and range-checked nowhere
   on the way in, and taken literally it would open the window in the future,
-  leaving it empty so the account's whole percentage would read as unattributed
-  (`windowStartOf`). The `user_settings` weekday/hour survive only as the
+  leaving it empty so no rise would have events behind it (`windowStartOf`). The `user_settings` weekday/hour survive only as the
   past-windows grid fallback (`weekWindowStart` in `window.ts`) for an account
   that has never reported a weekly reset.
 - **Past windows** (`windowSpans`): the recorded utilization samples ARE the
@@ -118,7 +117,7 @@ in the morning. Details that matter:
   default, its start when the account's calibration says so (`anchorTs`). The
   two differ only for a response that streamed across a reading, but those are
   the expensive ones, and with the wrong anchor their rise lands in an interval
-  with no events and reads as unattributed. Which end Anthropic's meter moves
+  with no events and is spread over the wrong groups. Which end Anthropic's meter moves
   at is not documented, so it is fitted, not guessed.
 - Every rise is stored; readings closer than **one minute** merge into one
   interval at read time. A minute is the collector's poll period, so two
@@ -128,18 +127,16 @@ in the morning. Details that matter:
   (cross-correlating per-minute cost against rises on real accounts) that delay
   peaks at about a minute, most of which is the poll period itself — while the
   five-minute bound was dropping ~25% of all rises and moving group shares by up
-  to 6 points. Worse, it merged idle intervals into active ones, hiding
-  off-fleet usage that should have read as `UNATTRIBUTED`. What remains of the
+  to 6 points. Worse, it merged idle intervals into active ones, pinning
+  off-fleet usage on whoever was active next to it. What remains of the
   delay is fitted per account (see *Calibration*) instead of guessed at.
   The merge interval is the attribution resolution: inside one, we are back to
   splitting by cost.
-- A rise over an interval with no priceable events goes to the sentinel
-  `UNATTRIBUTED` key — usage from before the collector ran or from a device
-  outside the fleet — and shows as an "Unattributed" row instead of being
-  silently redistributed to the groups. Slivers under half a point are dropped
-  as timing noise, from the denominator too, so the real groups still sum to the
-  official pct. That row is **not a group**: it holds no budget slice, so it is
-  displayed as a plain account share and never goes through `groupBudgetPct()`.
+- A rise over an interval with no priceable events (usage from before the
+  collector ran or from a device outside the fleet) is skipped, and normalizing
+  to the official pct spreads it over the groups in proportion to their
+  attributed rises. There is no "Unattributed" row. When no rise has events
+  behind it at all, the split falls back to plain cost share.
 - Only identified accounts get change points. The `ext_id = NULL` bucket can
   hold several logins at once, whose interleaved readings would look like one
   account sawtoothing and invent rises; those accounts keep the cost split,
@@ -177,8 +174,7 @@ What keeps this honest:
   enormous weight that costs nothing on the fitted data and misattributes wildly
   the first time it is used in earnest.
 - Intervals no event falls in are excluded from the fit. Asking the weights to
-  explain a rise from nothing is how a fit learns garbage; that rise is
-  `UNATTRIBUTED` at read time and stays that way.
+  explain a rise from nothing is how a fit learns garbage.
 - The fit prices the same events the split weighs: scoped by the account
   view's own absorption rule, so a single-account fleet's unstamped devices
   count in both or neither. A narrower set would fit weights on fewer dollars
@@ -265,7 +261,7 @@ table is tokens and estimated cost, per user, across every account.
 `usage.test.ts` and `daily-agg.test.ts` pin the fold and the aggregate sums;
 `data.test.ts` pins the past-window construction, `groupBudgetPct` and
 `splitByShare` — i.e. the budget-slice rule above, the delta attribution
-(rise-per-interval, UNATTRIBUTED, the reading merge, the no-points fallback)
+(rise-per-interval, spreading unexplained rises, the reading merge, the no-points fallback)
 and the cost weighting that feeds it, including the window bounds, the fold
 and the zero-cost case. Run
 `bun run test` in `apps/web`. Keep new math in `lib/usage/` as a pure function
