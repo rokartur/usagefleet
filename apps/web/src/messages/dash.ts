@@ -178,7 +178,7 @@ const en = {
 		fiveHour: '5-hour',
 		fiveHourSession: '5-hour session',
 		footnote:
-			"Headline percentages are Claude's own account utilization. Per-group percentages are budget-relative: the group's usage against its equal slice of the limit, so 100% means it has eaten its slice. Unattributed is account usage no reporting device explains, shown as a plain account share.",
+			"Headline percentages are Claude's own account utilization. Per-group percentages are budget-relative: the group's usage against its equal slice of the limit, so 100% means it has eaten its slice.",
 		groups: 'Groups',
 		historyEmptyDescription: 'No completed {window} window has any recorded activity.',
 		historyEmptyTitle: 'Nothing behind us yet',
@@ -537,7 +537,7 @@ const pl: typeof en = {
 		fiveHour: '5-godzinne',
 		fiveHourSession: 'Sesja 5-godzinna',
 		footnote:
-			'Główne procenty to własne wykorzystanie konta wg Claude. Procenty grup są względem budżetu: zużycie grupy wobec jej równego udziału w limicie, więc 100% oznacza, że zjadła swój udział. Nieprzypisane to zużycie konta, którego nie tłumaczy żadne raportujące urządzenie, pokazane jako zwykły udział w koncie.',
+			'Główne procenty to własne wykorzystanie konta wg Claude. Procenty grup są względem budżetu: zużycie grupy wobec jej równego udziału w limicie, więc 100% oznacza, że zjadła swój udział.',
 		groups: 'Grupy',
 		historyEmptyDescription: 'Żadne zamknięte okno {window} nie ma zapisanej aktywności.',
 		historyEmptyTitle: 'Nic za nami',

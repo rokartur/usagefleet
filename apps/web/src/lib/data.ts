@@ -404,7 +404,7 @@ const SAMPLE_GRID_MS = 5 * 60 * 1000
  *  `resetsAt` is range-checked nowhere on the way in, and further ahead than one
  *  whole window means it is not this window's reset at all — that would put the
  *  start in the future, leaving the window empty and the entire account pct
- *  reading as unattributed. Rolling window for that, and for no reading at all. */
+ *  with no group to split it over. Rolling window for that, and for no reading at all. */
 export function windowStartOf(resetsAt: Date | null, now: Date, len: number): Date {
 	if (!resetsAt || resetsAt.getTime() > now.getTime() + len) {
 		return new Date(now.getTime() - len)

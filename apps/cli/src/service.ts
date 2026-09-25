@@ -102,7 +102,7 @@ export function shadowingBinary(pathEnv: string | undefined, self: string): stri
  *  deletes. The running collector survives on its open file, but the moment it
  *  stops launchd can no longer spawn it (EX_CONFIG, penalty box) and the
  *  machine silently drops off the fleet until the next `login` — every prompt
- *  it sends from then on reads as unattributed. Brew keeps
+ *  it sends from then on goes untracked. Brew keeps
  *  `<prefix>/opt/<formula>` pointing at the formula's current keg, so that name
  *  is what survives. Not verified against `execPath`: after an upgrade the two
  *  differ by design, and the version brew now links is the one to run. Other

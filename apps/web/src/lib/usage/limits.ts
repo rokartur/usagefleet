@@ -22,8 +22,8 @@ export const LIMITS_STALE_MS = 15 * 60 * 1000
  * This used to be five minutes, to absorb an unmeasured delay between an event's
  * timestamp and Anthropic's meter. Measured on real accounts that delay is under
  * a minute — while the five-minute bound was dropping ~25% of all recorded rises
- * and, worse, merging idle intervals into active ones, which hid off-fleet usage
- * that should have read as unattributed. What remains of the delay is fitted per
+ * and, worse, merging idle intervals into active ones, which pinned off-fleet
+ * usage on whoever was active next to it. What remains of the delay is fitted per
  * account instead (`Calibration.lagMs`), which is falsifiable where a constant is
  * not.
  */

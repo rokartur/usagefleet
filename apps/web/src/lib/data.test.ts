@@ -1,13 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-	buildPastWindows,
-	groupBudgetPct,
-	shouldRecordPoint,
-	splitByShare,
-	UNATTRIBUTED,
-	windowExpired,
-	windowStartOf,
-} from './data'
+import { buildPastWindows, groupBudgetPct, shouldRecordPoint, splitByShare, windowExpired, windowStartOf } from './data'
 import type { WindowAggRow } from './data'
 import type { BucketWeights, Calibration, UsageRecord } from './usage'
 
@@ -229,19 +221,23 @@ describe(splitByShare, () => {
 		expect(s.get(null)?.exactPct).toBeCloseTo(20, 6)
 	})
 
-	it('parks a rise no monitored event can explain under UNATTRIBUTED', () => {
-		// The account hit 40% before the only monitored event existed; the synthetic
-		// final reading tops the rest up to the official 50.
+	it('spreads a rise no monitored event can explain over the groups by their attributed shares', () => {
+		// The account hit 40% before any monitored event existed; only the last 10pp
+		// has events behind it, split 3:1 by cost, and that ratio carries the full 50.
 		const s = splitByShare(
-			[ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T13:00:00Z'))],
+			[
+				ev('a', 'claude-sonnet-4', 3_000_000, new Date('2026-06-18T13:00:00Z')),
+				ev('b', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T13:30:00Z')),
+			],
 			WIN_START,
 			NOW,
 			50,
 			'5m',
 			[pt('2026-06-18T11:00:00Z', 40)],
 		)
-		expect(s.get(UNATTRIBUTED)?.exactPct).toBeCloseTo(40, 6)
-		expect(s.get('a')?.exactPct).toBeCloseTo(10, 6)
+		expect(s.get('a')?.exactPct).toBeCloseTo(37.5, 6)
+		expect(s.get('b')?.exactPct).toBeCloseTo(12.5, 6)
+		expect(s.size).toBe(2)
 	})
 
 	it('degrades to the whole-window cost split when no readings exist', () => {
@@ -257,16 +253,18 @@ describe(splitByShare, () => {
 		)
 		expect(s.get('a')?.exactPct).toBeCloseTo(50, 6)
 		expect(s.get('b')?.exactPct).toBeCloseTo(10, 6)
-		expect(s.get(UNATTRIBUTED)).toBeUndefined()
 	})
 
 	it('merges readings closer together than one device poll', () => {
 		// Three devices read Anthropic seconds apart and post the same climb; the
 		// boundaries between their readings are which machine answered first, not
-		// when the usage happened. Unmerged, the hairline intervals around a's event
-		// would find nothing inside them and leak to UNATTRIBUTED.
+		// when the usage happened. Unmerged, a would own only the hairline interval
+		// its event fell in and b's earlier 5pp would weigh as much as a's climb.
 		const s = splitByShare(
-			[ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:30:30Z'))],
+			[
+				ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:30:30Z')),
+				ev('b', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:10:00Z')),
+			],
 			WIN_START,
 			NOW,
 			20,
@@ -279,16 +277,18 @@ describe(splitByShare, () => {
 			],
 		)
 		expect(s.get('a')?.exactPct).toBeCloseTo(15, 6)
-		expect(s.get(UNATTRIBUTED)?.exactPct).toBeCloseTo(5, 6)
+		expect(s.get('b')?.exactPct).toBeCloseTo(5, 6)
 	})
 
 	it('attributes minute-apart rises separately instead of pooling them', () => {
 		// a worked for one minute out of six. The old five-minute merge fused all
-		// four readings into one interval and handed a the entire climb; at poll
-		// resolution a only owns the minute it was actually running, and the rest
-		// reads as what it is — usage from outside the fleet.
+		// readings from 10:30 on into one interval and handed a that entire climb; at
+		// poll resolution a owns only the minute it was running, the same 5pp b owns.
 		const s = splitByShare(
-			[ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:31:30Z'))],
+			[
+				ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:31:30Z')),
+				ev('b', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:10:00Z')),
+			],
 			WIN_START,
 			NOW,
 			20,
@@ -300,8 +300,8 @@ describe(splitByShare, () => {
 				pt('2026-06-18T10:36:00Z', 20),
 			],
 		)
-		expect(s.get('a')?.exactPct).toBeCloseTo(5, 6)
-		expect(s.get(UNATTRIBUTED)?.exactPct).toBeCloseTo(15, 6)
+		expect(s.get('a')?.exactPct).toBeCloseTo(10, 6)
+		expect(s.get('b')?.exactPct).toBeCloseTo(10, 6)
 	})
 
 	it('gives a falling interval no weight and keeps its events out of the next one', () => {
@@ -323,21 +323,6 @@ describe(splitByShare, () => {
 		expect(s.get('a')?.exactPct).toBeCloseTo(20, 6)
 		expect(s.get('c')?.exactPct).toBeCloseTo(10, 6)
 		expect(s.get('b')?.exactPct).toBe(0)
-	})
-
-	it('drops an unattributed sliver from the split and from the denominator', () => {
-		// A 0.2pp climb before a's first event is timing noise, not a device off the
-		// fleet. Dropping it must not leave the real groups summing to 39.8.
-		const s = splitByShare(
-			[ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:30:00Z'))],
-			WIN_START,
-			NOW,
-			40,
-			'5m',
-			[pt('2026-06-18T10:06:00Z', 0.2), pt('2026-06-18T11:00:00Z', 40)],
-		)
-		expect(s.get(UNATTRIBUTED)).toBeUndefined()
-		expect(s.get('a')?.exactPct).toBeCloseTo(40, 6)
 	})
 
 	it('re-prices events with the fitted weights instead of list prices', () => {
@@ -451,7 +436,7 @@ describe(windowStartOf, () => {
 	it('rejects a reset further ahead than one whole window', () => {
 		// resetsAt is device-reported and range-checked nowhere on the way in. Taken
 		// literally it would open the window in the future, leaving it empty, and the
-		// account's entire percentage would read as unattributed.
+		// account's entire percentage would have no group to split it over.
 		expect(windowStartOf(new Date('2026-06-19T12:00:00Z'), NOON, 5 * HOUR)).toStrictEqual(
 			new Date('2026-06-18T07:00:00Z'),
 		)
