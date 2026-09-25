@@ -50,8 +50,9 @@ const houseOverrides = defineConfig({
 export default defineConfig({
 	extends: [core, react, tanstack, vitest, houseOverrides],
 	// drizzle/ holds drizzle-kit generated migrations and is committed, so it is
-	// not covered by the preset's build-artifact ignores.
-	ignorePatterns: [...(core.ignorePatterns ?? []), '**/drizzle'],
+	// not covered by the preset's build-artifact ignores. publish.js runs inside
+	// the playwriter sandbox, which only offers CommonJS `require`.
+	ignorePatterns: [...(core.ignorePatterns ?? []), '**/drizzle', 'apps/videos/scripts/publish.js'],
 	// Ultracite opts out rather than in, so a handful of its rules only exist to
 	// rewrite style this codebase already settled on. Everything still enabled is
 	// a bug check or something worth converging on.
