@@ -5,8 +5,8 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/s
 import { isAdminEmail } from '@/lib/flags'
 import { requireUser } from '@/lib/session'
 
-/** Guards every dashboard route and hands the shell what it needs. Throwing the
- *  redirect from here (via requireUser) stops the child loaders from running. */
+/** Guards every dashboard route and hands the shell what it needs. beforeLoad,
+ *  not loader: child loaders wait for it, so a failed guard never runs them. */
 const dashShell = createServerFn().handler(async () => {
 	const user = await requireUser()
 	// Only decides whether the nav link renders; /admin re-checks server-side.
@@ -14,7 +14,7 @@ const dashShell = createServerFn().handler(async () => {
 })
 
 export const Route = createFileRoute('/_dash')({
-	loader: () => dashShell(),
+	beforeLoad: () => dashShell(),
 	component: DashLayout,
 })
 
@@ -27,7 +27,7 @@ const SHELL = { '--shell': '80rem' } as React.CSSProperties
 const COLUMN = 'flex w-full max-w-5xl'
 
 function DashLayout() {
-	const { email, isAdmin } = Route.useLoaderData()
+	const { email, isAdmin } = Route.useRouteContext()
 	return (
 		<SidebarProvider className='mx-auto max-w-(--shell)' style={SHELL}>
 			<AppSidebar email={email} isAdmin={isAdmin} />
