@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
-import { IconEye, IconEyeOff } from '@tabler/icons-react'
+import { IconArrowsSplit2, IconEye, IconEyeOff } from '@tabler/icons-react'
 import { type } from 'arktype'
 import { useTranslations } from 'use-intl'
+import { ActionForm } from '@/components/ActionForm'
 import { RelativeTime } from '@/components/RelativeTime'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Num, Section } from '@/components/usage-ui'
+import { mergeProjects, unmergeProject } from '@/lib/actions'
 import type { ProjectUsage } from '@/lib/data'
 import { formatTokens, formatUsd } from '@/lib/format'
 import { PROJECT_DAYS } from '@/lib/usage'
@@ -30,6 +33,9 @@ const ALL_GROUPS = 'All groups'
  *  scroll, and the filter box is how you reach the ones past the cut. A hard cap
  *  beats virtualising a list that is never meant to be read top to bottom. */
 const ROWS = 12
+
+// Keyboard users get row buttons on focus; a mouse only needs them on the row it is over.
+const REVEAL = 'text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100'
 
 /** Split an absolute cwd into the directory name and the path leading to it,
  *  with the home directory folded to "~". Two checkouts can share a basename,
@@ -58,37 +64,45 @@ export function splitPath(path: string | null): { name: string; parent: string }
 	return { name, parent: drive ? [drive, ...parent].join(sep) : `/${parent.join('/')}` }
 }
 
-/** A table row: one project, or several folded together when merging by name. */
+/** A table row: one project, or several folded together. */
 type Row = ProjectUsage & { paths: (string | null)[] }
 
-/** Rows as the table shows them. Merging folds every project whose last folder
- *  name matches, wherever it sits: one checkout cloned to ~/work and ~/Developer
- *  is one project to a human. Display only, the stored rows stay per path, which
- *  is why the merged row keeps them all. */
-export function toRows(projects: ProjectUsage[], merge: boolean): Row[] {
-	const rows: Row[] = projects.map(p => ({ ...p, groups: [...p.groups], paths: [p.path] }))
-	if (!merge) {
-		return rows
-	}
-	const byName = new Map<string, Row>()
-	for (const r of rows) {
-		const cur = byName.get(splitPath(r.path).name)
+/** Rows as the table shows them, costliest first. Display only, the stored rows
+ *  stay per path, which is why a folded row keeps them all. */
+export function toRows(projects: ProjectUsage[], mergeByName: boolean): Row[] {
+	const byKey = new Map<string, Row>()
+	for (const p of projects) {
+		const key = foldKey(p, mergeByName)
+		const cur = byKey.get(key)
 		if (!cur) {
-			byName.set(splitPath(r.path).name, r)
+			byKey.set(key, { ...p, groups: [...p.groups], paths: [p.path] })
 			continue
 		}
-		cur.billableTokens += r.billableTokens
-		cur.totalTokens += r.totalTokens
-		cur.costUsd += r.costUsd
-		cur.lastActive = r.lastActive > cur.lastActive ? r.lastActive : cur.lastActive
-		cur.paths.push(r.path)
-		for (const g of r.groups) {
+		cur.billableTokens += p.billableTokens
+		cur.totalTokens += p.totalTokens
+		cur.costUsd += p.costUsd
+		cur.lastActive = p.lastActive > cur.lastActive ? p.lastActive : cur.lastActive
+		cur.paths.push(p.path)
+		for (const g of p.groups) {
 			if (!cur.groups.some(x => x.name === g.name)) {
 				cur.groups.push(g)
 			}
 		}
 	}
-	return [...byName.values()].toSorted((a, b) => b.costUsd - a.costUsd)
+	return [...byKey.values()].toSorted((a, b) => b.costUsd - a.costUsd)
+}
+
+/** A hand merge always wins. Otherwise merging by name folds every project whose
+ *  last folder name matches, wherever it sits: one checkout cloned to ~/work and
+ *  ~/Developer is one project to a human. */
+function foldKey(p: ProjectUsage, mergeByName: boolean): string {
+	if (p.mergedAs !== null) {
+		return `merged:${p.mergedAs}`
+	}
+	if (mergeByName) {
+		return `name:${splitPath(p.path).name}`
+	}
+	return `path:${p.path ?? ''}`
 }
 
 /** Hiding is remembered by path, so a merged row hides every path behind it. */
@@ -101,19 +115,23 @@ function keysOf(r: Row): string[] {
  *  the group names so "laptops" narrows to one part of the fleet. */
 function searchable(r: Row): string {
 	const { name, parent } = splitPath(r.path)
-	return `${parent}/${name} ${r.paths.join(' ')} ${r.groups.map(g => g.name).join(' ')}`.toLowerCase()
+	return `${r.mergedAs ?? ''} ${parent}/${name} ${r.paths.join(' ')} ${r.groups.map(g => g.name).join(' ')}`.toLowerCase()
 }
 
 /**
  * Where the tokens went, by working directory — the only project identity the
  * Claude Code logs carry. Costliest first, over a fixed recent window, so this
  * answers "what am I burning the subscription on lately" without a date picker.
+ * `readOnly` drops the merge controls: on the admin view they would act on the
+ * admin's own account, not the one on screen.
  */
-export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
+export function ProjectTable({ projects, readOnly = false }: { projects: ProjectUsage[]; readOnly?: boolean }) {
 	const t = useTranslations('dash.projects')
 	const [query, setQuery] = useState('')
 	const [group, setGroup] = useState(ALL_GROUPS)
 	const [showHidden, setShowHidden] = useState(false)
+	// Selected paths, not rows, so a selection survives filtering: narrow, tick, narrow again.
+	const [selected, setSelected] = useState<string[]>([])
 	const [{ hidden, merge }, setPrefs] = useState({ hidden: [] as string[], merge: false })
 	// The server has no idea what this browser muted, so the first paint is the
 	// unfiltered table and the stored prefs land right after mount.
@@ -136,7 +154,10 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 	// you on an empty table.
 	const hiddenView = showHidden && hidden.length > 0
 	const q = query.trim().toLowerCase()
-	const rows = toRows(projects, merge)
+	const allRows = toRows(projects, merge)
+	const isSelected = (r: Row) => keysOf(r).every(k => selected.includes(k))
+	const selectedRows = allRows.filter(isSelected)
+	const rows = allRows
 		// A merged row only counts as hidden once every path behind it is, so folding
 		// two checkouts never makes a visible one disappear.
 		.filter(r => keysOf(r).every(k => hidden.includes(k)) === hiddenView)
@@ -204,9 +225,44 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 				</div>
 			}
 		>
+			{!readOnly && selectedRows.length > 0 && (
+				<ActionForm
+					action={mergeProjects}
+					loadingMessage={t('merging')}
+					successMessage={t('merged')}
+					onSuccess={() => setSelected([])}
+					className='mb-2 flex flex-wrap items-center gap-2'
+				>
+					<span className='text-sm text-muted-foreground'>
+						{t('selected', { count: selectedRows.length })}
+					</span>
+					{selectedRows.flatMap(keysOf).map(k => (
+						<input key={k} type='hidden' name='path' value={k} />
+					))}
+					<Input
+						name='name'
+						required
+						maxLength={64}
+						placeholder={t('mergeName')}
+						aria-label={t('mergeName')}
+						className='h-8 w-56'
+					/>
+					<Button type='submit' size='sm' disabled={selectedRows.length < 2}>
+						{t('merge')}
+					</Button>
+					<Button type='button' variant='ghost' size='sm' onClick={() => setSelected([])}>
+						{t('clearSelection')}
+					</Button>
+				</ActionForm>
+			)}
 			<Table>
 				<TableHeader>
 					<TableRow>
+						{!readOnly && (
+							<TableHead className='w-8'>
+								<span className='sr-only'>{t('merge')}</span>
+							</TableHead>
+						)}
 						<TableHead>{t('project')}</TableHead>
 						<TableHead>{t('group')}</TableHead>
 						<TableHead className='text-right'>{t('billable')}</TableHead>
@@ -221,11 +277,27 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 				<TableBody>
 					{shown.map(p => {
 						const { name, parent } = splitPath(p.path)
+						const label = p.mergedAs ?? (p.path ? name : t('noProject'))
 						const keys = keysOf(p)
 						return (
 							<TableRow key={keys.join(' ')} className='group/row'>
+								{!readOnly && (
+									<TableCell>
+										<Checkbox
+											checked={isSelected(p)}
+											onCheckedChange={checked =>
+												setSelected(
+													checked
+														? [...selected, ...keys]
+														: selected.filter(k => !keys.includes(k)),
+												)
+											}
+											aria-label={t('select', { name: label })}
+										/>
+									</TableCell>
+								)}
 								<TableCell className='max-w-96 truncate' title={p.paths.join(', ')}>
-									<span className='font-medium'>{p.path ? name : t('noProject')}</span>
+									<span className='font-medium'>{label}</span>
 									{/* Merged rows span several paths, so the count replaces the parent. */}
 									<span className='ml-2 text-muted-foreground'>
 										{p.paths.length > 1
@@ -263,13 +335,31 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 								<TableCell className='text-right whitespace-nowrap text-muted-foreground'>
 									<RelativeTime date={p.lastActive} />
 								</TableCell>
-								<TableCell className='py-0 text-right'>
+								<TableCell className='py-0 text-right whitespace-nowrap'>
+									{!readOnly && p.mergedAs !== null && (
+										<ActionForm
+											action={unmergeProject}
+											loadingMessage={t('unmerging')}
+											successMessage={t('unmerged')}
+											className='inline-flex'
+										>
+											<input type='hidden' name='name' value={p.mergedAs} />
+											<Button
+												type='submit'
+												variant='ghost'
+												size='icon-sm'
+												className={REVEAL}
+												aria-label={t('unmerge', { name: label })}
+											>
+												<IconArrowsSplit2 />
+											</Button>
+										</ActionForm>
+									)}
 									<Button
 										variant='ghost'
 										size='icon-sm'
-										// Keyboard users get it on focus; a mouse only needs it on the row it is over.
-										className='text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100'
-										aria-label={t(hiddenView ? 'unhide' : 'hide', { name })}
+										className={REVEAL}
+										aria-label={t(hiddenView ? 'unhide' : 'hide', { name: label })}
 										onClick={() =>
 											persist({
 												hidden: hiddenView
@@ -286,7 +376,7 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 					})}
 					{shown.length === 0 && (
 						<TableRow>
-							<TableCell colSpan={7} className='text-muted-foreground'>
+							<TableCell colSpan={readOnly ? 7 : 8} className='text-muted-foreground'>
 								{q ? t('noMatchQuery', { query: query.trim() }) : t('noMatch')}
 							</TableCell>
 						</TableRow>
@@ -294,6 +384,7 @@ export function ProjectTable({ projects }: { projects: ProjectUsage[] }) {
 				</TableBody>
 				<TableFooter>
 					<TableRow>
+						{!readOnly && <TableCell />}
 						<TableCell>
 							{t(hiddenView ? 'hiddenTotal' : 'total')}
 							<span className='ml-2 font-normal text-muted-foreground'>

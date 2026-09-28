@@ -4,7 +4,7 @@ import { type } from 'arktype'
 import { and, asc, eq, ne, sql } from 'drizzle-orm'
 import { createTranslator } from 'use-intl'
 import { db } from '@/db'
-import { devices, groups, userSettings } from '@/db/schema'
+import { devices, groups, projectMerges, userSettings } from '@/db/schema'
 import { accountPlan } from '@/lib/billing'
 import { ensureDefaultGroup, ensureSettings } from '@/lib/data'
 import { generateDeviceToken } from '@/lib/device-token'
@@ -42,6 +42,10 @@ function safeName(value: unknown): string | null {
  *  the body has been received and parsed. Capping the transport would take a
  *  `readJsonCapped` equivalent, which `createServerFn` has no hook for. */
 const deviceInput = type({ groupId: 'string <= 64 | null', name: 'string <= 256' })
+
+/** Payload for {@link mergeProjects}. Paths are cwds the dashboard echoes back,
+ *  so they share ingest's 512 ceiling; the count caps one oversized insert. */
+const mergeInput = type({ name: 'string <= 256', paths: '(string <= 512)[] <= 1000' })
 
 /** Count the user's groups (for the per-account cap). */
 async function groupCount(userId: string): Promise<number> {
@@ -252,4 +256,36 @@ export const revokeDevice = createServerFn({ method: 'POST' })
 			.update(devices)
 			.set({ revoked: true })
 			.where(and(eq(devices.id, id), eq(devices.userId, user.id)))
+	})
+
+/** Fold project paths into one hand-named project. A path already merged
+ *  elsewhere moves here, so re-merging a merged row renames or extends it. */
+export const mergeProjects = createServerFn({ method: 'POST' })
+	.inputValidator((formData: FormData) => {
+		const parsed = mergeInput({ name: formData.get('name'), paths: formData.getAll('path') })
+		if (parsed instanceof type.errors) {
+			throw new TypeError(parsed.summary)
+		}
+		return parsed
+	})
+	.handler(async ({ data }) => {
+		const user = await requireUser()
+		const name = safeName(data.name)
+		const paths = [...new Set(data.paths)]
+		if (!name || paths.length === 0) {
+			return
+		}
+		await db
+			.insert(projectMerges)
+			.values(paths.map(path => ({ name, path, userId: user.id })))
+			.onConflictDoUpdate({ set: { name }, target: [projectMerges.userId, projectMerges.path] })
+	})
+
+/** Split a hand-made project back into its paths. */
+export const unmergeProject = createServerFn({ method: 'POST' })
+	.inputValidator((formData: FormData) => formData)
+	.handler(async ({ data: formData }) => {
+		const user = await requireUser()
+		const name = String(formData.get('name'))
+		await db.delete(projectMerges).where(and(eq(projectMerges.userId, user.id), eq(projectMerges.name, name)))
 	})

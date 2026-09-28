@@ -100,6 +100,9 @@ Data access is layered so pages stay thin:
   can walk the same series. Pruned past the longest window on write. The live
   group split attributes each rise to the groups active in its interval (delta
   attribution — see `usage-math.md`). Identified accounts only.
+- `project_merge` — `(user_id, path) → name`: cwds a user folded by hand into one
+  row of the projects table (`''` is usage logged without a cwd). Display only;
+  `usage_event.cwd` is never rewritten.
 
 ## Ingest API contract
 

@@ -8,6 +8,7 @@ import {
 	groups,
 	limitChangePoints,
 	limitSamples,
+	projectMerges,
 	usageEvents,
 	userSettings,
 } from '@/db/schema'
@@ -1506,6 +1507,8 @@ export async function getHistory(userId: string): Promise<HistoryDTO> {
 export interface ProjectUsage {
 	/** Absolute cwd as reported, or null when the log had none. */
 	path: string | null
+	/** Name of the hand-made project this path was merged into, if any. */
+	mergedAs: string | null
 	/** Groups whose devices produced this usage, costliest first — a checkout
 	 *  cloned on two machines shows up under both. */
 	groups: { name: string; color: string }[]
@@ -1528,10 +1531,12 @@ export interface ProjectUsage {
 export async function getProjectUsage(userId: string, now = new Date()): Promise<ProjectUsage[]> {
 	const since = new Date(now.getTime() - PROJECT_DAYS * 24 * 60 * 60 * 1000)
 	await refreshPrices()
-	const [settings, groupRows] = await Promise.all([
+	const [settings, groupRows, mergeRows] = await Promise.all([
 		ensureSettings(userId),
 		db.select().from(groups).where(eq(groups.ownerId, userId)),
+		db.select().from(projectMerges).where(eq(projectMerges.userId, userId)),
 	])
+	const mergedAs = new Map(mergeRows.map(m => [m.path, m.name]))
 	const result = await db.execute(sql`
     WITH folded AS (
       SELECT DISTINCT ON (${FOLD_KEY})
@@ -1611,6 +1616,7 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
 				costUsd: cost,
 				groups: [],
 				lastActive,
+				mergedAs: mergedAs.get(key) ?? null,
 				path: r.cwd,
 				totalTokens: totals.totalTokens,
 			})

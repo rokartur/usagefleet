@@ -306,6 +306,21 @@ export const limitChangePoints = pgTable(
 	t => [primaryKey({ columns: [t.claudeAccountId, t.window, t.model, t.at] })],
 )
 
+// A project merged by hand: every path listed under one name reads as a single
+// row in the projects table. Display only, usage_event keeps the raw cwd.
+export const projectMerges = pgTable(
+	'project_merge',
+	{
+		name: text('name').notNull(),
+		// The cwd as reported; '' is usage logged without one.
+		path: text('path').notNull(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+	},
+	t => [primaryKey({ columns: [t.userId, t.path] })],
+)
+
 export const groupsRelations = relations(groups, ({ many, one }) => ({
 	devices: many(devices),
 	owner: one(user, { fields: [groups.ownerId], references: [user.id] }),

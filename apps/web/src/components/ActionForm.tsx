@@ -13,12 +13,20 @@ type ActionFormProps = Omit<React.ComponentProps<'form'>, 'action'> & {
 	loadingMessage: string
 	successMessage: string
 	errorMessage?: string
+	onSuccess?: () => void
 }
 
 /** A server-function form that reports its promise state through the global
  *  toast and refetches the route's loaders on success (the replacement for
  *  Next's revalidatePath). */
-export function ActionForm({ action, loadingMessage, successMessage, errorMessage, ...props }: ActionFormProps) {
+export function ActionForm({
+	action,
+	loadingMessage,
+	successMessage,
+	errorMessage,
+	onSuccess,
+	...props
+}: ActionFormProps) {
 	const [pending, startTransition] = useTransition()
 	const router = useRouter()
 	const t = useTranslations('dash.actions')
@@ -40,6 +48,7 @@ export function ActionForm({ action, loadingMessage, successMessage, errorMessag
 								success: { title: successMessage },
 							},
 						)
+						onSuccess?.()
 					} catch {
 						// The toast reports the error; leave the form available for retry.
 					}

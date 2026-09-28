@@ -2,12 +2,19 @@ import { describe, expect, it } from 'vitest'
 import type { ProjectUsage } from '@/lib/data'
 import { splitPath, toRows } from './ProjectTable'
 
-const project = (path: string | null, costUsd: number, group: string, lastActive = '2026-01-01T00:00:00.000Z') =>
+const project = (
+	path: string | null,
+	costUsd: number,
+	group: string,
+	lastActive = '2026-01-01T00:00:00.000Z',
+	mergedAs: string | null = null,
+) =>
 	({
 		billableTokens: costUsd * 10,
 		costUsd,
 		groups: [{ color: '#fff', name: group }],
 		lastActive,
+		mergedAs,
 		path,
 		totalTokens: costUsd * 20,
 	}) satisfies ProjectUsage
@@ -46,7 +53,24 @@ describe(toRows, () => {
 	]
 
 	it('keeps one row per path when merging is off', () => {
-		expect(toRows(projects, false).map(r => r.paths)).toStrictEqual(projects.map(p => [p.path]))
+		expect(toRows(projects, false).map(r => r.paths)).toStrictEqual([
+			['/Users/artur/Developer/vapp'],
+			['/Users/artur/Developer/usagefleet'],
+			['/Users/artur/work/vapp'],
+		])
+	})
+
+	it('folds a hand merge across names, ahead of merging by name', () => {
+		const merged = [
+			project('/Users/artur/Developer/vapp', 30, 'laptops', undefined, 'client'),
+			project('/Users/artur/Developer/usagefleet', 20, 'laptops', undefined, 'client'),
+			project('/Users/artur/work/vapp', 12, 'desktops'),
+		]
+		const rows = toRows(merged, true)
+		expect(rows.map(r => r.mergedAs)).toStrictEqual(['client', null])
+		expect(rows[0].costUsd).toBe(50)
+		expect(rows[0].paths).toStrictEqual(['/Users/artur/Developer/vapp', '/Users/artur/Developer/usagefleet'])
+		expect(rows[1].paths).toStrictEqual(['/Users/artur/work/vapp'])
 	})
 
 	it('folds same-name folders, sums them and re-sorts by cost', () => {

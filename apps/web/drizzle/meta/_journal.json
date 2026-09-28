@@ -183,6 +183,13 @@
       "when": 1790316247859,
       "tag": "0025_unique_owl",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790591002525,
+      "tag": "0026_tiny_tigra",
+      "breakpoints": true
     }
   ]
 }

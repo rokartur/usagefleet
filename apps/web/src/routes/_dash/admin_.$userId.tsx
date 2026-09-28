@@ -57,7 +57,7 @@ function AdminUserPage() {
 					/>
 				) : null,
 			)}
-			{projects.length > 0 && <ProjectTable projects={projects} />}
+			{projects.length > 0 && <ProjectTable projects={projects} readOnly />}
 			{history.rows.length > 0 && <UsageExplorer history={history} />}
 		</>
 	)
