@@ -1,4 +1,4 @@
-import { mkdtempSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -42,6 +42,17 @@ describe(tailFile, () => {
 		const offset = Buffer.byteLength(`${header}\n`)
 		const tail = tailFile(fp, { inode: Number(statSync(fp).ino), offset }, 'pi')
 		expect(tail?.records[0]?.cwd).toBe('/Users/artur/Developer/usagefleet')
+	})
+
+	it('parses each usage line once and leaves a partial trailing line for the next cycle', () => {
+		const twoUsageKeys = JSON.stringify({ ...JSON.parse(message), usage: 'not the message one' })
+		const rejected = JSON.stringify({ message: { role: 'user' }, type: 'message', usage: {} })
+		const fp = piFile([header, rejected, message, 'not json', twoUsageKeys])
+		const complete = statSync(fp).size
+		appendFileSync(fp, message.slice(0, 40))
+		const tail = tailFile(fp, undefined, 'pi')
+		expect(tail?.records).toHaveLength(2)
+		expect(tail?.consumedBytes).toBe(complete)
 	})
 
 	it('leaves cwd null when the header has none', () => {

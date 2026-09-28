@@ -6,6 +6,9 @@ import { dim, line, tilde, yellow } from './ui.js'
 /** Max bytes read from a single file per cycle (bounds memory on huge backlogs). */
 const MAX_READ = 16 * 1024 * 1024
 
+// Both parsers need a `usage` object, and about 3/4 of log bytes are lines without one.
+const USAGE_KEY = Buffer.from('"usage"')
+
 /**
  * The working directory of a pi session, read from the file's first line
  * (`{"type":"session",…,"cwd":"/path"}`). pi's message lines carry no cwd, and
@@ -92,14 +95,19 @@ export function tailFile(
 		return { consumedBytes: 0, nextState: base, records: [] }
 	}
 	const consumed = buf.subarray(0, lastNl + 1)
-	const text = consumed.toString('utf-8')
 
+	// Decode only the lines that can hold usage: decoding and splitting the whole
+	// 16 MB read peaked a first-run backlog at ~490 MB RSS.
 	const records: UsageRecord[] = []
-	for (const line of text.split('\n')) {
-		const rec = parseLine(line, source, sessionCwd)
+	let at = consumed.indexOf(USAGE_KEY)
+	while (at !== -1) {
+		const lineStart = consumed.lastIndexOf(0x0a, at) + 1
+		const lineEnd = consumed.indexOf(0x0a, at)
+		const rec = parseLine(consumed.toString('utf-8', lineStart, lineEnd), source, sessionCwd)
 		if (rec) {
 			records.push(rec)
 		}
+		at = consumed.indexOf(USAGE_KEY, lineEnd)
 	}
 
 	const consumedBytes = consumed.length
