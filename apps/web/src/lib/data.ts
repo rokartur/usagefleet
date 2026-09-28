@@ -757,32 +757,12 @@ async function loadLiveDashboard(
 		}
 	}
 
-	const fiveStart = windowStartOf(base.fiveHourResetsAt, now, FIVE_H_MS)
-	const weekStart = windowStartOf(base.sevenDayResetsAt, now, SEVEN_D_MS)
-
-	// Per-model limit windows (e.g. Fable weekly), clamped the same way. Entries
-	// with no reported pct can't be split — drop them up front.
-	const modelWindows = (acct.modelLimits ?? [])
-		.filter((m): m is StoredModelLimit & { pct: number } => m.pct != null)
-		.map(m => {
-			const dur = windowDurationMs(m.window) ?? SEVEN_D_MS
-			const parsed = m.resetsAt ? new Date(m.resetsAt) : null
-			const resetsAt = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null
-			const pct = windowExpired(resetsAt, now) ? 0 : m.pct
-			return { entry: { ...m, pct }, resetsAt, start: windowStartOf(resetsAt, now, dur) }
-		})
+	const { fiveStart, weekStart, modelWindows, earliestStart: pointsFrom } = limitWindows(acct, now)
 
 	// The shared flight loads a superset window (see getLiveDashboards); every
 	// consumer below filters to its exact window, so the wider bound only costs
 	// scan range, never correctness. The change points ride alongside: they are
-	// per account, so they can't live in the shared flight. Bound at the earlier
-	// of the window starts — fresh after a weekly reset `weekStart` is only
-	// minutes old while `fiveStart` is hours back, so bounding on the weekly one
-	// would silently truncate the 5h series, and a per-model window can start
-	// earlier than both. riseWeights clips each split to its own window anyway.
-	const pointsFrom = new Date(
-		Math.min(weekStart.getTime(), fiveStart.getTime(), ...modelWindows.map(m => m.start.getTime())),
-	)
+	// per account, so they can't live in the shared flight.
 	const [[allEvents, groupRows, allAggRows, deviceRows], pointRows] = await Promise.all([
 		shared(),
 		db
@@ -932,6 +912,31 @@ async function loadLiveDashboard(
 }
 
 /**
+ * Where an account's session, weekly and per-model windows start now, and the
+ * earliest of them: fresh after a weekly reset `weekStart` is minutes old while
+ * `fiveStart` is hours back, and a per-model window can start earlier than both.
+ */
+function limitWindows(acct: ClaudeAccountRow, now: Date) {
+	const fiveStart = windowStartOf(acct.fiveHourResetsAt ? new Date(acct.fiveHourResetsAt) : null, now, FIVE_H_MS)
+	const weekStart = windowStartOf(acct.sevenDayResetsAt ? new Date(acct.sevenDayResetsAt) : null, now, SEVEN_D_MS)
+	// Per-model limit windows (e.g. Fable weekly), clamped the same way. Entries
+	// with no reported pct can't be split, so drop them up front.
+	const modelWindows = (acct.modelLimits ?? [])
+		.filter((m): m is StoredModelLimit & { pct: number } => m.pct != null)
+		.map(m => {
+			const dur = windowDurationMs(m.window) ?? SEVEN_D_MS
+			const parsed = m.resetsAt ? new Date(m.resetsAt) : null
+			const resetsAt = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null
+			const pct = windowExpired(resetsAt, now) ? 0 : m.pct
+			return { entry: { ...m, pct }, resetsAt, start: windowStartOf(resetsAt, now, dur) }
+		})
+	const earliestStart = new Date(
+		Math.min(weekStart.getTime(), fiveStart.getTime(), ...modelWindows.map(m => m.start.getTime())),
+	)
+	return { earliestStart, fiveStart, modelWindows, weekStart }
+}
+
+/**
  * One flight's user-scoped loads, shared by every account view: the two
  * whole-user scans (recent events + current-month daily aggregates) plus the
  * group and device lists are identical per view, so a fleet split over two
@@ -977,14 +982,11 @@ export const getLiveDashboards = createPromiseCache(5000, async (userId: string)
 	const now = new Date()
 	const views = await listAccountViews(userId)
 	// One shared load per flight, lazy so a user with no reported limits still
-	// loads nothing. The event-scan bound covers the widest window any view can
-	// need (weekly, plus any longer per-model window); each view filters to its
-	// exact windows from there.
-	const maxWindowMs = Math.max(
-		SEVEN_D_MS,
-		...views.flatMap(v => (v.account?.modelLimits ?? []).map(m => windowDurationMs(m.window) ?? SEVEN_D_MS)),
-	)
-	const earliest = new Date(now.getTime() - maxWindowMs - 5 * 60 * 1000)
+	// loads nothing. The event scan starts at the earliest window any view is in,
+	// not a rolling week: on average half the rows. The 5 min slack covers lag and
+	// a message still streaming across that start.
+	const starts = views.flatMap(v => (v.account ? [limitWindows(v.account, now).earliestStart.getTime()] : []))
+	const earliest = new Date(Math.min(now.getTime(), ...starts) - 5 * 60 * 1000)
 	const monthStart = new Date(`${monthKey(now)}-01T00:00:00.000Z`)
 	let flight: ReturnType<typeof loadSharedRows> | null = null
 	const shared = () => (flight ??= loadSharedRows(userId, earliest, monthStart))
