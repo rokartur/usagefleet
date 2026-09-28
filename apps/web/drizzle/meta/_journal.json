@@ -190,6 +190,13 @@
       "when": 1790591002525,
       "tag": "0026_tiny_tigra",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790595700186,
+      "tag": "0027_far_wallow",
+      "breakpoints": true
     }
   ]
 }

@@ -88,10 +88,11 @@ export const createGroup = createServerFn({ method: 'POST' })
 			id: randomUUID(),
 			name,
 			ownerId: user.id,
+			watchOnly: formData.has('watchOnly'),
 		})
 	})
 
-/** Edit a group's color, name and its two blocking switches. */
+/** Edit a group's color, name, its two blocking switches and watch-only. */
 export const updateGroup = createServerFn({ method: 'POST' })
 	.inputValidator((formData: FormData) => formData)
 	.handler(async ({ data: formData }) => {
@@ -99,11 +100,18 @@ export const updateGroup = createServerFn({ method: 'POST' })
 		const id = String(formData.get('id'))
 		const color = safeColor(String(formData.get('color') ?? '#6366f1'))
 		// Unchecked boxes aren't submitted, so absence is the "off" signal — the
-		// dialog always posts both fields.
-		const set: { blockOnSessionLimit: boolean; blockOnWeeklyLimit: boolean; color: string; name?: string } = {
+		// dialog always posts every checkbox.
+		const set: {
+			blockOnSessionLimit: boolean
+			blockOnWeeklyLimit: boolean
+			color: string
+			name?: string
+			watchOnly: boolean
+		} = {
 			blockOnSessionLimit: formData.has('blockOnSessionLimit'),
 			blockOnWeeklyLimit: formData.has('blockOnWeeklyLimit'),
 			color,
+			watchOnly: formData.has('watchOnly'),
 		}
 		// An absent field and a blank one mean the same thing here: leave the stored
 		// name alone.

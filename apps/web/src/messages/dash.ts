@@ -160,6 +160,9 @@ const en = {
 		slots: 'groups · each is measured against a 1/{share} slice of the account limit',
 		updateFailed: "Couldn't update group",
 		updated: 'Group updated',
+		watchOnly: 'Watch only',
+		watchOnlyDescription:
+			"Show this group's usage without giving it a slice. The other groups split the account without it, and its percentage is of the whole account.",
 	},
 	limits: {
 		deviceLimitReached: 'Device limit reached ({limit}). Upgrade your plan on Billing.',
@@ -529,6 +532,9 @@ const pl: typeof en = {
 		slots: 'grup · każda mierzona względem udziału 1/{share} w limicie konta',
 		updateFailed: 'Nie udało się zaktualizować grupy',
 		updated: 'Zaktualizowano grupę',
+		watchOnly: 'Tylko podgląd',
+		watchOnlyDescription:
+			'Pokazuj zużycie tej grupy bez przydzielania jej udziału. Pozostałe grupy dzielą konto bez niej, a jej procent liczony jest od całego konta.',
 	},
 	limits: {
 		deviceLimitReached: 'Osiągnięto limit urządzeń ({limit}). Przejdź na wyższy plan w Płatnościach.',

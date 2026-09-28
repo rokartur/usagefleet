@@ -49,7 +49,7 @@ function GroupsPage() {
 					<span className='tabular-nums'>
 						{groups.length} / {groupLimit}
 					</span>{' '}
-					{t('slots', { share: Math.max(1, groups.length) })}
+					{t('slots', { share: Math.max(1, groups.filter(g => !g.watchOnly).length) })}
 					{atCap && <span className='text-amber-600 dark:text-amber-500'>{t('atCap')}</span>}
 				</p>
 				{/* When there are none, the empty state below carries the button. */}
@@ -84,6 +84,7 @@ function GroupsPage() {
 									{g.deviceNames.length > 0 ? g.deviceNames.join(', ') : t('empty')}
 								</p>
 							</div>
+							{g.watchOnly && <span className='text-xs text-muted-foreground'>{t('watchOnly')}</span>}
 							{(g.blockOnSessionLimit || g.blockOnWeeklyLimit) && (
 								<span className='text-xs text-muted-foreground'>
 									{t('blocksAt', {
@@ -107,6 +108,7 @@ function GroupsPage() {
 										color: g.color,
 										id: g.id,
 										name: g.name,
+										watchOnly: g.watchOnly,
 									}}
 								/>
 								<ConfirmAction

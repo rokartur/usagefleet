@@ -796,10 +796,14 @@ async function loadLiveDashboard(
 	// one (its historical events still count in the split above). The "Ungrouped"
 	// row is divided by that same count without being counted in it, so when
 	// loose devices exist the displayed slices deliberately over-allocate rather
-	// than shrink every real group to make room for them.
+	// than shrink every real group to make room for them. A watch-only group claims
+	// no slice and reads against the whole account instead.
+	const watchOnly = new Set(groupRows.filter(g => g.watchOnly).map(g => g.id))
 	const budgetShares = Math.max(
 		1,
-		new Set(myDevices.filter(d => !d.revoked && d.groupId !== null).map(d => d.groupId)).size,
+		new Set(
+			myDevices.filter(d => !d.revoked && d.groupId !== null && !watchOnly.has(d.groupId)).map(d => d.groupId),
+		).size,
 	)
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	const calibration = acct?.calibration ?? null
@@ -811,17 +815,18 @@ async function loadLiveDashboard(
 		const g = id === null ? undefined : groupRows.find(g => g.id === id)
 		return { color: g?.color ?? '#94a3b8', name: id === null ? 'Ungrouped' : (g?.name ?? 'Unknown') }
 	}
-	const budgetPctFor = (pct = 0) => groupBudgetPct({ exactPct: pct }, budgetShares)
+	const budgetPctFor = (id: string | null, pct = 0) =>
+		groupBudgetPct({ exactPct: pct }, id !== null && watchOnly.has(id) ? 1 : budgetShares)
 
 	const groupUsages: LiveGroupUsage[] = [...keys].map(id => ({
 		groupId: id,
 		...labelFor(id),
 		// Usage against the group's equal slice of the account limit: a group
 		// filling its share reads 100% while the account is at 50%.
-		sessionBudgetPct: budgetPctFor(sessionSplit.get(id)?.exactPct),
-		weeklyBudgetPct: budgetPctFor(weeklySplit.get(id)?.exactPct),
-		sessionCostPct: budgetPctFor(sessionSplit.get(id)?.costPct),
-		weeklyCostPct: budgetPctFor(weeklySplit.get(id)?.costPct),
+		sessionBudgetPct: budgetPctFor(id, sessionSplit.get(id)?.exactPct),
+		weeklyBudgetPct: budgetPctFor(id, weeklySplit.get(id)?.exactPct),
+		sessionCostPct: budgetPctFor(id, sessionSplit.get(id)?.costPct),
+		weeklyCostPct: budgetPctFor(id, weeklySplit.get(id)?.costPct),
 		sessionTokens: sessionSplit.get(id)?.tokens ?? 0,
 		weeklyTokens: weeklySplit.get(id)?.tokens ?? 0,
 		sessionTotalTokens: sessionSplit.get(id)?.totalTokens ?? 0,
@@ -864,7 +869,7 @@ async function loadLiveDashboard(
 		const weeklyContributionPct = weeklyShare?.exactPct ?? 0
 		const weeklyCostPct = weeklyShare?.costPct ?? 0
 		const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(([id, s]) => ({
-			budgetPct: budgetPctFor(s.exactPct),
+			budgetPct: budgetPctFor(id, s.exactPct),
 			groupId: id,
 			...labelFor(id),
 			tokens: s.tokens,

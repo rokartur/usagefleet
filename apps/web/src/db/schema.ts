@@ -39,6 +39,9 @@ export const groups = pgTable(
 		// per group in the group dialog.
 		blockOnSessionLimit: boolean('block_on_session_limit').notNull().default(false),
 		blockOnWeeklyLimit: boolean('block_on_weekly_limit').notNull().default(false),
+		// Shown on the dashboard but claims no slice: the other groups split the
+		// account without it, and its own percentage reads against the whole account.
+		watchOnly: boolean('watch_only').notNull().default(false),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 	},
 	t => [index('groups_owner_idx').on(t.ownerId)],

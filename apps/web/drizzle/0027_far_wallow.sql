@@ -1,0 +1,1 @@
+ALTER TABLE "groups" ADD COLUMN "watch_only" boolean DEFAULT false NOT NULL;

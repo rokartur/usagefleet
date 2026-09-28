@@ -195,7 +195,9 @@ live (non-revoked) device on *this* account — a group that never touches a
 subscription cannot eat its budget, and a group whose only device was revoked
 stops claiming a slice (its historical events still weigh in the split). Every
 such group is budgeted an equal slice of the account, so **with two groups, a
-group sitting at half the account reads 100%**.
+group sitting at half the account reads 100%**. A watch-only group (e.g. a VPS
+you want to see but not budget) is left out of `groupCount` and scaled by 1,
+i.e. it reads its plain share of the account.
 Deliberately uncapped: past 100% that group is eating another's slice, which is
 the thing worth seeing. Rounding happens once, at the end — rounding the share
 first would multiply the error by the group count.

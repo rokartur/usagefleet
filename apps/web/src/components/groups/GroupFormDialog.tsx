@@ -75,9 +75,9 @@ function ColorField({ selected }: { selected?: string }) {
 	)
 }
 
-/** One blocking switch. Off by default: a group only ever blocks itself, and
- *  only once its owner turns this on. */
-function BlockField({ name, label, description, defaultChecked }: BlockFieldProps) {
+/** One group switch, off by default. A blocking switch only ever blocks the
+ *  group itself, and only once its owner turns it on. */
+function CheckField({ name, label, description, defaultChecked }: CheckFieldProps) {
 	return (
 		<Field orientation='horizontal'>
 			<Checkbox id={name} name={name} defaultChecked={defaultChecked} />
@@ -91,8 +91,8 @@ function BlockField({ name, label, description, defaultChecked }: BlockFieldProp
 	)
 }
 
-interface BlockFieldProps {
-	name: 'blockOnSessionLimit' | 'blockOnWeeklyLimit'
+interface CheckFieldProps {
+	name: 'blockOnSessionLimit' | 'blockOnWeeklyLimit' | 'watchOnly'
 	label: string
 	description: string
 	defaultChecked?: boolean
@@ -104,7 +104,14 @@ export function GroupFormDialog({
 	group,
 	atCap = false,
 }: {
-	group?: { id: string; name: string; color: string; blockOnSessionLimit: boolean; blockOnWeeklyLimit: boolean }
+	group?: {
+		id: string
+		name: string
+		color: string
+		blockOnSessionLimit: boolean
+		blockOnWeeklyLimit: boolean
+		watchOnly: boolean
+	}
 	atCap?: boolean
 }) {
 	const t = useTranslations('dash.groups')
@@ -170,17 +177,23 @@ export function GroupFormDialog({
 							/>
 						</Field>
 						<ColorField selected={group?.color} />
+						<CheckField
+							name='watchOnly'
+							label={t('watchOnly')}
+							description={t('watchOnlyDescription')}
+							defaultChecked={group?.watchOnly}
+						/>
 						<FieldSet>
 							<FieldLegend variant='label' className='mb-2'>
 								{t('blocking')}
 							</FieldLegend>
-							<BlockField
+							<CheckField
 								name='blockOnSessionLimit'
 								label={t('blockSession')}
 								description={t('blockSessionDescription')}
 								defaultChecked={group?.blockOnSessionLimit}
 							/>
-							<BlockField
+							<CheckField
 								name='blockOnWeeklyLimit'
 								label={t('blockWeekly')}
 								description={t('blockWeeklyDescription')}
