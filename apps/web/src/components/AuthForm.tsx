@@ -57,7 +57,11 @@ export function AuthForm({
 			})
 			setPending(false)
 			if (error) {
-				setError(error.message ?? t('genericError'))
+				setError(
+					error.code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL'
+						? t('emailTaken')
+						: (error.message ?? t('genericError')),
+				)
 				return
 			}
 			setSent(true)

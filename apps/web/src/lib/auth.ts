@@ -2,7 +2,7 @@ import { isIP } from 'node:net'
 import { stripe as stripePlugin } from '@better-auth/stripe'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { APIError } from 'better-auth/api'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { lastLoginMethod, username } from 'better-auth/plugins'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import Stripe from 'stripe'
@@ -166,6 +166,23 @@ export const auth = betterAuth({
 				'Confirm your email',
 				`Confirm this address to finish signing in to UsageFleet:\n\n${url}\n\nThe link expires in an hour. If you did not sign up, ignore this email.`,
 			),
+	},
+
+	// requireEmailVerification makes better-auth answer a taken email with a fake
+	// success, so the form would promise a link that never comes. Refuse instead; this
+	// reveals which emails are registered, as the username check already does.
+	hooks: {
+		before: createAuthMiddleware(async ctx => {
+			if (ctx.path !== '/sign-up/email' || typeof ctx.body?.email !== 'string') {
+				return
+			}
+			if (await ctx.context.internalAdapter.findUserByEmail(ctx.body.email)) {
+				throw new APIError('UNPROCESSABLE_ENTITY', {
+					code: 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL',
+					message: 'User already exists. Use another email.',
+				})
+			}
+		}),
 	},
 
 	// Last resort for failures that arrive with no callback URL to return to (an
