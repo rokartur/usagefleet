@@ -12,7 +12,8 @@ export function AutoRefresh({ intervalMs = 10_000 }: { intervalMs?: number }) {
 			// A loader that throws puts the route in its error boundary, so a dropped
 			// connection would replace a rendered dashboard with "something went wrong".
 			// Offline: keep what's on screen, the next tick picks it up.
-			if (!navigator.onLine) {
+			// Hidden: nobody is looking; onVisible catches up when the tab returns.
+			if (!navigator.onLine || document.visibilityState === 'hidden') {
 				return
 			}
 			lastRefresh.current = Date.now()

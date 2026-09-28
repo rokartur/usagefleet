@@ -474,9 +474,16 @@ export function LiveDashboard({
 		if (!poll) {
 			return () => clearInterval(ticker)
 		}
-		const id = setInterval(refresh, POLL_MS)
+		// A background tab would cost the server a full dashboard query every 5s for nobody.
+		const id = setInterval(() => {
+			if (document.visibilityState === 'visible') {
+				refresh()
+			}
+		}, POLL_MS)
 		const onVisible = () => {
 			if (document.visibilityState === 'visible') {
+				// No polls ran while hidden, so count "reconnecting" from now, not from the last one.
+				setLastOk(Date.now())
 				refresh()
 			}
 		}
