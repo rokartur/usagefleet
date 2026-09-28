@@ -127,7 +127,9 @@ function programArgs(): string[] {
 		// re-invokable script, so the service launches the executable itself.
 		return [process.execPath, 'watch']
 	}
-	return [stableNodePath(process.execPath), script as string, 'watch']
+	// V8's default young generation kept the idle daemon at ~66 MB footprint; 1 MB semi-spaces
+	// hold it at ~34 MB for the same CPU. Only works as a launch flag, and bun ignores it.
+	return [stableNodePath(process.execPath), '--max-semi-space-size=1', script as string, 'watch']
 }
 
 function macPlistPath(): string {
