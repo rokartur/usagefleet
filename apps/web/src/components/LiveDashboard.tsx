@@ -7,7 +7,7 @@ import type { GroupRow } from '@/components/dashboard/GroupTable'
 import { InstallCommand } from '@/components/InstallCommand'
 import { ResetCountdown } from '@/components/ResetCountdown'
 import { Button } from '@/components/ui/button'
-import { Num, overrun, Section, UsageBar } from '@/components/usage-ui'
+import { Num, overrun, Section, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
 import { useMounted } from '@/hooks/use-mounted'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO, SpendPeriod } from '@/lib/data'
 import { formatRelative, formatTokens, formatUsd } from '@/lib/format'
@@ -35,14 +35,16 @@ function GroupDot({ color }: { color: string }) {
 	return <span className='size-2 shrink-0 rounded-full' style={{ backgroundColor: color }} aria-hidden />
 }
 
+interface SplitGroup {
+	key: string
+	name: string
+	color: string
+	watchOnly: boolean
+	pct: number
+}
+
 /** "Artur 11% · Ciach 21%" — how one window's usage splits across groups. */
-function GroupSplit({
-	groups,
-	className,
-}: {
-	groups: { key: string; name: string; color: string; pct: number }[]
-	className?: string
-}) {
+function GroupSplit({ groups, className }: { groups: SplitGroup[]; className?: string }) {
 	if (groups.length === 0) {
 		return null
 	}
@@ -52,6 +54,7 @@ function GroupSplit({
 				<span key={g.key} className='flex min-w-0 items-center gap-1.5'>
 					<GroupDot color={g.color} />
 					<span className='truncate'>{g.name}</span>
+					{g.watchOnly && <WatchOnlyMark />}
 					<Num value={g.pct} format={pctText} className={cn('text-foreground', overrun(g.pct))} />
 				</span>
 			))}
@@ -111,6 +114,7 @@ const splitOf = (dash: DashboardDTO, pct: (g: LiveGroupUsage) => number) =>
 		key: groupKey(g.groupId),
 		name: g.name,
 		pct: pct(g),
+		watchOnly: g.watchOnly,
 	}))
 
 /** "live · subscription · updated 40s ago" for one account. A dead poll is a
@@ -147,8 +151,7 @@ function StatCell({ label, value, children }: { label: string; value: React.Reac
 }
 
 /** Claude's own account utilization for one window, plus the per-group split —
- *  each group's usage against its own slice (1/group count), the same
- *  budget-relative measure as the group table. */
+ *  the same budget-relative measure as the group table. */
 function LimitCell({
 	label,
 	pct,
@@ -159,7 +162,7 @@ function LimitCell({
 	label: string
 	pct: number
 	resetsAt: string | null
-	groups: { key: string; name: string; color: string; pct: number }[]
+	groups: SplitGroup[]
 	fable?: ModelLimitDTO
 }) {
 	return (
@@ -204,6 +207,7 @@ function ModelLimitRow({ limit }: { limit: ModelLimitDTO }) {
 					key: groupKey(g.groupId),
 					name: g.name,
 					pct: g.budgetPct,
+					watchOnly: g.watchOnly,
 				}))}
 			/>
 		</div>
@@ -332,7 +336,7 @@ function AccountWindow({
 	label: string
 	pct: number
 	resetsAt: string | null
-	groups: { key: string; name: string; color: string; pct: number }[]
+	groups: SplitGroup[]
 	fable?: ModelLimitDTO
 }) {
 	return (

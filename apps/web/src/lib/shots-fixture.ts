@@ -63,6 +63,7 @@ const group = (
 	weeklyCostPct: weeklyPct,
 	weeklyTokens: weeklyBillable,
 	weeklyTotalTokens: totals(weeklyBillable).totalTokens,
+	watchOnly: false,
 })
 
 const liveGroups: LiveGroupUsage[] = [
@@ -103,6 +104,7 @@ export const dashboard: DashboardDTO = {
 				color: g.color,
 				groupId: g.groupId,
 				name: g.name,
+				watchOnly: g.watchOnly,
 				tokens: g.weeklyTokens,
 			})),
 			label: 'Fable',

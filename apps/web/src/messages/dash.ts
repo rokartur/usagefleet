@@ -146,7 +146,7 @@ const en = {
 		dialogDescription: 'Groups split your account limits between sets of machines.',
 		edit: 'Edit',
 		editTitle: 'Edit group',
-		empty: 'Empty, so its slice of the limit goes unused.',
+		empty: 'Empty, so it claims no slice of the limit.',
 		emptyDescription:
 			'A group is a set of devices sharing one slice of your limits, e.g. "Laptops". Create one, then pick it on a device.',
 		emptyTitle: 'No groups yet',
@@ -157,7 +157,7 @@ const en = {
 		saving: 'Saving…',
 		savingGroup: 'Saving group…',
 		// The "{count} / {limit}" pair renders next to this, so it is not repeated here.
-		slots: 'groups · each is measured against a 1/{share} slice of the account limit',
+		slots: 'groups · a slice is 1/{share} of the account limit',
 		updateFailed: "Couldn't update group",
 		updated: 'Group updated',
 		watchOnly: 'Watch only',
@@ -181,7 +181,7 @@ const en = {
 		fiveHour: '5-hour',
 		fiveHourSession: '5-hour session',
 		footnote:
-			"Headline percentages are Claude's own account utilization. Per-group percentages are budget-relative: the group's usage against its equal slice of the limit, so 100% means it has eaten its slice.",
+			"Headline percentages are Claude's own account utilization. Per-group percentages are budget-relative: the group's usage against its equal slice of the limit, so 100% means it has eaten its slice. A watch-only group (eye) claims no slice and reads against the whole account.",
 		groups: 'Groups',
 		historyEmptyDescription: 'No completed {window} window has any recorded activity.',
 		historyEmptyTitle: 'Nothing behind us yet',
@@ -518,7 +518,7 @@ const pl: typeof en = {
 		dialogDescription: 'Grupy dzielą limity Twojego konta między zestawy maszyn.',
 		edit: 'Edytuj',
 		editTitle: 'Edytuj grupę',
-		empty: 'Pusta, więc jej udział w limicie się marnuje.',
+		empty: 'Pusta, więc nie ma udziału w limicie.',
 		emptyDescription:
 			'Grupa to zestaw urządzeń dzielących jeden udział w Twoich limitach, np. "Laptopy". Utwórz jedną, a potem wskaż ją na urządzeniu.',
 		emptyTitle: 'Brak grup',
@@ -529,7 +529,7 @@ const pl: typeof en = {
 		saving: 'Zapisywanie…',
 		savingGroup: 'Zapisywanie grupy…',
 		// The "{count} / {limit}" pair renders next to this, so it is not repeated here.
-		slots: 'grup · każda mierzona względem udziału 1/{share} w limicie konta',
+		slots: 'grup · udział to 1/{share} limitu konta',
 		updateFailed: 'Nie udało się zaktualizować grupy',
 		updated: 'Zaktualizowano grupę',
 		watchOnly: 'Tylko podgląd',
@@ -553,7 +553,7 @@ const pl: typeof en = {
 		fiveHour: '5-godzinne',
 		fiveHourSession: 'Sesja 5-godzinna',
 		footnote:
-			'Główne procenty to własne wykorzystanie konta wg Claude. Procenty grup są względem budżetu: zużycie grupy wobec jej równego udziału w limicie, więc 100% oznacza, że zjadła swój udział.',
+			'Główne procenty to własne wykorzystanie konta wg Claude. Procenty grup są względem budżetu: zużycie grupy wobec jej równego udziału w limicie, więc 100% oznacza, że zjadła swój udział. Grupa tylko do podglądu (oko) nie ma udziału, a jej procent liczony jest od całego konta.',
 		groups: 'Grupy',
 		historyEmptyDescription: 'Żadne zamknięte okno {window} nie ma zapisanej aktywności.',
 		historyEmptyTitle: 'Nic za nami',

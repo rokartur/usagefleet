@@ -271,6 +271,8 @@ export interface LiveGroupUsage {
 	groupId: string | null
 	name: string
 	color: string
+	/** Claims no slice: its budget percentages are of the whole account. */
+	watchOnly: boolean
 	/** Usage measured against the group's budget slice (an equal share of the
 	 *  account limit) — the "am I eating the other group's half?" view. */
 	sessionBudgetPct: number
@@ -315,6 +317,7 @@ export interface LiveModelLimitGroup {
 	groupId: string | null
 	name: string
 	color: string
+	watchOnly: boolean
 	/** Against the group's equal budget slice, like sessionBudgetPct. */
 	budgetPct: number
 	/** Billable tokens of this model family in the limit's window. */
@@ -811,12 +814,17 @@ async function loadLiveDashboard(
 	const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct, ttl, pointsFor('7d'), calibration)
 
 	const keys = new Set<string | null>([...sessionSplit.keys(), ...weeklySplit.keys()])
+	const isWatchOnly = (id: string | null) => id !== null && watchOnly.has(id)
 	const labelFor = (id: string | null) => {
 		const g = id === null ? undefined : groupRows.find(g => g.id === id)
-		return { color: g?.color ?? '#94a3b8', name: id === null ? 'Ungrouped' : (g?.name ?? 'Unknown') }
+		return {
+			color: g?.color ?? '#94a3b8',
+			name: id === null ? 'Ungrouped' : (g?.name ?? 'Unknown'),
+			watchOnly: isWatchOnly(id),
+		}
 	}
 	const budgetPctFor = (id: string | null, pct = 0) =>
-		groupBudgetPct({ exactPct: pct }, id !== null && watchOnly.has(id) ? 1 : budgetShares)
+		groupBudgetPct({ exactPct: pct }, isWatchOnly(id) ? 1 : budgetShares)
 
 	const groupUsages: LiveGroupUsage[] = [...keys].map(id => ({
 		groupId: id,

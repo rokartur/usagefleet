@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Num, overrun, UsageBar } from '@/components/usage-ui'
+import { Num, overrun, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
 import type { LiveGroupUsage } from '@/lib/data'
 import { formatTokens } from '@/lib/format'
 import type { ModelUsage } from '@/lib/usage'
@@ -186,6 +186,7 @@ export function GroupTable({
 											aria-hidden
 										/>
 										<span className='font-medium'>{g.name}</span>
+										{g.watchOnly && <WatchOnlyMark />}
 										<Badge variant='secondary' className='font-normal'>
 											{t('modelCount', { count: modelCount })}
 										</Badge>

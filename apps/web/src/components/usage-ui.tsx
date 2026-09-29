@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { EyeIcon } from 'lucide-react'
 import { animate, useReducedMotion } from 'motion/react'
 import { useTranslations } from 'use-intl'
 import { Progress } from '@/components/ui/progress'
@@ -109,5 +110,16 @@ export function UsageBar({ pct, className }: { pct: number; className?: string }
 				className,
 			)}
 		/>
+	)
+}
+
+/** Next to a group name: that group's percentage is of the whole account, not a slice. */
+export function WatchOnlyMark() {
+	const t = useTranslations('dash.groups')
+	return (
+		<span className='inline-flex shrink-0 text-muted-foreground'>
+			<EyeIcon className='size-3' aria-hidden />
+			<span className='sr-only'>{t('watchOnly')}</span>
+		</span>
 	)
 }

@@ -20,6 +20,7 @@ const groupsData = createServerFn().handler(async () => {
 		listDevices(user.id),
 		accountPlan(user.id),
 	])
+	const liveGroupIds = new Set(devices.filter(d => !d.revoked).map(d => d.groupId))
 	return {
 		groups: groups.map(g => ({
 			...g,
@@ -28,6 +29,9 @@ const groupsData = createServerFn().handler(async () => {
 			deviceNames: devices.filter(d => d.groupId === g.id).map(d => d.name),
 		})),
 		groupLimit: deviceLimit,
+		// budgetShares in loadLiveDashboard, counted across all accounts at once: the
+		// dashboard counts per account, so a user on several can see a different 1/N there.
+		sliceShare: Math.max(1, groups.filter(g => !g.watchOnly && liveGroupIds.has(g.id)).length),
 	}
 })
 
@@ -38,7 +42,7 @@ export const Route = createFileRoute('/_dash/groups')({
 
 function GroupsPage() {
 	const t = useTranslations('dash.groups')
-	const { groups, groupLimit } = Route.useLoaderData()
+	const { groups, groupLimit, sliceShare } = Route.useLoaderData()
 	const atCap = groups.length >= groupLimit
 
 	return (
@@ -49,7 +53,7 @@ function GroupsPage() {
 					<span className='tabular-nums'>
 						{groups.length} / {groupLimit}
 					</span>{' '}
-					{t('slots', { share: Math.max(1, groups.filter(g => !g.watchOnly).length) })}
+					{t('slots', { share: sliceShare })}
 					{atCap && <span className='text-amber-600 dark:text-amber-500'>{t('atCap')}</span>}
 				</p>
 				{/* When there are none, the empty state below carries the button. */}
