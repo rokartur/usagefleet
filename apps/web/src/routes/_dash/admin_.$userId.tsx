@@ -2,6 +2,7 @@ import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { eq } from 'drizzle-orm'
 import { useTranslations } from 'use-intl'
+import { AutoRefresh } from '@/components/AutoRefresh'
 import { ProjectTable } from '@/components/dashboard/ProjectTable'
 import { UsageExplorer } from '@/components/dashboard/UsageExplorer'
 import { WindowHistory } from '@/components/dashboard/WindowHistory'
@@ -42,6 +43,8 @@ function AdminUserPage() {
 					{t('back')}
 				</Link>
 			</p>
+			{/* The loader is this page's only feed: a frozen snapshot would read "collector offline" 15 min in. */}
+			<AutoRefresh intervalMs={60_000} />
 			{accounts.some(a => a.dash.connected) ? (
 				// poll off: /api/dashboard answers for the viewer, not this user.
 				<LiveDashboard initial={accounts.map(a => a.dash)} setup={null} poll={false} />

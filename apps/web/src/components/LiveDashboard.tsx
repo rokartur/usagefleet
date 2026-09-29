@@ -391,8 +391,9 @@ function AccountRow({ dash, now, pollDown }: { dash: DashboardDTO; now: number; 
  *  renders the full headline strip; several collapse to one row each with a
  *  single merged group table, so the page keeps its height as accounts are
  *  added. Polls the whole set at once: /api/dashboard answers for all of them.
- *  `poll: false` renders a static snapshot — the admin's per-user view, where
- *  /api/dashboard would answer with the viewer's own accounts, not these. */
+ *  `poll: false` renders `initial` as the route loader last returned it — the
+ *  admin's per-user view, where /api/dashboard would answer with the viewer's
+ *  own accounts, not these. */
 export function LiveDashboard({
 	initial,
 	setup,
@@ -404,7 +405,8 @@ export function LiveDashboard({
 }) {
 	const t = useTranslations('dash.overview')
 	const accountName = useAccountName()
-	const [dashes, setDashes] = useState<DashboardDTO[]>(initial)
+	const [polled, setPolled] = useState<DashboardDTO[]>(initial)
+	const dashes = poll ? polled : initial
 	const [lastOk, setLastOk] = useState(() => Date.now())
 	// `now` advances once a second (below) so the staleness check stays a pure
 	// read of state during render, and reads 0 until the client owns the tree: the
@@ -458,7 +460,7 @@ export function LiveDashboard({
 				// account list is still being built server-side; keep what we have.
 				const all = (await res.json()) as DashboardDTO[]
 				if (all.length > 0) {
-					setDashes(all)
+					setPolled(all)
 					setLastOk(Date.now())
 				}
 			}
