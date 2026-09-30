@@ -91,7 +91,7 @@ export function AppTopbar({ email, isAdmin }: { email: string; isAdmin: boolean 
 	const t = useTranslations('common')
 	return (
 		<header className='sticky top-0 z-20 h-12 border-b bg-background/85 backdrop-blur'>
-			<div className='mx-auto flex h-full max-w-7xl items-center gap-5 px-4 sm:gap-7 md:px-6'>
+			<div className='flex h-full items-center gap-5 px-4 sm:gap-7 md:px-6'>
 				<Link
 					to='/dashboard'
 					className='flex items-center gap-2 font-heading font-medium'

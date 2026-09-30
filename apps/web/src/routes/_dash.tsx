@@ -17,14 +17,12 @@ export const Route = createFileRoute('/_dash')({
 	component: DashLayout,
 })
 
-/** max-w-7xl matches the marketing pages, so the frame doesn't resize when you
- *  cross from one into the other. */
 function DashLayout() {
 	const { email, isAdmin } = Route.useRouteContext()
 	return (
 		<>
 			<AppTopbar email={email} isAdmin={isAdmin} />
-			<main className='mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 md:p-6'>
+			<main className='flex w-full flex-col gap-6 p-4 md:p-6'>
 				<PageTitle />
 				<Outlet />
 			</main>
