@@ -471,14 +471,27 @@ function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[
 			</div>
 			<ul className='border-t'>
 				{dash.groups.map(g => (
-					<GroupItem key={groupKey(g.groupId)} group={g} movedTo={movedAway(g) ? movedTo(g) : null} />
+					<GroupItem
+						key={groupKey(g.groupId)}
+						group={g}
+						modelLimits={dash.modelLimits}
+						movedTo={movedAway(g) ? movedTo(g) : null}
+					/>
 				))}
 			</ul>
 		</section>
 	)
 }
 
-function GroupItem({ group: g, movedTo }: { group: LiveGroupUsage; movedTo: string | null }) {
+function GroupItem({
+	group: g,
+	modelLimits,
+	movedTo,
+}: {
+	group: LiveGroupUsage
+	modelLimits: ModelLimitDTO[]
+	movedTo: string | null
+}) {
 	const t = useTranslations('dash.overview')
 	const moved = movedAway(g)
 	return (
@@ -493,9 +506,23 @@ function GroupItem({ group: g, movedTo }: { group: LiveGroupUsage; movedTo: stri
 							{t('devicesCount', { count: g.devices.length })}
 						</span>
 					</span>
-					<span className={cn('grid grid-cols-2 gap-4', moved && 'opacity-60')}>
+					<span
+						className={cn(
+							'grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-4',
+							moved && 'opacity-60',
+						)}
+					>
 						<SliceBar label='5h' pct={g.sessionBudgetPct} color={g.color} />
 						<SliceBar label={t('week')} pct={g.weeklyBudgetPct} color={g.color} />
+						{modelLimits.map(limit => (
+							<SliceBar
+								key={limit.model}
+								label={limit.label}
+								// Absent from the split means no events of this model in its window.
+								pct={limit.groups.find(x => x.groupId === g.groupId)?.budgetPct ?? 0}
+								color={g.color}
+							/>
+						))}
 					</span>
 					{moved && (
 						<span className='text-xs text-muted-foreground'>
@@ -546,7 +573,7 @@ function GroupItem({ group: g, movedTo }: { group: LiveGroupUsage; movedTo: stri
 function SliceBar({ label, pct, color }: { label: string; pct: number; color: string }) {
 	return (
 		<span className='flex items-center gap-2 text-xs'>
-			<span className='w-7 shrink-0 text-muted-foreground'>{label}</span>
+			<span className='min-w-7 shrink-0 text-muted-foreground'>{label}</span>
 			<UsageBar pct={pct} color={color} />
 			<span className={cn('w-10 shrink-0 text-right text-sm font-medium tabular-nums', overrun(pct))}>
 				{pctText(pct)}
