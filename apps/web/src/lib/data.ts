@@ -1625,10 +1625,14 @@ export interface ProjectUsage {
 	mergedAs: string | null
 	/** Groups whose devices produced this usage, costliest first — a checkout
 	 *  cloned on two machines shows up under both. */
-	groups: { name: string; color: string }[]
+	groups: { name: string; color: string; costUsd: number }[]
 	billableTokens: number
 	totalTokens: number
 	costUsd: number
+	/** Cost per rolling 24h slice of the window, oldest first, {@link PROJECT_DAYS} long. */
+	daily: number[]
+	/** Cost over the {@link PROJECT_DAYS} days before the window. */
+	prevCostUsd: number
 	/** Newest event in the window, ISO. */
 	lastActive: string
 }
@@ -1639,11 +1643,12 @@ export interface ProjectUsage {
  *
  * Same in-SQL fold as {@link loadDailyAggregates} (streamed segments collapse to
  * the largest row per logical message), grouped by (cwd × model × group) because
- * pricing is per model; the models are then summed away per project here, the
- * groups only ranked.
+ * pricing is per model, and by days ago for the sparkline; both are summed away
+ * per project here. It reads two windows back so each project can compare
+ * against the one before.
  */
 export async function getProjectUsage(userId: string, now = new Date()): Promise<ProjectUsage[]> {
-	const since = new Date(now.getTime() - PROJECT_DAYS * 24 * 60 * 60 * 1000)
+	const since = new Date(now.getTime() - 2 * PROJECT_DAYS * 24 * 60 * 60 * 1000)
 	await refreshPrices()
 	const [settings, groupRows, mergeRows] = await Promise.all([
 		ensureSettings(userId),
@@ -1674,6 +1679,7 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
       folded.cwd AS cwd,
       folded.group_id AS group_id,
       folded.model AS model,
+      greatest(0, floor(extract(epoch FROM ${now.toISOString()}::timestamptz - folded.ts) / 86400))::int AS days_ago,
       max(folded.ts) AS last_ts,
       sum(folded.input_tokens)::bigint AS input,
       sum(folded.output_tokens)::bigint AS output,
@@ -1682,7 +1688,7 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
       sum(coalesce(folded.cache_creation_1h, 0))::bigint AS cache_creation_1h,
       sum(folded.cache_read_tokens)::bigint AS cache_read
     FROM folded
-    GROUP BY 1, 2, 3
+    GROUP BY 1, 2, 3, 4
     HAVING (
       sum(folded.input_tokens) + sum(folded.output_tokens) +
       sum(folded.cache_creation_tokens) + sum(folded.cache_read_tokens)
@@ -1693,6 +1699,7 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
 		cwd: string | null
 		group_id: string | null
 		model: string | null
+		days_ago: number
 		last_ts: string | Date
 		input: string
 		output: string
@@ -1703,8 +1710,8 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
 	}[]
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	const byPath = new Map<string, ProjectUsage>()
-	// Cost per (project × group), so the dots can be ranked by who spent most.
 	const groupCost = new Map<string, Map<string | null, number>>()
+	const prevCost = new Map<string, number>()
 	for (const r of rows) {
 		const totals = {
 			cacheCreation1hTokens: Number(r.cache_creation_1h),
@@ -1718,33 +1725,42 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
 		const lastActive = new Date(r.last_ts).toISOString()
 		const key = r.cwd ?? ''
 		const cost = costForTokens(totals, r.model, ttl)
-		const cur = byPath.get(key)
-		if (cur) {
-			cur.billableTokens += billableTokens(totals)
-			cur.totalTokens += totals.totalTokens
-			cur.costUsd += cost
-			cur.lastActive = lastActive > cur.lastActive ? lastActive : cur.lastActive
-		} else {
-			byPath.set(key, {
-				billableTokens: billableTokens(totals),
-				costUsd: cost,
-				groups: [],
-				lastActive,
-				mergedAs: mergedAs.get(key) ?? null,
-				path: r.cwd,
-				totalTokens: totals.totalTokens,
-			})
+		if (r.days_ago >= PROJECT_DAYS) {
+			prevCost.set(key, (prevCost.get(key) ?? 0) + cost)
+			continue
 		}
+		const cur = byPath.get(key) ?? {
+			billableTokens: 0,
+			costUsd: 0,
+			daily: Array.from({ length: PROJECT_DAYS }, () => 0),
+			groups: [],
+			lastActive,
+			mergedAs: mergedAs.get(key) ?? null,
+			path: r.cwd,
+			prevCostUsd: 0,
+			totalTokens: 0,
+		}
+		cur.billableTokens += billableTokens(totals)
+		cur.totalTokens += totals.totalTokens
+		cur.costUsd += cost
+		cur.daily[PROJECT_DAYS - 1 - r.days_ago] += cost
+		cur.lastActive = lastActive > cur.lastActive ? lastActive : cur.lastActive
+		byPath.set(key, cur)
 		const byGroup = groupCost.get(key) ?? new Map<string | null, number>()
 		byGroup.set(r.group_id, (byGroup.get(r.group_id) ?? 0) + cost)
 		groupCost.set(key, byGroup)
 	}
 	for (const [key, project] of byPath) {
+		project.prevCostUsd = prevCost.get(key) ?? 0
 		project.groups = [...(groupCost.get(key) ?? [])]
 			.toSorted((a, b) => b[1] - a[1])
-			.map(([id]) => {
+			.map(([id, costUsd]) => {
 				const g = id === null ? undefined : groupRows.find(x => x.id === id)
-				return { color: g?.color ?? '#94a3b8', name: id === null ? 'Ungrouped' : (g?.name ?? 'Unknown') }
+				return {
+					color: g?.color ?? '#94a3b8',
+					costUsd,
+					name: id === null ? 'Ungrouped' : (g?.name ?? 'Unknown'),
+				}
 			})
 	}
 	return [...byPath.values()].toSorted((a, b) => b.costUsd - a.costUsd)

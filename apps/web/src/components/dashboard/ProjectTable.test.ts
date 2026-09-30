@@ -12,10 +12,12 @@ const project = (
 	({
 		billableTokens: costUsd * 10,
 		costUsd,
-		groups: [{ color: '#fff', name: group }],
+		daily: [costUsd / 2, 0, costUsd / 2],
+		groups: [{ color: '#fff', costUsd, name: group }],
 		lastActive,
 		mergedAs,
 		path,
+		prevCostUsd: costUsd / 3,
 		totalTokens: costUsd * 20,
 	}) satisfies ProjectUsage
 
@@ -69,6 +71,8 @@ describe(toRows, () => {
 		const rows = toRows(merged, true)
 		expect(rows.map(r => r.mergedAs)).toStrictEqual(['client', null])
 		expect(rows[0].costUsd).toBe(50)
+		// One group behind both paths stays one slice of the split.
+		expect(rows[0].groups).toStrictEqual([{ color: '#fff', costUsd: 50, name: 'laptops' }])
 		expect(rows[0].paths).toStrictEqual(['/Users/artur/Developer/vapp', '/Users/artur/Developer/usagefleet'])
 		expect(rows[1].paths).toStrictEqual(['/Users/artur/work/vapp'])
 	})
@@ -80,7 +84,12 @@ describe(toRows, () => {
 		expect(vapp.costUsd).toBe(42)
 		expect(vapp.billableTokens).toBe(420)
 		expect(vapp.paths).toStrictEqual(['/Users/artur/Developer/vapp', '/Users/artur/work/vapp'])
-		expect(vapp.groups.map(g => g.name)).toStrictEqual(['laptops', 'desktops'])
+		expect(vapp.groups.map(g => [g.name, g.costUsd])).toStrictEqual([
+			['laptops', 30],
+			['desktops', 12],
+		])
+		expect(vapp.daily).toStrictEqual([21, 0, 21])
+		expect(vapp.prevCostUsd).toBe(14)
 		// The most recent of the folded paths, not the first one seen.
 		expect(vapp.lastActive).toBe('2026-01-02T00:00:00.000Z')
 	})

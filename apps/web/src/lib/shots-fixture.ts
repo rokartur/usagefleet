@@ -3,6 +3,7 @@
 // capture can never show someone's actual usage.
 import type { DashboardDTO, HistoryDTO, HistoryRow, LiveGroupUsage, ProjectUsage, WindowHistoryDTO } from '@/lib/data'
 import type { ModelUsage, TokenTotals } from '@/lib/usage'
+import { PROJECT_DAYS } from '@/lib/usage'
 
 const MIN = 60_000
 const HOUR = 60 * MIN
@@ -224,20 +225,34 @@ const project = (
 	groups: number[],
 	billable: number,
 	costUsd: number,
+	prevCostUsd: number,
 	hoursAgo: number,
-): ProjectUsage => ({
-	billableTokens: billable,
-	costUsd,
-	groups: groups.map(i => ({ color: GROUPS[i].color, name: GROUPS[i].name })),
-	lastActive: new Date(NOW - hoursAgo * 3_600_000).toISOString(),
-	mergedAs: null,
-	path,
-	totalTokens: totals(billable).totalTokens,
-})
+): ProjectUsage => {
+	// Ramps from the previous window's pace towards this one's, with idle days.
+	const weights = Array.from({ length: PROJECT_DAYS }, (_, i) =>
+		(i * 7 + billable) % 5 === 0 ? 0 : prevCostUsd + ((costUsd - prevCostUsd) * i) / PROJECT_DAYS + ((i * 13) % 7),
+	)
+	const sum = weights.reduce((a, w) => a + w, 0)
+	return {
+		billableTokens: billable,
+		costUsd,
+		daily: weights.map(w => (w / sum) * costUsd),
+		groups: groups.map((i, rank) => ({
+			color: GROUPS[i].color,
+			costUsd: costUsd * (groups.length === 1 ? 1 : [0.64, 0.36][rank]),
+			name: GROUPS[i].name,
+		})),
+		lastActive: new Date(NOW - hoursAgo * 3_600_000).toISOString(),
+		mergedAs: null,
+		path,
+		prevCostUsd,
+		totalTokens: totals(billable).totalTokens,
+	}
+}
 
 export const projects: ProjectUsage[] = [
-	project('/Users/you/Developer/usagefleet', [0, 1], 7_420_000, 94.1, 0.2),
-	project('/Users/you/work/billing-api', [1], 4_180_000, 52.75, 3),
-	project('/Users/you/Developer/homelab', [2], 2_960_000, 31.2, 20),
-	project('/Users/you/Developer/dotfiles', [0], 910_000, 9.84, 52),
+	project('/Users/you/Developer/usagefleet', [0, 1], 7_420_000, 94.1, 61.2, 0.2),
+	project('/Users/you/work/billing-api', [1], 4_180_000, 52.75, 70.4, 3),
+	project('/Users/you/Developer/homelab', [2], 2_960_000, 31.2, 12.9, 20),
+	project('/Users/you/Developer/dotfiles', [0], 910_000, 9.84, 0, 52),
 ]

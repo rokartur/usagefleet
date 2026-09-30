@@ -255,7 +255,9 @@ device, source), and it buckets by day or by month once the span passes
 
 `getProjectUsage()` groups the same in-SQL fold by `(cwd × model)` over a fixed
 30-day window, then sums the models away per directory so each project carries
-one cost. The working directory is the only project identity the JSONL logs
+one cost. The query also buckets by rolling 24h slice (the sparkline) and reads
+the 30 days before for the change column, which compares dollars: a project with
+no spend in that earlier window reads "new". Per-group cost feeds the split bar. The working directory is the only project identity the JSONL logs
 carry, so two checkouts of the same repo are two projects, and a message logged
 without a `cwd` lands in one "Unknown" row. Claude Code and Desktop put it on
 every assistant line; pi puts it only on its session header, which the tailer
