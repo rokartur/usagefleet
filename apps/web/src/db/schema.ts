@@ -99,9 +99,9 @@ export const devices = pgTable(
 	'devices',
 	{
 		// Which Anthropic account this machine is logged into, stamped from its
-		// limits posts. NULL until the first one lands. Usage is attributed to the
-		// account the device is on *now*, exactly like groupId — moving a machine
-		// rewrites its history.
+		// limits posts. NULL until the first one lands. Decides where the machine's
+		// group takes a slice and which headline its guard reads; usage itself keeps
+		// the account stamped on each event, so switching accounts moves no history.
 		// Per-device kill switch for `usagefleet guard`: when false this machine is
 		// never refused a prompt, even when its group's blocking switches are on.
 		blockingEnabled: boolean('blocking_enabled').notNull().default(true),
@@ -157,6 +157,12 @@ export const usageEvents = pgTable(
 		deviceId: text('device_id')
 			.notNull()
 			.references(() => devices.id, { onDelete: 'cascade' }),
+		// The Anthropic account that metered this row: the one the collector saw in
+		// ~/.claude.json when it sent it, else the device's at ingest. NULL only for
+		// devices that never identified an account (absorbed like them, see inAccount).
+		claudeAccountId: text('claude_account_id').references(() => claudeAccounts.id, {
+			onDelete: 'set null',
+		}),
 		uuid: text('uuid').notNull(),
 		messageId: text('message_id'),
 		requestId: text('request_id'),

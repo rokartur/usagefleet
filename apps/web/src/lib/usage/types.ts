@@ -20,6 +20,8 @@ export interface UsageRecord {
 	cacheCreation1hTokens?: number
 	groupId?: string | null
 	deviceId?: string | null
+	/** The Anthropic account that metered the row (usage_event.claude_account_id). */
+	claudeAccountId?: string | null
 	/** Which app produced the row: 'cli' (Claude Code), 'desktop', or 'pi'. */
 	source?: string | null
 }

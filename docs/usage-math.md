@@ -72,10 +72,14 @@ the budget scale multiplies by the group count, so integer storage would
 amplify quantization. Display rounds once, at the end. Until a collector
 reports once, that account shows `connected: false`.
 
-Everything below happens per account. A device counts against the account it is
-signed into (`devices.claude_account_id`, stamped from its limits posts), the
-same way its usage already follows it between groups. Devices that never report
-a login fold into the unidentified bucket, or into the only account there is.
+Everything below happens per account. Each usage row carries the account that
+metered it (`usage_event.claude_account_id`: the accountUuid the collector read
+from `~/.claude.json` when it sent the batch, else the device's account at
+ingest), so a machine that switches Claude accounts leaves its history where it
+was billed. The device's *current* account (`devices.claude_account_id`, stamped
+from its limits posts) only decides where its group takes a budget slice and
+which headline its guard reads. Devices that never report a login fold into the
+unidentified bucket, or into the only account there is.
 
 `splitByShare()` (`lib/data.ts`) apportions one official percentage across
 groups by **delta attribution**: every limits post that moved a window's pct
@@ -197,7 +201,8 @@ stops claiming a slice (its historical events still weigh in the split). Every
 such group is budgeted an equal slice of the account, so **with two groups, a
 group sitting at half the account reads 100%**. A watch-only group (e.g. a VPS
 you want to see but not budget) is left out of `groupCount` and scaled by 1,
-i.e. it reads its plain share of the account.
+i.e. it reads its plain share of the account. So is a group with no live device
+left on the account: it switched away, so it holds no slice there, only history.
 Deliberately uncapped: past 100% that group is eating another's slice, which is
 the thing worth seeing. Rounding happens once, at the end — rounding the share
 first would multiply the error by the group count.

@@ -19,6 +19,8 @@ export interface DailyAggRow {
 	source: string | null
 	/** Device that produced the rows, or null ("unknown" key). */
 	deviceId: string | null
+	/** Account that metered the rows (usage_event.claude_account_id). */
+	claudeAccountId: string | null
 	inputTokens: number
 	outputTokens: number
 	cacheCreationTokens: number

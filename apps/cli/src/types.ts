@@ -40,6 +40,9 @@ export interface BatchPayload {
 	hostname: string
 	collectorVersion: string
 	sentAt: string
+	/** accountUuid from ~/.claude.json at send time, so the server books the batch
+	 *  on the Claude account that metered it even across a /login switch. */
+	accountExtId?: string
 	records: UsageRecord[]
 }
 

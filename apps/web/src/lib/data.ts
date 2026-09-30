@@ -123,6 +123,7 @@ export async function loadRecentEvents(
       MIN(${usageEvents.ts}) OVER (PARTITION BY ${FOLD_KEY}) AS started_at,
       ${usageEvents.deviceId} AS device_id,
       d.group_id AS group_id,
+      ${usageEvents.claudeAccountId} AS claude_account_id,
       ${usageEvents.inputTokens} AS input_tokens,
       ${usageEvents.outputTokens} AS output_tokens,
       ${usageEvents.cacheCreationTokens} AS cache_creation_tokens,
@@ -133,7 +134,7 @@ export async function loadRecentEvents(
     JOIN ${devices} d ON d.id = ${usageEvents.deviceId}
     WHERE ${usageEvents.userId} = ${userId}
       AND ${usageEvents.ts} >= ${cutoff.toISOString()}::timestamptz
-      ${view ? sql`AND ${accountFilterSql(view)}` : sql``}
+      ${view ? sql`AND ${accountFilterSql(view, sql`${usageEvents.claudeAccountId}`)}` : sql``}
     ORDER BY ${FOLD_KEY}, ${ROW_TOTAL} DESC, ${usageEvents.ts} ASC
   `)
 
@@ -155,6 +156,7 @@ export async function loadRecentEvents(
 		started_at: string | Date
 		device_id: string | null
 		group_id: string | null
+		claude_account_id: string | null
 		input_tokens: number
 		output_tokens: number
 		cache_creation_tokens: number
@@ -169,6 +171,7 @@ export async function loadRecentEvents(
 		cacheCreation5mTokens: r.cache_creation_5m ?? 0,
 		cacheCreationTokens: r.cache_creation_tokens,
 		cacheReadTokens: r.cache_read_tokens,
+		claudeAccountId: r.claude_account_id,
 		deviceId: r.device_id,
 		groupId: r.group_id,
 		inputTokens: r.input_tokens,
@@ -205,6 +208,7 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
       SELECT DISTINCT ON (${FOLD_KEY})
         ${usageEvents.ts} AS ts,
         ${usageEvents.deviceId} AS device_id,
+        ${usageEvents.claudeAccountId} AS claude_account_id,
         ${usageEvents.model} AS model,
         ${usageEvents.source} AS source,
         ${usageEvents.inputTokens} AS input_tokens,
@@ -224,6 +228,7 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
       folded.model AS model,
       folded.source AS source,
       folded.device_id AS device_id,
+      folded.claude_account_id AS claude_account_id,
       sum(folded.input_tokens)::bigint AS input,
       sum(folded.output_tokens)::bigint AS output,
       sum(folded.cache_creation_tokens)::bigint AS cache_creation,
@@ -232,7 +237,7 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
       sum(folded.cache_read_tokens)::bigint AS cache_read
     FROM folded
     JOIN ${devices} d ON d.id = folded.device_id
-    GROUP BY 1, 2, 3, 4, 5
+    GROUP BY 1, 2, 3, 4, 5, 6
     HAVING (
       sum(folded.input_tokens) + sum(folded.output_tokens) +
       sum(folded.cache_creation_tokens) + sum(folded.cache_read_tokens)
@@ -245,6 +250,7 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
 		model: string | null
 		source: string | null
 		device_id: string | null
+		claude_account_id: string | null
 		input: string
 		output: string
 		cache_creation: string
@@ -257,6 +263,7 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
 		cacheCreation5mTokens: Number(r.cache_creation_5m),
 		cacheCreationTokens: Number(r.cache_creation),
 		cacheReadTokens: Number(r.cache_read),
+		claudeAccountId: r.claude_account_id,
 		day: r.day,
 		deviceId: r.device_id,
 		groupId: r.group_id,
@@ -281,6 +288,15 @@ export interface LiveGroupUsage {
 	 *  attribution would give with no recorded change points. */
 	sessionCostPct: number
 	weeklyCostPct: number
+	/** Points of the account percentage this group accounts for, unrounded; the
+	 *  groups on an account sum to its headline figure. */
+	sessionAccountPct: number
+	weeklyAccountPct: number
+	/** Live devices in the group signed into this account. */
+	devices: { id: string; name: string; lastSeenAt: string | null }[]
+	/** Latest event this group metered on this account; says when a group that
+	 *  switched away was last here. */
+	lastUsedAt: string | null
 	sessionTokens: number
 	weeklyTokens: number
 	/** All-bucket totals (incl. cache_read) — comparable with ccusage's Total. */
@@ -352,6 +368,8 @@ export interface LiveDashboard {
 	accountLabel: string | null
 	/** True once the collector has reported real utilization at least once. */
 	connected: boolean
+	/** Groups holding a budget slice on this account (the N in 1/N). */
+	slices: number
 	source: 'sub' | 'api' | null
 	reportedAt: Date | null
 	fiveHourPct: number
@@ -655,21 +673,20 @@ export interface AccountView {
 	absorbsUnstamped: boolean
 }
 
-/** Does a device belong to this account's view? */
-export function inAccount(view: AccountView, deviceAccountId: string | null): boolean {
-	return deviceAccountId === (view.account?.id ?? null) || (deviceAccountId === null && view.absorbsUnstamped)
+/** Does a device (or an event, by the account stamped on it) belong to this
+ *  account's view? */
+export function inAccount(view: AccountView, accountId: string | null): boolean {
+	return accountId === (view.account?.id ?? null) || (accountId === null && view.absorbsUnstamped)
 }
 
-/** {@link inAccount} as a predicate over a joined `devices d`, for the raw
- *  aggregate queries that fold in SQL and so can't filter afterwards. */
-function accountFilterSql(view: { account: { id: string } | null; absorbsUnstamped: boolean }): SQL {
+/** {@link inAccount} over an event's account column, for the raw aggregate
+ *  queries that fold in SQL and so can't filter afterwards. */
+function accountFilterSql(view: { account: { id: string } | null; absorbsUnstamped: boolean }, column: SQL): SQL {
 	const id = view.account?.id ?? null
 	if (id === null) {
-		return sql`d.claude_account_id IS NULL`
+		return sql`${column} IS NULL`
 	}
-	return view.absorbsUnstamped
-		? sql`(d.claude_account_id = ${id} OR d.claude_account_id IS NULL)`
-		: sql`d.claude_account_id = ${id}`
+	return view.absorbsUnstamped ? sql`(${column} = ${id} OR ${column} IS NULL)` : sql`${column} = ${id}`
 }
 
 /**
@@ -680,10 +697,10 @@ function accountFilterSql(view: { account: { id: string } | null; absorbsUnstamp
  * The unidentified bucket sorts first, which makes `[0]` the account that
  * absorbs unstamped devices — the guard relies on that.
  *
- * Only accounts a live device is on get a view. A row nothing points at is a
- * leftover — the device that made it moved to an identified account, or was
- * revoked — and it would otherwise keep drawing a card with stale percentages
- * and no groups under it.
+ * An account gets a view while a live device is on it, or while its week is
+ * still running: a machine that switched away left that week's usage (and its
+ * groups' share of it) on the old account. The unidentified bucket only counts
+ * while unstamped devices remain, since everything in it moves on identifying.
  */
 export async function listAccountViews(userId: string): Promise<AccountView[]> {
 	const [rows, deviceAccounts] = await Promise.all([
@@ -696,7 +713,11 @@ export async function listAccountViews(userId: string): Promise<AccountView[]> {
 	const liveOn = new Set(deviceAccounts.map(d => d.accountId))
 	return accountViews(
 		// The bucket also answers for devices that never reported a login.
-		rows.filter(a => liveOn.has(a.id) || (a.extId === null && liveOn.has(null))),
+		rows.filter(
+			a =>
+				liveOn.has(a.id) ||
+				(a.extId === null ? liveOn.has(null) : a.sevenDayResetsAt !== null && a.sevenDayResetsAt > new Date()),
+		),
 		userId,
 	)
 }
@@ -756,6 +777,7 @@ async function loadLiveDashboard(
 			connected: false,
 			groups: [],
 			modelLimits: [],
+			slices: 0,
 			spend: emptySpend(),
 			...base,
 		}
@@ -787,11 +809,10 @@ async function loadLiveDashboard(
 	// Usage belongs to the account its device is signed into *now*, the same way
 	// it already follows a device between groups.
 	const myDevices = deviceRows.filter(d => inAccount(view, d.claudeAccountId))
-	const mine = new Set(myDevices.map(d => d.id))
-	// Both loaders inner-join devices, so a null deviceId here is only a typing
-	// artifact of the join.
-	const events = allEvents.filter(e => e.deviceId != null && mine.has(e.deviceId))
-	const aggRows = allAggRows.filter(r => r.deviceId !== null && mine.has(r.deviceId))
+	// Usage goes by the account stamped on each event, not the device's current
+	// one: a machine that switched Claude accounts leaves its history behind.
+	const events = allEvents.filter(e => inAccount(view, e.claudeAccountId ?? null))
+	const aggRows = allAggRows.filter(r => inAccount(view, r.claudeAccountId))
 
 	// Every group with a LIVE device on this account claims an equal slice of
 	// that account's limit — a group that never touches this subscription can't
@@ -802,12 +823,10 @@ async function loadLiveDashboard(
 	// than shrink every real group to make room for them. A watch-only group claims
 	// no slice and reads against the whole account instead.
 	const watchOnly = new Set(groupRows.filter(g => g.watchOnly).map(g => g.id))
-	const budgetShares = Math.max(
-		1,
-		new Set(
-			myDevices.filter(d => !d.revoked && d.groupId !== null && !watchOnly.has(d.groupId)).map(d => d.groupId),
-		).size,
+	const slotted = new Set(
+		myDevices.filter(d => !d.revoked && d.groupId !== null && !watchOnly.has(d.groupId)).map(d => d.groupId),
 	)
+	const budgetShares = Math.max(1, slotted.size)
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	const calibration = acct?.calibration ?? null
 	const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, ttl, pointsFor('5h'), calibration)
@@ -824,8 +843,19 @@ async function loadLiveDashboard(
 		}
 	}
 	const budgetPctFor = (id: string | null, pct = 0) =>
-		groupBudgetPct({ exactPct: pct }, isWatchOnly(id) ? 1 : budgetShares)
+		// A group holds a slice only while a live device of it is on this account;
+		// one that switched away (or watches) reads its plain share of what it left.
+		groupBudgetPct({ exactPct: pct }, id !== null && slotted.has(id) ? budgetShares : 1)
 
+	const lastUsed = new Map<string | null, number>()
+	for (const e of events) {
+		const key = e.groupId ?? null
+		lastUsed.set(key, Math.max(lastUsed.get(key) ?? 0, e.ts.getTime()))
+	}
+	const lastUsedAt = (id: string | null) => {
+		const ms = lastUsed.get(id)
+		return ms === undefined ? null : new Date(ms).toISOString()
+	}
 	const groupUsages: LiveGroupUsage[] = [...keys].map(id => ({
 		groupId: id,
 		...labelFor(id),
@@ -835,6 +865,12 @@ async function loadLiveDashboard(
 		weeklyBudgetPct: budgetPctFor(id, weeklySplit.get(id)?.exactPct),
 		sessionCostPct: budgetPctFor(id, sessionSplit.get(id)?.costPct),
 		weeklyCostPct: budgetPctFor(id, weeklySplit.get(id)?.costPct),
+		sessionAccountPct: sessionSplit.get(id)?.exactPct ?? 0,
+		weeklyAccountPct: weeklySplit.get(id)?.exactPct ?? 0,
+		lastUsedAt: lastUsedAt(id),
+		devices: myDevices
+			.filter(d => !d.revoked && d.groupId === id)
+			.map(d => ({ id: d.id, lastSeenAt: d.lastSeenAt?.toISOString() ?? null, name: d.name })),
 		sessionTokens: sessionSplit.get(id)?.tokens ?? 0,
 		weeklyTokens: weeklySplit.get(id)?.tokens ?? 0,
 		sessionTotalTokens: sessionSplit.get(id)?.totalTokens ?? 0,
@@ -920,6 +956,7 @@ async function loadLiveDashboard(
 		connected: true,
 		groups: groupUsages,
 		modelLimits,
+		slices: slotted.size,
 		spend,
 		...base,
 	}
@@ -973,6 +1010,8 @@ function loadSharedRows(userId: string, earliest: Date, monthStart: Date) {
 				claudeAccountId: devices.claudeAccountId,
 				groupId: devices.groupId,
 				id: devices.id,
+				lastSeenAt: devices.lastSeenAt,
+				name: devices.name,
 				revoked: devices.revoked,
 			})
 			.from(devices)
@@ -1097,6 +1136,7 @@ async function loadWindowAggregates(view: AccountView, spans: WindowSpan[]): Pro
       SELECT DISTINCT ON (${FOLD_KEY})
         ${usageEvents.ts} AS ts,
         ${usageEvents.deviceId} AS device_id,
+        ${usageEvents.claudeAccountId} AS claude_account_id,
         ${usageEvents.model} AS model,
         ${usageEvents.inputTokens} AS input_tokens,
         ${usageEvents.outputTokens} AS output_tokens,
@@ -1124,7 +1164,7 @@ async function loadWindowAggregates(view: AccountView, spans: WindowSpan[]): Pro
     JOIN ${devices} d ON d.id = folded.device_id
     JOIN (VALUES ${spanValues}) AS win(win_start, win_end)
       ON folded.ts >= win.win_start AND folded.ts < win.win_end
-    WHERE ${accountFilterSql(view)}
+    WHERE ${accountFilterSql(view, sql`folded.claude_account_id`)}
     GROUP BY 1, 2, 3
     HAVING (
       sum(folded.input_tokens) + sum(folded.output_tokens) +
@@ -1706,6 +1746,7 @@ export interface DashboardDTO {
 	accountId: string | null
 	accountLabel: string | null
 	connected: boolean
+	slices: number
 	source: 'sub' | 'api' | null
 	reportedAt: string | null
 	fiveHourPct: number
@@ -1722,6 +1763,7 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
 		accountId: d.accountId,
 		accountLabel: d.accountLabel,
 		connected: d.connected,
+		slices: d.slices,
 		fiveHourPct: d.fiveHourPct,
 		fiveHourResetsAt: d.fiveHourResetsAt?.toISOString() ?? null,
 		groups: d.groups,
@@ -1825,6 +1867,7 @@ export async function listDevices(userId: string) {
 	return (
 		db
 			.select({
+				accountLabel: sql<string | null>`coalesce(${claudeAccounts.email}, ${claudeAccounts.orgName})`,
 				blockingEnabled: devices.blockingEnabled,
 				collectorVersion: devices.collectorVersion,
 				createdAt: devices.createdAt,
@@ -1841,6 +1884,10 @@ export async function listDevices(userId: string) {
 			.from(devices)
 			// Owner-scoped join so a stray cross-tenant groupId can never leak a name.
 			.leftJoin(groups, and(eq(devices.groupId, groups.id), eq(groups.ownerId, userId)))
+			.leftJoin(
+				claudeAccounts,
+				and(eq(devices.claudeAccountId, claudeAccounts.id), eq(claudeAccounts.userId, userId)),
+			)
 			.where(eq(devices.userId, userId))
 			.orderBy(desc(devices.createdAt))
 	)

@@ -7,7 +7,7 @@ dependencies, Node ≥ 20.
 
 ## Install
 
-Get a device **token** from the [Devices](https://usagefleet.com/devices) page,
+Get a device **token** from the [Fleet](https://usagefleet.com/fleet) page,
 then, on that machine:
 
 ```bash
@@ -91,7 +91,7 @@ A group can be set to **refuse new prompts** once it has burned its budget slice
 (1/N of the account limit) for a window — a switch per window on the Groups
 page, both off by default. Per-model limits (e.g. a model's weekly cap) follow
 the switch of their window. Each device also has its own blocking toggle on the
-Devices page: switched off, that machine is never refused, whatever its group
+Fleet page: switched off, that machine is never refused, whatever its group
 says. `usagefleet login` registers a Claude Code `UserPromptSubmit` hook in
 `~/.claude/settings.json` (removed by `uninstall`, refreshed rather than stacked
 on re-install, and skipped entirely with `USAGEFLEET_HOOK=0`):

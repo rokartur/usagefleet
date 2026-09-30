@@ -113,7 +113,9 @@ no body. A device outside the plan gets `402` from all three, which the guard
 treats as open like any other non-OK. `last_seen_at` is touched by the two POST
 handlers, and on the `402` path so a parked device still shows as alive.
 
-- `POST /api/v1/usage` — `{ records: [...], sentAt }`, ≤1000 per batch. Responds
+- `POST /api/v1/usage` — `{ records: [...], sentAt, accountExtId? }`, ≤1000 per batch.
+  `accountExtId` is the accountUuid from `~/.claude.json` at send time; rows are
+  stamped with that account (else the device's) so a switch keeps history. Responds
   with accepted/duplicate/skipped counts. `sentAt` is the collector's own clock
   at send time and is load-bearing: the server derives the device's clock offset
   from it (see the `usage_event` note above), so it must keep being stamped per
@@ -143,7 +145,7 @@ handlers, and on the `402` path so a parked device still shows as alive.
   `{ group, sessionPct, weeklyPct, blocked, blockedWindow, blockedModel,
   blockedPct, blockedUntil, reportedAt }`; the guard reads `blocked` to decide
   and the `blocked*` fields to word the refusal. `blocked` is true only when the
-  device's own blocking toggle is on (devices page, per machine), its group has
+  device's own blocking toggle is on (Fleet page, per machine), its group has
   the matching switch on, that limit is at 100% of the group's budget slice, and
   the last reported utilization is younger than `LIMITS_STALE_MS`
   (15 min). A stale reading never blocks: the limits leg can die while upload
@@ -159,7 +161,7 @@ malformed records (the collector splits the chunk and retries), `429` backoff.
 ## Auth and entitlement
 
 Sessions are better-auth cookies. Device tokens are a separate, long-lived
-credential — issued once in `/devices`, shown once, stored hashed.
+credential — issued once in `/fleet`, shown once, stored hashed.
 
 `accountPlan(userId)` in `lib/billing.ts` is the single source of device caps:
 the newest subscription row in `ENTITLING_STATUSES` (`active`, `trialing`,

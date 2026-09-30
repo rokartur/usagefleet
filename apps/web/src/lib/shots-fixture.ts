@@ -1,7 +1,7 @@
 // Invented dashboard data for the README screenshots (/shots) and the product
 // videos (apps/videos): the real components on numbers that are nobody's, so a
 // capture can never show someone's actual usage.
-import type { DashboardDTO, HistoryDTO, HistoryRow, LiveGroupUsage, WindowHistoryDTO } from '@/lib/data'
+import type { DashboardDTO, HistoryDTO, HistoryRow, LiveGroupUsage, ProjectUsage, WindowHistoryDTO } from '@/lib/data'
 import type { ModelUsage, TokenTotals } from '@/lib/usage'
 
 const MIN = 60_000
@@ -12,9 +12,9 @@ const DAY = 24 * HOUR
 const NOW = Math.floor(Date.now() / MIN) * MIN
 
 const GROUPS = [
-	{ color: '#6366f1', id: 'g-laptops', name: 'Laptops' },
-	{ color: '#10b981', id: 'g-desktops', name: 'Work desktops' },
-	{ color: '#f59e0b', id: 'g-server', name: 'Home server' },
+	{ color: '#6366f1', devices: ['macbook-pro', 'thinkpad'], id: 'g-laptops', name: 'Laptops' },
+	{ color: '#10b981', devices: ['studio', 'win-tower'], id: 'g-desktops', name: 'Work desktops' },
+	{ color: '#06b6d4', devices: ['nuc'], id: 'g-server', name: 'Home server' },
 ]
 
 /** Bucket split of one billable figure, with cache reads on top — roughly the
@@ -50,9 +50,17 @@ const group = (
 	sessionModels: ModelUsage[],
 ): LiveGroupUsage => ({
 	color: GROUPS[i].color,
+	devices: GROUPS[i].devices.map((name, d) => ({
+		id: `${GROUPS[i].id}-${d}`,
+		lastSeenAt: new Date(NOW - (d + 1) * 90_000).toISOString(),
+		name,
+	})),
 	groupId: GROUPS[i].id,
+	lastUsedAt: new Date(NOW - 90_000).toISOString(),
 	models,
 	name: GROUPS[i].name,
+	// Three groups hold a slice each, so a group's points of the account are a third of its slice.
+	sessionAccountPct: sessionPct / GROUPS.length,
 	sessionBudgetPct: sessionPct,
 	// Demo data: cost share agrees with attribution, so the by-cost figure hides.
 	sessionCostPct: sessionPct,
@@ -60,6 +68,7 @@ const group = (
 	sessionTokens: sessionBillable,
 	sessionTotalTokens: totals(sessionBillable).totalTokens,
 	weeklyBudgetPct: weeklyPct,
+	weeklyAccountPct: weeklyPct / GROUPS.length,
 	weeklyCostPct: weeklyPct,
 	weeklyTokens: weeklyBillable,
 	weeklyTotalTokens: totals(weeklyBillable).totalTokens,
@@ -94,6 +103,7 @@ export const dashboard: DashboardDTO = {
 	accountId: 'shots-account',
 	accountLabel: null,
 	connected: true,
+	slices: GROUPS.length,
 	fiveHourPct: 41,
 	fiveHourResetsAt: new Date(NOW + 2 * HOUR + 14 * MIN).toISOString(),
 	groups: liveGroups,
@@ -187,6 +197,7 @@ function historyRows(): HistoryRow[] {
 					cacheCreation5mTokens: t.cacheCreationTokens,
 					cacheCreationTokens: t.cacheCreationTokens,
 					cacheReadTokens: t.cacheReadTokens,
+					claudeAccountId: null,
 					costUsd: +(billable / 1_000_000) * (j === 0 ? 21 : j === 1 ? 4.2 : 1.1),
 					day,
 					deviceId: device.id,
@@ -207,3 +218,26 @@ export const history: HistoryDTO = {
 	groups: GROUPS,
 	rows: historyRows(),
 }
+
+const project = (
+	path: string,
+	groups: number[],
+	billable: number,
+	costUsd: number,
+	hoursAgo: number,
+): ProjectUsage => ({
+	billableTokens: billable,
+	costUsd,
+	groups: groups.map(i => ({ color: GROUPS[i].color, name: GROUPS[i].name })),
+	lastActive: new Date(NOW - hoursAgo * 3_600_000).toISOString(),
+	mergedAs: null,
+	path,
+	totalTokens: totals(billable).totalTokens,
+})
+
+export const projects: ProjectUsage[] = [
+	project('/Users/you/Developer/usagefleet', [0, 1], 7_420_000, 94.1, 0.2),
+	project('/Users/you/work/billing-api', [1], 4_180_000, 52.75, 3),
+	project('/Users/you/Developer/homelab', [2], 2_960_000, 31.2, 20),
+	project('/Users/you/Developer/dotfiles', [0], 910_000, 9.84, 52),
+]

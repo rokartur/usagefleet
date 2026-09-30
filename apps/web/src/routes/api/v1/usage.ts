@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { createFileRoute } from '@tanstack/react-router'
 import { type } from 'arktype'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '@/db'
-import { devices, usageEvents } from '@/db/schema'
+import { claudeAccounts, devices, usageEvents } from '@/db/schema'
 import { deviceWithinPlan, overPlanLimit } from '@/lib/billing'
 import { authenticateDevice } from '@/lib/device-auth'
 import { readJsonCapped } from '@/lib/rate-limit'
@@ -56,6 +56,10 @@ const BatchSchema = type({
 	'os?': "'mac' | 'linux' | 'windows' | 'other'",
 	'hostname?': `string <= ${LABEL}`,
 	'collectorVersion?': `string <= ${ID}`,
+	// accountUuid from ~/.claude.json as the batch left the machine, so a switch
+	// between Claude accounts lands on the right side of the line. Same bound as
+	// the limits endpoint's extId.
+	'accountExtId?': '0 < string <= 100',
 	records: RecordSchema.array().atMostLength(1000),
 })
 
@@ -103,10 +107,12 @@ async function POST(req: Request) {
 
 	let accepted = 0
 	if (records.length > 0) {
+		const claudeAccountId = await batchAccount(device, batch.accountExtId)
 		const rows = records.map(r => ({
 			id: randomUUID(),
 			userId: device.userId,
 			deviceId: device.id,
+			claudeAccountId,
 			uuid: r.uuid,
 			messageId: r.messageId ?? null,
 			requestId: r.requestId ?? null,
@@ -170,6 +176,23 @@ async function POST(req: Request) {
 		// own count rather than inflating `duplicates` on a new device's first cycle.
 		skipped: batch.records.length - records.length,
 	})
+}
+
+/** The account a batch was metered on. The collector's reading wins when it names
+ *  an account this user already has; otherwise (older collector, API key, or an
+ *  account whose first limits post has not landed yet) the device's current one. */
+async function batchAccount(
+	device: { userId: string; claudeAccountId: string | null },
+	extId: string | undefined,
+): Promise<string | null> {
+	if (!extId) {
+		return device.claudeAccountId
+	}
+	const [row] = await db
+		.select({ id: claudeAccounts.id })
+		.from(claudeAccounts)
+		.where(and(eq(claudeAccounts.userId, device.userId), eq(claudeAccounts.extId, extId)))
+	return row?.id ?? device.claudeAccountId
 }
 
 export const Route = createFileRoute('/api/v1/usage')({

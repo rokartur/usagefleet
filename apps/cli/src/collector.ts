@@ -193,6 +193,7 @@ async function sendChunk(
 ): Promise<'ok' | UploadFailure> {
 	const res = await uploadBatch(
 		{
+			accountExtId: detectClaudeAccount()?.extId,
 			collectorVersion: RELEASE_VERSION,
 			hostname: hostname(),
 			os: detectOs(),
@@ -256,7 +257,7 @@ function pruneMissingFiles(state: { files: Record<string, unknown> }, scanned: {
 /** The one thing that unblocks a device parked outside the account's device limit.
  *  Shared by both upload legs so the wording cannot drift between them. */
 function planWall(): string {
-	return `device outside your plan's device limit · free a slot or upgrade at ${ENDPOINT}/devices · nothing is lost, uploads resume once it fits`
+	return `device outside your plan's device limit · free a slot or upgrade at ${ENDPOINT}/fleet · nothing is lost, uploads resume once it fits`
 }
 
 /**
