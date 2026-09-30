@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { buildPastWindows, groupBudgetPct, shouldRecordPoint, splitByShare, windowExpired, windowStartOf } from './data'
+import {
+	buildPastWindows,
+	groupBlock,
+	groupBudgetPct,
+	shouldRecordPoint,
+	splitByShare,
+	windowExpired,
+	windowStartOf,
+} from './data'
 import type { WindowAggRow } from './data'
 import type { BucketWeights, Calibration, UsageRecord } from './usage'
 
@@ -490,5 +498,42 @@ describe(groupBudgetPct, () => {
 
 	it('treats a group with no share as zero rather than throwing', () => {
 		expect(groupBudgetPct(undefined, 3)).toBe(0)
+	})
+})
+
+describe(groupBlock, () => {
+	const fiveReset = new Date('2026-06-18T15:00:00Z')
+	const weekReset = new Date('2026-06-21T00:00:00Z')
+	const fableReset = new Date('2026-06-22T00:00:00Z')
+	const dash = (session: number, weekly: number, fable: number) => ({
+		fiveHourResetsAt: fiveReset,
+		groups: [{ groupId: 'a', sessionBudgetPct: session, weeklyBudgetPct: weekly }],
+		modelLimits: [
+			{ groups: [{ budgetPct: fable, groupId: 'a' }], label: 'Fable', resetsAt: fableReset, window: '7d' },
+		],
+		sevenDayResetsAt: weekReset,
+	})
+	const both = { blockOnSessionLimit: true, blockOnWeeklyLimit: true }
+
+	it('blocks on a per-model limit under the switch of its window', () => {
+		expect(groupBlock(dash(10, 10, 104), 'a', both)).toStrictEqual({
+			model: 'Fable',
+			pct: 104,
+			resetsAt: fableReset,
+			window: 'weekly',
+		})
+		expect(groupBlock(dash(10, 10, 104), 'a', { ...both, blockOnWeeklyLimit: false })).toBeNull()
+	})
+
+	it('reports the limit that resets last when several are over', () => {
+		// 5h resets first; naming it would promise prompts back while weekly still blocks.
+		expect(groupBlock(dash(120, 100, 0), 'a', both)).toMatchObject({ resetsAt: weekReset, window: 'weekly' })
+		expect(groupBlock(dash(120, 100, 0), 'a', { ...both, blockOnWeeklyLimit: false })).toMatchObject({
+			window: 'session',
+		})
+	})
+
+	it('leaves a group under every slice alone', () => {
+		expect(groupBlock(dash(99, 99, 99), 'a', both)).toBeNull()
 	})
 })

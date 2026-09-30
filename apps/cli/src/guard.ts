@@ -10,10 +10,11 @@ const TIMEOUT_MS = 5000
  *  which reads as "not blocked". */
 export interface GuardView {
 	group?: string | null
-	sessionPct?: number
-	weeklyPct?: number
 	blocked?: boolean
 	blockedWindow?: 'session' | 'weekly' | null
+	/** Label ("Fable") when a per-model limit tripped rather than an account-wide one. */
+	blockedModel?: string | null
+	blockedPct?: number | null
 	blockedUntil?: string | null
 }
 
@@ -27,18 +28,16 @@ export function blockMessage(view: GuardView): string | null {
 	if (view.blocked !== true) {
 		return null
 	}
-	const weekly = view.blockedWindow === 'weekly'
-	const pct = (weekly ? view.weeklyPct : view.sessionPct) ?? 100
+	const window = view.blockedWindow === 'weekly' ? 'weekly' : '5h'
+	const limit = view.blockedModel ? `${view.blockedModel} ${window}` : window
+	const pct = view.blockedPct ?? 100
 	const group = view.group ? `"${view.group}"` : 'this group'
 	const until = view.blockedUntil ? new Date(view.blockedUntil) : null
 	const resets =
 		until && !Number.isNaN(until.getTime())
 			? ` Resets ${until.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}.`
 			: ''
-	return (
-		`usagefleet: ${group} has used ${pct}% of its ${weekly ? 'weekly' : '5h'} budget, ` +
-		`so new prompts are blocked.${resets}`
-	)
+	return `usagefleet: ${group} has used ${pct}% of its ${limit} budget, so new prompts are blocked.${resets}`
 }
 
 /**

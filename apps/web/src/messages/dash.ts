@@ -108,7 +108,7 @@ const en = {
 		blockSession: 'Block at 100% of the 5-hour slice',
 		blockSessionDescription: "Refuse new prompts on this group's devices until the 5-hour window resets.",
 		blockWeekly: 'Block at 100% of the weekly slice',
-		blockWeeklyDescription: 'Same, for the weekly window.',
+		blockWeeklyDescription: 'Same, for the weekly window. Per-model limits follow the switch of their window.',
 		blocking: 'Blocking',
 		blockingHint: "Enforced by the collector's prompt hook, installed by <cmd>usagefleet login</cmd>.",
 		blocksAt: 'blocks at 100% · {windows}',
@@ -480,7 +480,7 @@ const pl: typeof en = {
 		blockSessionDescription:
 			'Odrzucaj nowe prompty na urządzeniach tej grupy, dopóki okno 5-godzinne się nie zresetuje.',
 		blockWeekly: 'Blokuj przy 100% udziału tygodniowego',
-		blockWeeklyDescription: 'To samo, dla okna tygodniowego.',
+		blockWeeklyDescription: 'To samo, dla okna tygodniowego. Limity modeli podlegają przełącznikowi swojego okna.',
 		blocking: 'Blokowanie',
 		blockingHint: 'Egzekwowane przez hook promptu w kolektorze, instalowany przez <cmd>usagefleet login</cmd>.',
 		blocksAt: 'blokuje przy 100% · {windows}',

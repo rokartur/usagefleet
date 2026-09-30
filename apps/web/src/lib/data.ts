@@ -1014,6 +1014,53 @@ export function dashboardForDevice(dashboards: LiveDashboard[], claudeAccountId:
 	return dashboards.find(d => d.accountId === claudeAccountId) ?? dashboards[0]
 }
 
+/** A limit a group has used 100% of its slice of, with the blocking switch on. */
+export interface GroupBlock {
+	window: 'session' | 'weekly'
+	/** Label ("Fable") when a per-model limit tripped, null for the account-wide ones. */
+	model: string | null
+	pct: number
+	resetsAt: Date | null
+}
+
+/**
+ * The limit that keeps a group's prompts refused, or null. Per-model limits obey
+ * the switch of their window: 5h the session one, any other the weekly one.
+ * With several over, the block lasts until the last of them resets, so that one
+ * is reported; an unknown reset counts as the latest.
+ */
+export function groupBlock(
+	dash: Pick<LiveDashboard, 'fiveHourResetsAt' | 'sevenDayResetsAt'> & {
+		groups: Pick<LiveGroupUsage, 'groupId' | 'sessionBudgetPct' | 'weeklyBudgetPct'>[]
+		modelLimits: (Pick<LiveModelLimit, 'label' | 'resetsAt' | 'window'> & {
+			groups: Pick<LiveModelLimitGroup, 'budgetPct' | 'groupId'>[]
+		})[]
+	},
+	groupId: string | null,
+	switches: { blockOnSessionLimit: boolean; blockOnWeeklyLimit: boolean },
+): GroupBlock | null {
+	const usage = dash.groups.find(g => g.groupId === groupId)
+	const limits: GroupBlock[] = [
+		{ model: null, pct: usage?.sessionBudgetPct ?? 0, resetsAt: dash.fiveHourResetsAt, window: 'session' },
+		{ model: null, pct: usage?.weeklyBudgetPct ?? 0, resetsAt: dash.sevenDayResetsAt, window: 'weekly' },
+		...dash.modelLimits.map((m): GroupBlock => ({
+			model: m.label,
+			pct: m.groups.find(g => g.groupId === groupId)?.budgetPct ?? 0,
+			resetsAt: m.resetsAt,
+			window: m.window === '5h' ? 'session' : 'weekly',
+		})),
+	]
+	const on = { session: switches.blockOnSessionLimit, weekly: switches.blockOnWeeklyLimit }
+	const resetMs = (l: GroupBlock) => l.resetsAt?.getTime() ?? Number.POSITIVE_INFINITY
+	let block: GroupBlock | null = null
+	for (const l of limits) {
+		if (on[l.window] && l.pct >= 100 && (!block || resetMs(l) > resetMs(block))) {
+			block = l
+		}
+	}
+	return block
+}
+
 /** How many completed windows back the past-windows card looks. */
 const PAST_WINDOWS = 8
 

@@ -3,12 +3,15 @@ import { blockMessage } from './guard.js'
 
 describe(blockMessage, () => {
 	it('blocks only on an explicit blocked:true', () => {
-		expect(blockMessage({ blocked: true, blockedWindow: 'session', sessionPct: 118 })).toContain(
+		expect(blockMessage({ blocked: true, blockedPct: 118, blockedWindow: 'session' })).toContain(
 			'118% of its 5h budget',
 		)
-		expect(blockMessage({ blocked: true, blockedWindow: 'weekly', weeklyPct: 104 })).toContain(
+		expect(blockMessage({ blocked: true, blockedPct: 104, blockedWindow: 'weekly' })).toContain(
 			'104% of its weekly budget',
 		)
+		expect(
+			blockMessage({ blocked: true, blockedModel: 'Fable', blockedPct: 101, blockedWindow: 'weekly' }),
+		).toContain('101% of its Fable weekly budget')
 	})
 
 	// Fail-open is the whole safety property: a tracker outage, an old server, or
@@ -17,7 +20,7 @@ describe(blockMessage, () => {
 		for (const view of [
 			{},
 			{ blocked: false },
-			{ sessionPct: 250, weeklyPct: 250 },
+			{ blockedPct: 250 },
 			{ blockedWindow: 'session' as const },
 			JSON.parse('{"blocked":"true"}'),
 		]) {
@@ -31,7 +34,6 @@ describe(blockMessage, () => {
 			blockedUntil: '2026-01-01T12:00:00.000Z',
 			blockedWindow: 'session',
 			group: 'Backend',
-			sessionPct: 100,
 		})
 		expect(msg).toContain('"Backend"')
 		expect(msg).toContain('Resets ')

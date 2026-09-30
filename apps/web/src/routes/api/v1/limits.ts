@@ -8,6 +8,7 @@ import { deviceWithinPlan, overPlanLimit } from '@/lib/billing'
 import {
 	dashboardForDevice,
 	getLiveDashboards,
+	groupBlock,
 	recalibrateAccount,
 	recordLimitChangePoint,
 	recordLimitSample,
@@ -98,27 +99,21 @@ async function GET(req: Request) {
 
 	// Per-group enforcement switches, gated by the device's own blocking toggle
 	// — a machine switched off on the devices page is never refused, whatever
-	// its group says. Both windows are measured against the group's equal budget
+	// its group says. Every limit is measured against the group's equal budget
 	// slice, so 100% means "ate my share", not "the account is out" — a group
 	// only blocks itself, never its siblings.
-	const blockedWindow =
-		fresh && device.blockingEnabled
-			? group?.blockOnSessionLimit && sessionPct >= 100
-				? 'session'
-				: group?.blockOnWeeklyLimit && weeklyPct >= 100
-					? 'weekly'
-					: null
-			: null
-	const resetsAt = blockedWindow === 'session' ? dash.fiveHourResetsAt : dash.sevenDayResetsAt
+	const block = fresh && device.blockingEnabled && group ? groupBlock(dash, device.groupId, group) : null
 
 	return Response.json(
 		{
 			group: usage?.name ?? null,
 			sessionPct,
 			weeklyPct,
-			blocked: blockedWindow !== null,
-			blockedWindow,
-			blockedUntil: blockedWindow ? (resetsAt?.toISOString() ?? null) : null,
+			blocked: block !== null,
+			blockedWindow: block?.window ?? null,
+			blockedModel: block?.model ?? null,
+			blockedPct: block?.pct ?? null,
+			blockedUntil: block?.resetsAt?.toISOString() ?? null,
 			// Null until a collector reports real utilization; the percentages above
 			// are meaningless (0) until then, and stale once this stops moving.
 			reportedAt: dash.connected ? (dash.reportedAt?.toISOString() ?? null) : null,

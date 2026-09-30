@@ -140,14 +140,17 @@ handlers, and on the `402` path so a parked device still shows as alive.
   the account is the unidentified `ext_id = NULL` bucket — appends a
   `limit_change_point` per window whose pct rose.
 - `GET /api/v1/limits` — what `usagefleet guard` asks before a prompt. Returns
-  `{ group, sessionPct, weeklyPct, blocked, blockedWindow, blockedUntil,
-  reportedAt }`; the guard reads `blocked` to decide and `blockedWindow` /
-  `blockedUntil` to word the refusal. `blocked` is true only when the device's
-  own blocking toggle is on (devices page, per machine), its group has the
-  matching switch on, that window is at 100% of the group's budget
-  slice, and the last reported utilization is younger than `LIMITS_STALE_MS`
+  `{ group, sessionPct, weeklyPct, blocked, blockedWindow, blockedModel,
+  blockedPct, blockedUntil, reportedAt }`; the guard reads `blocked` to decide
+  and the `blocked*` fields to word the refusal. `blocked` is true only when the
+  device's own blocking toggle is on (devices page, per machine), its group has
+  the matching switch on, that limit is at 100% of the group's budget slice, and
+  the last reported utilization is younger than `LIMITS_STALE_MS`
   (15 min). A stale reading never blocks: the limits leg can die while upload
-  keeps working, and nothing decays the stored percentage.
+  keeps working, and nothing decays the stored percentage. Per-model limits
+  count too, under the switch of their window (`5h` session, anything else
+  weekly). With several over, the one resetting last is reported, because the
+  block lasts until then (`groupBlock` in `lib/data.ts`).
 
 Status codes carry meaning to the CLI: `401` revoked/unknown token (stop),
 `402` device outside the plan's device limit (park, keep data), `400`
