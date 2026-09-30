@@ -4,6 +4,7 @@ import {
 	groupBlock,
 	groupBudgetPct,
 	shouldRecordPoint,
+	slottedGroups,
 	splitByShare,
 	windowExpired,
 	windowStartOf,
@@ -498,6 +499,19 @@ describe(groupBudgetPct, () => {
 
 	it('treats a group with no share as zero rather than throwing', () => {
 		expect(groupBudgetPct(undefined, 3)).toBe(0)
+	})
+})
+
+describe(slottedGroups, () => {
+	it('slices only groups with a live device on the account', () => {
+		const onAccount = [
+			{ groupId: 'laptops', revoked: false },
+			{ groupId: 'laptops', revoked: false },
+			{ groupId: 'server', revoked: true },
+			{ groupId: 'watch', revoked: false },
+			{ groupId: null, revoked: false },
+		]
+		expect(slottedGroups(onAccount, new Set(['watch']))).toStrictEqual(new Set(['laptops']))
 	})
 })
 

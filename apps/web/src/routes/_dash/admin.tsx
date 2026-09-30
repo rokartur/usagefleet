@@ -162,6 +162,7 @@ function AdminPage() {
 							<TableCell>
 								<Button
 									render={<Link to='/admin/$userId' params={{ userId: a.id }} />}
+									nativeButton={false}
 									variant='outline'
 									size='sm'
 								>

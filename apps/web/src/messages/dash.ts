@@ -157,6 +157,7 @@ const en = {
 		savingGroup: 'Saving group…',
 		// The "{count} / {limit}" pair renders next to this, so it is not repeated here.
 		slots: 'groups · a slice is 1/{share} of the account limit',
+		slotsPerAccount: 'groups · the slice differs per Claude account, see the dashboard',
 		updateFailed: "Couldn't update group",
 		updated: 'Group updated',
 		watchOnly: 'Watch only',
@@ -526,6 +527,7 @@ const pl: typeof en = {
 		savingGroup: 'Zapisywanie grupy…',
 		// The "{count} / {limit}" pair renders next to this, so it is not repeated here.
 		slots: 'grup · udział to 1/{share} limitu konta',
+		slotsPerAccount: 'grup · udział zależy od konta Claude, zobacz pulpit',
 		updateFailed: 'Nie udało się zaktualizować grupy',
 		updated: 'Zaktualizowano grupę',
 		watchOnly: 'Tylko podgląd',

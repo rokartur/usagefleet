@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { deleteGroup } from '@/lib/actions'
 import { accountPlan } from '@/lib/billing'
-import { backfillUngroupedDevices, listDevices, listGroups } from '@/lib/data'
+import { backfillUngroupedDevices, listDevices, listGroups, slottedGroups } from '@/lib/data'
 import { OS_LABEL } from '@/lib/format'
 import { planLabel } from '@/lib/plans'
 import { requireUser } from '@/lib/session'
@@ -24,14 +24,21 @@ const fleetData = createServerFn().handler(async () => {
 	// Enforce the "every device is grouped" invariant before listing.
 	await backfillUngroupedDevices(user.id)
 	const [devices, groups, plan] = await Promise.all([listDevices(user.id), listGroups(user.id), accountPlan(user.id)])
-	const liveGroupIds = new Set(devices.filter(d => !d.revoked).map(d => d.groupId))
+	// budgetShares in loadLiveDashboard: groups with a live device on an account split
+	// that account. Stated only when every account splits the same way, otherwise the
+	// dashboard names the slice per account and one number here would contradict it.
+	const watchOnly = new Set(groups.filter(g => g.watchOnly).map(g => g.id))
+	const accounts = new Set(devices.filter(d => !d.revoked).map(d => d.claudeAccountId))
+	const shares = new Set<number>()
+	for (const account of accounts) {
+		const onAccount = devices.filter(d => d.claudeAccountId === account)
+		shares.add(slottedGroups(onAccount, watchOnly).size)
+	}
 	return {
 		devices,
 		groups,
 		plan,
-		// budgetShares in loadLiveDashboard, counted across all accounts at once: the
-		// dashboard counts per account, so a user on several can see a different 1/N there.
-		sliceShare: Math.max(1, groups.filter(g => !g.watchOnly && liveGroupIds.has(g.id)).length),
+		sliceShare: shares.size <= 1 ? Math.max(1, ...shares) : null,
 	}
 })
 
@@ -100,7 +107,8 @@ function FleetPage() {
 						{t('count', { active, limit: plan.deviceLimit })}
 					</span>{' '}
 					{t('slots', { count: active, plan: planLabel(plan.plan) })} ·{' '}
-					<span className='tabular-nums'>{groups.length}</span> {tGroups('slots', { share: sliceShare })}
+					<span className='tabular-nums'>{groups.length}</span>{' '}
+					{sliceShare === null ? tGroups('slotsPerAccount') : tGroups('slots', { share: sliceShare })}
 					{atCap && (
 						<span className='text-amber-600 dark:text-amber-500'>
 							{t.rich('atCap', {

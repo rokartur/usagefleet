@@ -409,6 +409,22 @@ function windowDurationMs(window: string): number | null {
 export const groupBudgetPct = (share: { exactPct: number } | undefined, groupCount: number) =>
 	Math.round((share?.exactPct ?? 0) * groupCount)
 
+/** The groups that claim a slice of an account: those with a live device on it.
+ *  A watch-only group claims none, and a group whose devices all moved to another
+ *  account stops claiming one here while its usage stays. */
+export function slottedGroups(
+	accountDevices: { revoked: boolean; groupId: string | null }[],
+	watchOnly: Set<string>,
+): Set<string> {
+	const slotted = new Set<string>()
+	for (const d of accountDevices) {
+		if (!d.revoked && d.groupId !== null && !watchOnly.has(d.groupId)) {
+			slotted.add(d.groupId)
+		}
+	}
+	return slotted
+}
+
 /** A recorded reading of the official percentage at an instant. The rise
  *  between two readings is what delta attribution splits. */
 export interface PctPoint {
@@ -823,9 +839,7 @@ async function loadLiveDashboard(
 	// than shrink every real group to make room for them. A watch-only group claims
 	// no slice and reads against the whole account instead.
 	const watchOnly = new Set(groupRows.filter(g => g.watchOnly).map(g => g.id))
-	const slotted = new Set(
-		myDevices.filter(d => !d.revoked && d.groupId !== null && !watchOnly.has(d.groupId)).map(d => d.groupId),
-	)
+	const slotted = slottedGroups(myDevices, watchOnly)
 	const budgetShares = Math.max(1, slotted.size)
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	const calibration = acct?.calibration ?? null
@@ -1869,6 +1883,7 @@ export async function listDevices(userId: string) {
 			.select({
 				accountLabel: sql<string | null>`coalesce(${claudeAccounts.email}, ${claudeAccounts.orgName})`,
 				blockingEnabled: devices.blockingEnabled,
+				claudeAccountId: devices.claudeAccountId,
 				collectorVersion: devices.collectorVersion,
 				createdAt: devices.createdAt,
 				groupId: devices.groupId,
