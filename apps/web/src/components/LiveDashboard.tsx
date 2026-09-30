@@ -2,14 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { CheckIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'use-intl'
-import { GroupTable } from '@/components/dashboard/GroupTable'
-import type { GroupRow } from '@/components/dashboard/GroupTable'
 import { InstallCommand } from '@/components/InstallCommand'
+import { RelativeTime } from '@/components/RelativeTime'
 import { ResetCountdown } from '@/components/ResetCountdown'
 import { Button } from '@/components/ui/button'
-import { Num, overrun, Section, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
+import { Num, overrun, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
 import { useMounted } from '@/hooks/use-mounted'
-import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO, SpendPeriod } from '@/lib/data'
+import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO } from '@/lib/data'
 import { formatRelative, formatTokens, formatUsd } from '@/lib/format'
 import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
 import { billableTokens, LIMITS_STALE_MS } from '@/lib/usage'
@@ -19,15 +18,6 @@ import { cn } from '@/lib/utils'
  *  ("105%") is the interesting case, even though the bar stops at full. */
 const pctText = (n: number) => `${Math.round(n)}%`
 
-/** Display label for a limit-window key: "5h" → "5-hour", "7d" → "weekly".
- *  Anything else is a window Anthropic added since this shipped, so it is shown
- *  as the raw key rather than hidden. */
-function useWindowLabel(): (window: string) => string {
-	const t = useTranslations('dash.overview')
-	const known: Record<string, string> = { '5h': t('fiveHour'), '7d': t('weekly') }
-	return window => known[window] ?? window
-}
-
 const POLL_MS = 5000
 
 /** Colored dot used for a group's identity across cards and tables. */
@@ -35,67 +25,14 @@ function GroupDot({ color }: { color: string }) {
 	return <span className='size-2 shrink-0 rounded-full' style={{ backgroundColor: color }} aria-hidden />
 }
 
-interface SplitGroup {
-	key: string
-	name: string
-	color: string
-	watchOnly: boolean
-	pct: number
-}
-
-/** "Artur 11% · Ciach 21%" — how one window's usage splits across groups. */
-function GroupSplit({ groups, className }: { groups: SplitGroup[]; className?: string }) {
-	if (groups.length === 0) {
-		return null
-	}
-	return (
-		<div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground', className)}>
-			{groups.map(g => (
-				<span key={g.key} className='flex min-w-0 items-center gap-1.5'>
-					<GroupDot color={g.color} />
-					<span className='truncate'>{g.name}</span>
-					{g.watchOnly && <WatchOnlyMark />}
-					<Num value={g.pct} format={pctText} className={cn('text-foreground', overrun(g.pct))} />
-				</span>
-			))}
-		</div>
-	)
-}
-
-/** Account-wide Weekly with the part attributed to Fable highlighted. */
-function WeeklyUsageBar({ pct, fable }: { pct: number; fable: ModelLimitDTO }) {
-	const t = useTranslations('dash.overview')
-	const contribution = Math.max(0, fable.weeklyContributionPct)
-	const barEnd = Math.min(100, Math.max(0, pct))
-	const showContribution = Math.round(contribution) > 0
-	const segmentWidth = showContribution ? Math.min(barEnd, contribution) : 0
-
-	return (
-		<>
-			<div className='relative'>
-				<UsageBar pct={pct} />
-				{segmentWidth > 0 ? (
-					<span
-						className='pointer-events-none absolute top-0 h-1.5 bg-violet-400'
-						style={{ left: `${barEnd - segmentWidth}%`, width: `${segmentWidth}%` }}
-						aria-hidden
-					/>
-				) : null}
-			</div>
-			{showContribution ? (
-				<div className='flex items-center gap-1.5 text-[11px] text-violet-300'>
-					<span className='size-2 bg-violet-400' aria-hidden />
-					<Num value={contribution} format={pctText} /> {fable.label}
-					<span className='text-muted-foreground'>
-						· ~<Num value={fable.weeklyCostPct} format={pctText} /> {t('byCost')}
-					</span>
-				</div>
-			) : null}
-		</>
-	)
-}
-
 const groupKey = (groupId: string | null) => groupId ?? 'ungrouped'
+
+/** An account's identity across polls: the unidentified bucket has no id. */
+export const accountKey = (dash: DashboardDTO) => dash.accountId ?? 'unidentified'
+
+/** A group with usage here but none of its devices on this account any more: it
+ *  switched Claude accounts. Watch-only groups never hold a slice, so they don't count. */
+const movedAway = (g: LiveGroupUsage) => !g.watchOnly && g.devices.length === 0
 
 /** Whose subscription this card reports on. An account the collector could not
  *  name (API-key login, or a collector too old to report one) is the bucket
@@ -104,18 +41,6 @@ function useAccountName(): (dash: DashboardDTO) => string {
 	const t = useTranslations('dash.overview')
 	return dash => dash.accountLabel ?? t('unidentifiedAccount')
 }
-
-const fableOf = (dash: DashboardDTO) => dash.modelLimits.find(limit => limit.model.toLowerCase().includes('fable'))
-
-/** One window's usage split across the groups on this account. */
-const splitOf = (dash: DashboardDTO, pct: (g: LiveGroupUsage) => number) =>
-	dash.groups.map(g => ({
-		color: g.color,
-		key: groupKey(g.groupId),
-		name: g.name,
-		pct: pct(g),
-		watchOnly: g.watchOnly,
-	}))
 
 /** "live · subscription · updated 40s ago" for one account. A dead poll is a
  *  fleet-wide fact, the report age is per account: one machine can stop
@@ -136,81 +61,6 @@ function StatusLine({ dash, now, pollDown }: { dash: DashboardDTO; now: number; 
 			<span className={stale ? 'text-amber-500' : 'text-foreground'}>{label}</span>· {source}
 			{now && dash.reportedAt ? t('updated', { age: formatRelative(dash.reportedAt, locale) }) : ''}
 		</p>
-	)
-}
-
-/** One column of the headline strip: label, one big number, detail underneath. */
-function StatCell({ label, value, children }: { label: string; value: React.ReactNode; children?: React.ReactNode }) {
-	return (
-		<div className='flex flex-col gap-2 sm:border-l sm:pl-5 sm:first:border-l-0 sm:first:pl-0'>
-			<div className='text-[11px] text-muted-foreground'>{label}</div>
-			<div className='text-2xl leading-none tabular-nums'>{value}</div>
-			{children}
-		</div>
-	)
-}
-
-/** Claude's own account utilization for one window, plus the per-group split —
- *  the same budget-relative measure as the group table. */
-function LimitCell({
-	label,
-	pct,
-	resetsAt,
-	groups,
-	fable,
-}: {
-	label: string
-	pct: number
-	resetsAt: string | null
-	groups: SplitGroup[]
-	fable?: ModelLimitDTO
-}) {
-	return (
-		<StatCell label={label} value={<Num value={pct} format={pctText} className={overrun(pct)} />}>
-			{fable ? <WeeklyUsageBar pct={pct} fable={fable} /> : <UsageBar pct={pct} />}
-			<div className='text-[11px] text-muted-foreground'>
-				<ResetCountdown resetsAt={resetsAt} />
-			</div>
-			<GroupSplit groups={groups} />
-		</StatCell>
-	)
-}
-
-function SpendCell({ label, period }: { label: string; period: SpendPeriod }) {
-	const t = useTranslations('dash.usage')
-	return (
-		<StatCell label={label} value={<Num value={period.costUsd} format={formatUsd} />}>
-			<div className='text-[11px] text-muted-foreground tabular-nums'>
-				<Num value={billableTokens(period.totals)} format={formatTokens} /> {t('tableBillable').toLowerCase()} ·{' '}
-				<Num value={period.totals.totalTokens} format={formatTokens} /> {t('total')}
-			</div>
-		</StatCell>
-	)
-}
-
-/** One per-model official limit on a single line. */
-function ModelLimitRow({ limit }: { limit: ModelLimitDTO }) {
-	const windowLabel = useWindowLabel()
-	return (
-		<div className='flex flex-wrap items-center gap-x-3 gap-y-1 border-b py-2 text-sm last:border-b-0'>
-			<span className='font-medium'>{limit.label}</span>
-			<span className='text-[11px] text-muted-foreground'>{windowLabel(limit.window)}</span>
-			<Num value={limit.pct} format={pctText} className={overrun(limit.pct)} />
-			<UsageBar pct={limit.pct} className='w-20 shrink-0' />
-			<span className='text-[11px] text-muted-foreground'>
-				<ResetCountdown resetsAt={limit.resetsAt} />
-			</span>
-			<GroupSplit
-				className='ml-auto'
-				groups={limit.groups.map(g => ({
-					color: g.color,
-					key: groupKey(g.groupId),
-					name: g.name,
-					pct: g.budgetPct,
-					watchOnly: g.watchOnly,
-				}))}
-			/>
-		</div>
 	)
 }
 
@@ -324,91 +174,30 @@ function SetupRail({ setup }: { setup: SetupState | null }) {
 	)
 }
 
-/** One window inside an account row: the percentage, the bar, the countdown and
- *  the group split, at half the size of the single-account headline cell. */
-function AccountWindow({
-	label,
-	pct,
-	resetsAt,
-	groups,
-	fable,
-}: {
-	label: string
-	pct: number
-	resetsAt: string | null
-	groups: SplitGroup[]
-	fable?: ModelLimitDTO
-}) {
-	return (
-		<div className='flex flex-col gap-2'>
-			<div className='flex flex-wrap items-baseline gap-x-2'>
-				<Num value={pct} format={pctText} className={cn('text-lg leading-none', overrun(pct))} />
-				<span className='text-[11px] text-muted-foreground'>
-					{label} · <ResetCountdown resetsAt={resetsAt} />
-				</span>
-			</div>
-			{fable ? <WeeklyUsageBar pct={pct} fable={fable} /> : <UsageBar pct={pct} />}
-			<GroupSplit groups={groups} />
-		</div>
-	)
-}
-
-/** One Anthropic account on a single line — who it is, both windows, spend.
- *  Several subscriptions stack into a list of these instead of repeating the
- *  whole card set per account. */
-function AccountRow({ dash, now, pollDown }: { dash: DashboardDTO; now: number; pollDown: boolean }) {
-	const t = useTranslations('dash.overview')
-	const accountName = useAccountName()
-	return (
-		<div className='grid gap-x-5 gap-y-4 border-b py-4 last:border-b-0 sm:grid-cols-[minmax(0,1.2fr)_repeat(2,minmax(0,1fr))_minmax(0,0.7fr)]'>
-			<div className='flex min-w-0 flex-col gap-1.5'>
-				<span className='truncate text-sm'>{accountName(dash)}</span>
-				<StatusLine dash={dash} now={now} pollDown={pollDown} />
-			</div>
-			<AccountWindow
-				label='5h'
-				pct={dash.fiveHourPct}
-				resetsAt={dash.fiveHourResetsAt}
-				groups={splitOf(dash, g => g.sessionBudgetPct)}
-			/>
-			<AccountWindow
-				label={t('week')}
-				pct={dash.sevenDayPct}
-				resetsAt={dash.sevenDayResetsAt}
-				groups={splitOf(dash, g => g.weeklyBudgetPct)}
-				fable={fableOf(dash)}
-			/>
-			<div className='flex flex-col gap-1.5'>
-				<div className='flex flex-wrap items-baseline gap-x-2'>
-					<Num value={dash.spend.week.costUsd} format={formatUsd} className='text-lg leading-none' />
-					<span className='text-[11px] text-muted-foreground'>{t('week')}</span>
-				</div>
-				<span className='text-[11px] text-muted-foreground tabular-nums'>
-					<Num value={dash.spend.month.costUsd} format={formatUsd} /> {t('month')}
-				</span>
-			</div>
-		</div>
-	)
-}
-
-/** Live cards for every Anthropic account the fleet reports on. One account
- *  renders the full headline strip; several collapse to one row each with a
- *  single merged group table, so the page keeps its height as accounts are
- *  added. Polls the whole set at once: /api/dashboard answers for all of them.
+/** The live column for one Anthropic account at a time: its two windows cut into
+ *  the groups' contributions, the groups against their slices, and spend. With
+ *  several accounts a switcher on top picks which. Polls the whole set at once:
+ *  /api/dashboard answers for all of them.
  *  `poll: false` renders `initial` as the route loader last returned it — the
  *  admin's per-user view, where /api/dashboard would answer with the viewer's
  *  own accounts, not these. */
 export function LiveDashboard({
 	initial,
 	setup,
+	selected,
+	onSelect,
 	poll = true,
 }: {
 	initial: DashboardDTO[]
 	setup: SetupState | null
+	/** Key of the account shown (see {@link accountKey}), null for the first; the
+	 *  page owns it so the past-windows chart follows the same account. */
+	selected: string | null
+	onSelect: (key: string) => void
 	poll?: boolean
 }) {
 	const t = useTranslations('dash.overview')
-	const accountName = useAccountName()
+	const tUsage = useTranslations('dash.usage')
 	const [polled, setPolled] = useState<DashboardDTO[]>(initial)
 	const dashes = poll ? polled : initial
 	const [lastOk, setLastOk] = useState(() => Date.now())
@@ -419,25 +208,11 @@ export function LiveDashboard({
 	// rendered is.
 	const [clock, setClock] = useState(() => Date.now())
 	const now = useMounted() ? clock : 0
-	// Which group rows are expanded (groupId or "ungrouped").
-	const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
 	// Serialises polling: /api/dashboard scans the whole window, so a server
 	// slower than POLL_MS would otherwise stack a new request every tick and add
 	// load to something already struggling. One outstanding request at a time also
 	// means responses can never land out of order.
 	const inFlightRef = useRef(false)
-
-	const toggleRow = useCallback((key: string) => {
-		setExpanded(prev => {
-			const next = new Set(prev)
-			if (next.has(key)) {
-				next.delete(key)
-			} else {
-				next.add(key)
-			}
-			return next
-		})
-	}, [])
 
 	const refresh = useCallback(async () => {
 		if (inFlightRef.current) {
@@ -502,84 +277,294 @@ export function LiveDashboard({
 	}, [refresh, poll])
 
 	const pollDown = poll && now - lastOk > 3 * POLL_MS
-	const solo = dashes.length === 1 ? dashes[0] : undefined
+	const dash = dashes.find(d => accountKey(d) === selected) ?? dashes[0]
 
-	if (dashes.length === 0 || (solo && !solo.connected)) {
+	if (!dash?.connected) {
 		return <SetupRail setup={setup} />
 	}
 
-	const footnote = <p className='max-w-2xl text-[11px] text-muted-foreground'>{t('footnote')}</p>
-
-	if (solo) {
-		return (
-			<div className='flex flex-col gap-5'>
-				<StatusLine dash={solo} now={now} pollDown={pollDown} />
-
-				<div className='grid gap-x-5 gap-y-6 border-y py-4 sm:grid-cols-4'>
-					<LimitCell
-						label={t('fiveHourSession')}
-						pct={solo.fiveHourPct}
-						resetsAt={solo.fiveHourResetsAt}
-						groups={splitOf(solo, g => g.sessionBudgetPct)}
-					/>
-					<LimitCell
-						label={t('weekly')}
-						pct={solo.sevenDayPct}
-						resetsAt={solo.sevenDayResetsAt}
-						groups={splitOf(solo, g => g.weeklyBudgetPct)}
-						fable={fableOf(solo)}
-					/>
-					<SpendCell label={t('spendWeek')} period={solo.spend.week} />
-					<SpendCell label={t('spendMonth')} period={solo.spend.month} />
-				</div>
-
-				{solo.modelLimits.length > 0 && (
-					<Section title={t('modelLimits')}>
-						{solo.modelLimits.map(m => (
-							<ModelLimitRow key={`${m.model}-${m.window}`} limit={m} />
-						))}
-					</Section>
-				)}
-
-				<Section title={t('groups')}>
-					<GroupTable groups={solo.groups} expanded={expanded} onToggle={toggleRow} />
-				</Section>
-
-				{footnote}
-			</div>
-		)
-	}
-
-	// A group can hold devices on two subscriptions, so it earns one row per
-	// account it spends on — the percentages only mean anything against a limit.
-	const rows: GroupRow[] = dashes.flatMap(d => d.groups.map(g => ({ ...g, account: accountName(d) })))
-
 	return (
 		<div className='flex flex-col gap-5'>
-			<div className='border-y'>
-				{dashes.map(d => (
-					<AccountRow key={d.accountId ?? 'unidentified'} dash={d} now={now} pollDown={pollDown} />
+			{dashes.length > 1 && (
+				<AccountSwitcher dashes={dashes} selected={accountKey(dash)} onSelect={onSelect} now={now} />
+			)}
+			<StatusLine dash={dash} now={now} pollDown={pollDown} />
+			<div className='flex flex-col divide-y border-y'>
+				<Meter
+					label={t('fiveHourSession')}
+					pct={dash.fiveHourPct}
+					resetsAt={dash.fiveHourResetsAt}
+					segments={dash.groups.map(g => ({ color: g.color, name: g.name, points: g.sessionAccountPct }))}
+				/>
+				<Meter
+					label={tUsage('weekly')}
+					pct={dash.sevenDayPct}
+					resetsAt={dash.sevenDayResetsAt}
+					segments={dash.groups.map(g => ({ color: g.color, name: g.name, points: g.weeklyAccountPct }))}
+				>
+					{dash.modelLimits.map(limit => (
+						<ModelLimitRow key={limit.model} limit={limit} weeklyResetsAt={dash.sevenDayResetsAt} />
+					))}
+				</Meter>
+			</div>
+			<GroupList dash={dash} dashes={dashes} />
+			<Spend dash={dash} />
+		</div>
+	)
+}
+function AccountSwitcher({
+	dashes,
+	selected,
+	onSelect,
+	now,
+}: {
+	dashes: DashboardDTO[]
+	selected: string
+	onSelect: (key: string) => void
+	now: number
+}) {
+	const t = useTranslations('dash.overview')
+	const accountName = useAccountName()
+	return (
+		<fieldset className='flex min-w-0 flex-col rounded-lg border [&>button+button]:border-t'>
+			<legend className='sr-only'>{t('accountSwitcher')}</legend>
+			<legend className='sr-only'>{t('accountSwitcher')}</legend>
+			{dashes.map(d => {
+				const key = accountKey(d)
+				const stale = now > 0 && d.reportedAt !== null && now - Date.parse(d.reportedAt) > LIMITS_STALE_MS
+				const moved = d.groups.filter(movedAway).length
+				return (
+					<button
+						key={key}
+						type='button'
+						aria-pressed={key === selected}
+						onClick={() => onSelect(key)}
+						className='flex flex-col gap-0.5 px-3 py-2 text-left outline-none first-of-type:rounded-t-lg last-of-type:rounded-b-lg hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:bg-muted'
+					>
+						<span className='flex min-w-0 items-center gap-2 text-sm'>
+							<span
+								className={cn(
+									'size-1.5 shrink-0 rounded-full',
+									stale ? 'bg-amber-500' : 'bg-emerald-500',
+								)}
+								aria-hidden
+							/>
+							<span className='truncate font-medium'>{accountName(d)}</span>
+						</span>
+						<span className='flex gap-3 pl-3.5 text-xs text-muted-foreground tabular-nums'>
+							<span>
+								5h{' '}
+								<span className={cn('text-foreground', overrun(d.fiveHourPct))}>
+									{pctText(d.fiveHourPct)}
+								</span>
+							</span>
+							<span>
+								{t('week')}{' '}
+								<span className={cn('text-foreground', overrun(d.sevenDayPct))}>
+									{pctText(d.sevenDayPct)}
+								</span>
+							</span>
+							{moved > 0 && <span className='text-foreground'>{t('movedBadge', { count: moved })}</span>}
+						</span>
+					</button>
+				)
+			})}
+		</fieldset>
+	)
+}
+
+interface Segment {
+	name: string
+	color: string
+	/** Points of the account figure this group accounts for. */
+	points: number
+}
+
+/** One limit window: the account's own figure, and a bar cut into the groups'
+ *  contributions, which sum to that figure. */
+function Meter({
+	label,
+	pct,
+	resetsAt,
+	segments,
+	children,
+}: {
+	label: string
+	pct: number
+	resetsAt: string | null
+	segments: Segment[]
+	children?: React.ReactNode
+}) {
+	const t = useTranslations('dash.usage')
+	return (
+		<div className='py-4'>
+			<div className='flex flex-wrap items-baseline justify-between gap-x-3 text-sm'>
+				<span>{label}</span>
+				<span className='text-xs text-muted-foreground'>
+					<ResetCountdown resetsAt={resetsAt} />
+				</span>
+			</div>
+			<Num
+				value={pct}
+				format={pctText}
+				className={cn('mt-2 mb-3 block font-heading text-3xl font-medium tabular-nums', overrun(pct))}
+			/>
+			<p className='sr-only'>
+				{[
+					t('barLabel', { pct: Math.round(pct) }),
+					...segments.map(s => `${s.name} ${Math.round(s.points)}`),
+				].join(', ')}
+			</p>
+			<div aria-hidden className='flex h-2 overflow-hidden rounded-full bg-muted'>
+				{segments.map(s => (
+					<div
+						key={s.name}
+						title={`${s.name}: ${Math.round(s.points)}`}
+						className='h-full not-first:border-l not-first:border-background'
+						style={{ backgroundColor: s.color, width: `${Math.min(100, s.points)}%` }}
+					/>
 				))}
 			</div>
+			{children}
+		</div>
+	)
+}
 
-			{dashes.map(d =>
-				d.modelLimits.length > 0 ? (
-					<Section
-						key={d.accountId ?? 'unidentified'}
-						title={t('modelLimitsFor', { account: accountName(d) })}
-					>
-						{d.modelLimits.map(m => (
-							<ModelLimitRow key={`${m.model}-${m.window}`} limit={m} />
-						))}
-					</Section>
-				) : null,
+/** A per-model limit (Fable weekly) under the window it shares. Its reset only
+ *  shows when it differs from that window's. */
+function ModelLimitRow({ limit, weeklyResetsAt }: { limit: ModelLimitDTO; weeklyResetsAt: string | null }) {
+	return (
+		<div className='mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm'>
+			<span>{limit.label}</span>
+			<UsageBar pct={limit.pct} className='w-24' />
+			<span className={cn('font-medium tabular-nums', overrun(limit.pct))}>{pctText(limit.pct)}</span>
+			{limit.resetsAt !== weeklyResetsAt && (
+				<span className='text-xs text-muted-foreground'>
+					<ResetCountdown resetsAt={limit.resetsAt} />
+				</span>
 			)}
+		</div>
+	)
+}
 
-			<Section title={t('groups')}>
-				<GroupTable groups={rows} expanded={expanded} onToggle={toggleRow} />
-			</Section>
+/** The groups with usage on this account, each against its slice. Expanding a
+ *  row shows which machines are on the account and what they ran. */
+function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[] }) {
+	// Where a group that left this account went: the one its devices are on now.
+	const accountName = useAccountName()
+	const movedTo = (g: LiveGroupUsage) => {
+		const other = dashes.find(
+			d => d !== dash && d.groups.some(x => x.groupId === g.groupId && x.devices.length > 0),
+		)
+		return other ? accountName(other) : null
+	}
+	const t = useTranslations('dash.overview')
+	return (
+		<section aria-labelledby='groups-heading'>
+			<div className='mb-2 flex flex-wrap items-baseline justify-between gap-x-3'>
+				<h2 id='groups-heading' className='text-sm font-medium'>
+					<abbr title={t('sliceHint')} className='no-underline'>
+						{t('groups')}
+					</abbr>
+				</h2>
+				<span className='text-xs text-muted-foreground'>{t('slices', { count: dash.slices })}</span>
+			</div>
+			<ul className='border-t'>
+				{dash.groups.map(g => (
+					<GroupItem key={groupKey(g.groupId)} group={g} movedTo={movedAway(g) ? movedTo(g) : null} />
+				))}
+			</ul>
+		</section>
+	)
+}
 
-			{footnote}
+function GroupItem({ group: g, movedTo }: { group: LiveGroupUsage; movedTo: string | null }) {
+	const t = useTranslations('dash.overview')
+	const moved = movedAway(g)
+	return (
+		<li className='border-b'>
+			<details className='group/row'>
+				<summary className='flex cursor-pointer list-none flex-col gap-1.5 py-2.5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden'>
+					<span className='flex min-w-0 items-center gap-2 text-sm'>
+						<GroupDot color={g.color} />
+						<span className='truncate font-medium'>{g.name}</span>
+						{g.watchOnly && <WatchOnlyMark />}
+						<span className='ml-auto shrink-0 text-xs text-muted-foreground'>
+							{t('devicesCount', { count: g.devices.length })}
+						</span>
+					</span>
+					<span className={cn('grid grid-cols-2 gap-4', moved && 'opacity-60')}>
+						<SliceBar label='5h' pct={g.sessionBudgetPct} color={g.color} />
+						<SliceBar label={t('week')} pct={g.weeklyBudgetPct} color={g.color} />
+					</span>
+					{moved && (
+						<span className='text-xs text-muted-foreground'>
+							{movedTo
+								? t.rich('movedTo', {
+										account: movedTo,
+										mark: chunks => <span className='text-foreground'>{chunks}</span>,
+										time: () => (
+											<RelativeTime
+												date={g.lastUsedAt === null ? null : new Date(g.lastUsedAt)}
+											/>
+										),
+									})
+								: t('moved')}
+						</span>
+					)}
+				</summary>
+				<div className='flex flex-col gap-3 pb-3 pl-4 text-xs'>
+					{g.devices.length > 0 && (
+						<ul>
+							{g.devices.map(d => (
+								<li key={d.id} className='flex justify-between gap-3 py-0.5'>
+									<span className='truncate'>{d.name}</span>
+									<span className='shrink-0 text-muted-foreground'>
+										<RelativeTime date={d.lastSeenAt === null ? null : new Date(d.lastSeenAt)} />
+									</span>
+								</li>
+							))}
+						</ul>
+					)}
+					<div>
+						<p className='mb-1 text-muted-foreground'>{t('models')}</p>
+						<ul>
+							{g.models.map(m => (
+								<li key={m.model} className='flex justify-between gap-3 py-0.5'>
+									<span className='truncate'>{m.label}</span>
+									<span className='shrink-0 tabular-nums'>{formatTokens(m.billableTokens)}</span>
+								</li>
+							))}
+						</ul>
+					</div>
+				</div>
+			</details>
+		</li>
+	)
+}
+
+function SliceBar({ label, pct, color }: { label: string; pct: number; color: string }) {
+	return (
+		<span className='flex items-center gap-2 text-xs'>
+			<span className='w-7 shrink-0 text-muted-foreground'>{label}</span>
+			<UsageBar pct={pct} color={color} />
+			<span className={cn('w-10 shrink-0 text-right text-sm font-medium tabular-nums', overrun(pct))}>
+				{pctText(pct)}
+			</span>
+		</span>
+	)
+}
+
+function Spend({ dash }: { dash: DashboardDTO }) {
+	const t = useTranslations('dash.overview')
+	return (
+		<div className='flex flex-wrap items-baseline gap-x-2 gap-y-1'>
+			<span className='text-xs text-muted-foreground'>{t('spendWeek')}</span>
+			<Num value={dash.spend.week.costUsd} format={formatUsd} className='text-lg font-medium tabular-nums' />
+			<span className='text-xs text-muted-foreground tabular-nums'>
+				{formatTokens(billableTokens(dash.spend.week.totals))} · {formatUsd(dash.spend.month.costUsd)}{' '}
+				{t('month')}
+			</span>
 		</div>
 	)
 }

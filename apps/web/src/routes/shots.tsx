@@ -3,12 +3,9 @@
 // never show someone's actual usage. Dev-only — see the notFound below.
 import { useEffect } from 'react'
 import { createFileRoute, notFound } from '@tanstack/react-router'
-import { AppSidebar, PageTitle } from '@/components/app-sidebar'
-import { UsageExplorer } from '@/components/dashboard/UsageExplorer'
-import { WindowHistory } from '@/components/dashboard/WindowHistory'
-import { LiveDashboard } from '@/components/LiveDashboard'
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
-import { dashboard, history, windows } from '@/lib/shots-fixture'
+import { AppTopbar } from '@/components/app-topbar'
+import { Cockpit } from '@/components/dashboard/Cockpit'
+import { dashboard, history, projects, windows } from '@/lib/shots-fixture'
 
 export const Route = createFileRoute('/shots')({
 	// A deployment must not serve a page of made-up numbers under its own domain.
@@ -32,22 +29,13 @@ function ShotsPage() {
 		}
 	}, [])
 
-	// Same shell numbers as _dash.tsx, or the screenshots stop matching the app.
+	// Same shell as _dash.tsx, or the screenshots stop matching the app.
 	return (
-		<SidebarProvider className='mx-auto max-w-(--shell)' style={{ '--shell': '80rem' } as React.CSSProperties}>
-			<AppSidebar email='you@example.com' isAdmin={false} />
-			<SidebarInset>
-				<header className='sticky top-0 z-10 flex h-14 shrink-0 items-center border-b bg-background/80 px-4 backdrop-blur md:px-6'>
-					<div className='flex w-full max-w-5xl items-center gap-2'>
-						<PageTitle />
-					</div>
-				</header>
-				<div className='flex w-full max-w-5xl flex-1 flex-col gap-6 p-4 md:p-6'>
-					<LiveDashboard initial={[dashboard]} setup={null} />
-					<WindowHistory history={windows} />
-					<UsageExplorer history={history} />
-				</div>
-			</SidebarInset>
-		</SidebarProvider>
+		<>
+			<AppTopbar email='you@example.com' isAdmin={false} />
+			<main className='mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 md:p-6'>
+				<Cockpit accounts={[{ dash: dashboard, windows }]} history={history} projects={projects} setup={null} />
+			</main>
+		</>
 	)
 }

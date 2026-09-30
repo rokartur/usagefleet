@@ -1,11 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { useTranslations } from 'use-intl'
 import { AutoRefresh } from '@/components/AutoRefresh'
-import { ProjectTable } from '@/components/dashboard/ProjectTable'
-import { UsageExplorer } from '@/components/dashboard/UsageExplorer'
-import { WindowHistory } from '@/components/dashboard/WindowHistory'
-import { LiveDashboard } from '@/components/LiveDashboard'
+import { Cockpit } from '@/components/dashboard/Cockpit'
 import { getDashboardOverview, listDevices } from '@/lib/data'
 import { requireUser } from '@/lib/session'
 
@@ -34,27 +30,12 @@ export const Route = createFileRoute('/_dash/dashboard')({
 })
 
 function DashboardPage() {
-	const t = useTranslations('dash.overview')
 	const { accounts, history, projects, setup } = Route.useLoaderData()
-	const multi = accounts.length > 1
 	return (
 		<>
-			{/* The live cards poll on their own; this keeps the history chart fresh. */}
+			{/* The live column polls on its own; this keeps the history chart fresh. */}
 			<AutoRefresh intervalMs={60_000} />
-			<LiveDashboard initial={accounts.map(a => a.dash)} setup={setup} />
-			{/* Past windows are per account and only show up once an account has
-          closed one; a fleet that never reported gets the setup rail alone. */}
-			{accounts.map(({ dash, windows }) =>
-				windows.sessions.length > 0 || windows.weeks.length > 0 ? (
-					<WindowHistory
-						key={dash.accountId ?? 'unidentified'}
-						history={windows}
-						account={multi ? (dash.accountLabel ?? t('unidentifiedAccount')) : undefined}
-					/>
-				) : null,
-			)}
-			{projects.length > 0 && <ProjectTable projects={projects} />}
-			{history.rows.length > 0 && <UsageExplorer history={history} />}
+			<Cockpit accounts={accounts} history={history} projects={projects} setup={setup} />
 		</>
 	)
 }

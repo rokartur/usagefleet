@@ -90,7 +90,7 @@ export function AuthForm({
 		// The session cookie only exists after the call above, so every loader that
 		// asked "is anyone signed in?" has to run again before navigating.
 		await router.invalidate()
-		await (plan ? router.navigate({ to: '/billing', search: { plan } }) : router.navigate({ to: '/dashboard' }))
+		await (plan ? router.navigate({ to: '/account', search: { plan } }) : router.navigate({ to: '/dashboard' }))
 	}
 
 	if (sent) {

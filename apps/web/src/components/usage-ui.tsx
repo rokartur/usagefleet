@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react'
 import { EyeIcon } from 'lucide-react'
 import { animate, useReducedMotion } from 'motion/react'
 import { useTranslations } from 'use-intl'
-import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 
 /**
@@ -96,20 +95,21 @@ export const overrun = (pct: number) => (Math.round(pct) >= 100 ? 'text-destruct
 
 /** A limit bar: neutral up to 70%, amber past it, destructive past 90% — so a
  *  group that is about to eat its budget is visible without reading numbers. */
-export function UsageBar({ pct, className }: { pct: number; className?: string }) {
+/** A group's bar takes the group's colour. No threshold colours: amber and red
+ *  mean offline and overrun elsewhere, so nearness reads from the length and an
+ *  overrun from the number beside it ({@link overrun}). */
+export function UsageBar({ pct, color, className }: { pct: number; color?: string; className?: string }) {
 	const t = useTranslations('dash.usage')
 	const value = Math.min(100, Math.max(0, pct))
 	return (
-		<Progress
-			value={value}
-			aria-label={t('barLabel', { pct: value })}
-			className={cn(
-				'[&_[data-slot=progress-track]]:h-1.5',
-				pct >= 90 && '[&_[data-slot=progress-indicator]]:bg-destructive',
-				pct >= 70 && pct < 90 && '[&_[data-slot=progress-indicator]]:bg-amber-500',
-				className,
-			)}
-		/>
+		<span className={cn('block h-1.5 w-full overflow-hidden rounded-full bg-muted', className)}>
+			<span className='sr-only'>{t('barLabel', { pct: Math.round(value) })}</span>
+			<span
+				aria-hidden
+				className='block h-full rounded-full bg-primary'
+				style={{ backgroundColor: color, width: `${value}%` }}
+			/>
+		</span>
 	)
 }
 

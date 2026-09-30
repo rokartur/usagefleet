@@ -26,7 +26,7 @@ const loginPage = createServerFn().handler(async () => {
 
 /** Both params come from a URL, so neither is trusted. `plan` is dropped unless
  *  it names a plan we still sell, otherwise a crafted ?plan= would ride through
- *  to /billing. `error` is only ever compared or counted, never rendered, so it
+ *  to /account. `error` is only ever compared or counted, never rendered, so it
  *  is kept as an opaque string — better-auth picks the code (signup_disabled,
  *  account_not_linked, access_denied, ...) and that list is not ours to fix.
  *  A repeated ?error= decodes to an array rather than a string, which is how an

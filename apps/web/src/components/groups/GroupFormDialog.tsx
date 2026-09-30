@@ -123,7 +123,9 @@ export function GroupFormDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger render={editing ? <Button variant='ghost' size='sm' /> : <Button disabled={atCap} />}>
+			<DialogTrigger
+				render={editing ? <Button variant='ghost' size='sm' /> : <Button variant='outline' disabled={atCap} />}
+			>
 				{editing ? <PencilIcon /> : <PlusIcon />}
 				{t(editing ? 'edit' : 'newTitle')}
 			</DialogTrigger>

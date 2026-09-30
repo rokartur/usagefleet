@@ -8,7 +8,7 @@ import type { PaidPlan } from './plans'
  *  leaves a failed sign-in with no message at all. */
 export function signInRedirects(plan?: PaidPlan) {
 	return {
-		callbackURL: plan ? `/billing?plan=${plan}` : '/dashboard',
+		callbackURL: plan ? `/account?plan=${plan}` : '/dashboard',
 		errorCallbackURL: plan ? `/login?plan=${plan}` : '/login',
 	}
 }

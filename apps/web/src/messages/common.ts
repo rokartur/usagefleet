@@ -11,13 +11,11 @@ const en = {
 	language: { en: 'English', label: 'Language', pl: 'Polski' },
 	loading: 'Loading',
 	nav: {
+		account: 'Account',
 		admin: 'Admin',
-		billing: 'Billing',
 		dashboard: 'Dashboard',
-		devices: 'Devices',
-		groups: 'Groups',
-		overview: 'Overview',
-		settings: 'Settings',
+		fleet: 'Fleet',
+		label: 'Main',
 	},
 	notFound: {
 		devices: 'reporting, unaffected',
@@ -34,7 +32,6 @@ const en = {
 	},
 	siteDescription:
 		'Track coding agent token usage and rate limits across every machine on one subscription. Live 5-hour and weekly windows, split per device and per group.',
-	tagline: 'Usage across groups and devices',
 	theme: { dark: 'Dark', label: 'Theme', light: 'Light', system: 'System' },
 	user: {
 		signOut: 'Sign out',
@@ -57,13 +54,11 @@ const pl: typeof en = {
 	language: { en: 'English', label: 'Język', pl: 'Polski' },
 	loading: 'Wczytywanie',
 	nav: {
+		account: 'Konto',
 		admin: 'Administracja',
-		billing: 'Płatności',
 		dashboard: 'Pulpit',
-		devices: 'Urządzenia',
-		groups: 'Grupy',
-		overview: 'Przegląd',
-		settings: 'Ustawienia',
+		fleet: 'Flota',
+		label: 'Główna',
 	},
 	notFound: {
 		devices: 'raportują, bez zmian',
@@ -80,9 +75,6 @@ const pl: typeof en = {
 	},
 	siteDescription:
 		'Śledź zużycie tokenów i limity agentów kodujących na wszystkich maszynach w jednej subskrypcji. Okna 5-godzinne i tygodniowe na żywo, w podziale na urządzenia i grupy.',
-	// Shorter than a literal translation on purpose: the sidebar clips around 30
-	// characters and the full phrase rendered with an ellipsis.
-	tagline: 'Zużycie grup i urządzeń',
 	theme: { dark: 'Ciemny', label: 'Motyw', light: 'Jasny', system: 'Systemowy' },
 	user: {
 		signOut: 'Wyloguj się',

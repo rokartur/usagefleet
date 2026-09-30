@@ -15,7 +15,7 @@ describe('sign-in redirect targets', () => {
 
 	it('carries the chosen plan through both success and failure', () => {
 		expect(signInRedirects('solo')).toStrictEqual({
-			callbackURL: '/billing?plan=solo',
+			callbackURL: '/account?plan=solo',
 			errorCallbackURL: '/login?plan=solo',
 		})
 	})

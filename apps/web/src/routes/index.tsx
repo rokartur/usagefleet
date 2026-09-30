@@ -119,7 +119,7 @@ const EXAMPLE_GROUPS = [
 	// dot a real group could actually be wearing.
 	{ name: 'laptops', color: '#6366f1', devices: 3, session: 62, weekly: 41, tokens: 4.2 },
 	{ name: 'workDesktops', color: '#10b981', devices: 2, session: 23, weekly: 18, tokens: 1.6 },
-	{ name: 'homeServer', color: '#f59e0b', devices: 1, session: 9, weekly: 6, tokens: 0.5 },
+	{ name: 'homeServer', color: '#06b6d4', devices: 1, session: 9, weekly: 6, tokens: 0.5 },
 ] as const
 
 const millions = (value: number) => `${value.toFixed(1)}M`
@@ -155,7 +155,7 @@ const SPECS = ['source', 'split', 'privacy'] as const
  *  rows. `highlight` marks the tier the columns lean on. */
 // Device count is the only thing a subscription actually gates (see plans.ts),
 // so every perk line below has to be something all tiers really get. `id` is
-// what the CTA carries through sign-in so /billing can preselect the plan.
+// what the CTA carries through sign-in so /account can preselect the plan.
 interface Tier {
 	id: PaidPlan | null
 	plan: string
@@ -543,7 +543,7 @@ function Landing() {
 										{/* /login drops ?plan= for anyone already signed in, so send
 										    them straight to the page that acts on it. */}
 										<Link
-											to={signedIn ? '/billing' : '/login'}
+											to={signedIn ? '/account' : '/login'}
 											search={tier.id ? { plan: tier.id } : {}}
 											className={buttonVariants({
 												variant: tier.highlight ? 'default' : 'outline',

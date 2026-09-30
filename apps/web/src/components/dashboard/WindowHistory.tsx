@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { useLocale, useTranslations } from 'use-intl'
-import { Badge } from '@/components/ui/badge'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { overrun, Section, UsageBar } from '@/components/usage-ui'
@@ -83,33 +81,27 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 		<Section
 			title={account ? t('pastWindowsFor', { account }) : t('pastWindows')}
 			actions={
-				<div className='flex flex-wrap items-center gap-2'>
+				<div className='flex flex-wrap items-center gap-3'>
 					<Tooltip>
-						<TooltipTrigger render={<Badge variant='outline' className='font-normal' />}>
+						<TooltipTrigger className='text-xs text-muted-foreground underline decoration-dotted underline-offset-4'>
 							{t('beta')}
 						</TooltipTrigger>
 						<TooltipContent>{t('betaHint')}</TooltipContent>
 					</Tooltip>
-					<Select
-						value={kind}
-						onValueChange={v => {
-							if (v) {
-								setKind(v)
-							}
-						}}
-						items={KINDS.map(k => ({ label: kindLabel[k], value: k }))}
-					>
-						<SelectTrigger size='sm' aria-label={t('window')}>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{KINDS.map(k => (
-								<SelectItem key={k} value={k}>
-									{kindLabel[k]}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
+					<fieldset className='inline-flex gap-0.5 rounded-lg border p-0.5'>
+						<legend className='sr-only'>{t('window')}</legend>
+						{KINDS.map(k => (
+							<button
+								key={k}
+								type='button'
+								aria-pressed={kind === k}
+								onClick={() => setKind(k)}
+								className='rounded-md px-2.5 py-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:bg-muted aria-pressed:text-foreground'
+							>
+								{kindLabel[k]}
+							</button>
+						))}
+					</fieldset>
 				</div>
 			}
 		>
@@ -125,64 +117,147 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 					</EmptyHeader>
 				</Empty>
 			) : (
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>{t('windowUtc')}</TableHead>
-							<TableHead>{t('accountLimit')}</TableHead>
-							<TableHead className='text-right'>{t('tokens')}</TableHead>
-							{columns.map(c => (
-								<TableHead key={c.key} className='text-right'>
-									<span className='inline-flex items-center gap-2'>
-										<span
-											className='size-2.5 shrink-0 rounded-full'
-											style={{ backgroundColor: c.color }}
-											aria-hidden
-										/>
-										{c.name}
-									</span>
-								</TableHead>
-							))}
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{windows.map(w => (
-							<TableRow key={w.start}>
-								<TableCell className='font-medium whitespace-nowrap'>{windowLabel(w, kind)}</TableCell>
-								<TableCell>
-									{w.accountPct === null ? (
-										<span className='text-muted-foreground'>{t('noLimitSample')}</span>
-									) : (
-										<span className='flex min-w-36 items-center gap-3'>
-											<UsageBar pct={w.accountPct} className='w-24 shrink-0' />
-											<span className={cn('font-medium tabular-nums', overrun(w.accountPct))}>
-												{w.accountPct}%
+				<>
+					<WindowChart windows={windows} kind={kind} />
+					<details className='mt-4 text-sm'>
+						<summary className='w-max cursor-pointer text-muted-foreground hover:text-foreground'>
+							{t('table')}
+						</summary>
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>{t('windowUtc')}</TableHead>
+									<TableHead>{t('accountLimit')}</TableHead>
+									<TableHead className='text-right'>{t('tokens')}</TableHead>
+									{columns.map(c => (
+										<TableHead key={c.key} className='text-right'>
+											<span className='inline-flex items-center gap-2'>
+												<span
+													className='size-2.5 shrink-0 rounded-full'
+													style={{ backgroundColor: c.color }}
+													aria-hidden
+												/>
+												{c.name}
 											</span>
-										</span>
-									)}
-								</TableCell>
-								<TableCell className='text-right tabular-nums'>{formatTokens(w.tokens)}</TableCell>
-								{columns.map(c => {
-									const g = w.groups.find(x => columnKey(x.groupId) === c.key)
-									return (
-										<TableCell key={c.key} className='text-right tabular-nums'>
-											{g && g.accountPct !== null ? (
-												<span className={cn('font-medium', overrun(g.accountPct))}>
-													{g.accountPct}%
-												</span>
+										</TableHead>
+									))}
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{windows.map(w => (
+									<TableRow key={w.start}>
+										<TableCell className='font-medium whitespace-nowrap'>
+											{windowLabel(w, kind)}
+										</TableCell>
+										<TableCell>
+											{w.accountPct === null ? (
+												<span className='text-muted-foreground'>{t('noLimitSample')}</span>
 											) : (
-												<span className='text-muted-foreground'>
-													{g ? formatTokens(g.tokens) : '—'}
+												<span className='flex min-w-36 items-center gap-3'>
+													<UsageBar pct={w.accountPct} className='w-24 shrink-0' />
+													<span
+														className={cn(
+															'font-medium tabular-nums',
+															overrun(w.accountPct),
+														)}
+													>
+														{w.accountPct}%
+													</span>
 												</span>
 											)}
 										</TableCell>
-									)
-								})}
-							</TableRow>
-						))}
-					</TableBody>
-				</Table>
+										<TableCell className='text-right tabular-nums'>
+											{formatTokens(w.tokens)}
+										</TableCell>
+										{columns.map(c => {
+											const g = w.groups.find(x => columnKey(x.groupId) === c.key)
+											return (
+												<TableCell key={c.key} className='text-right tabular-nums'>
+													{g && g.accountPct !== null ? (
+														<span className={cn('font-medium', overrun(g.accountPct))}>
+															{g.accountPct}%
+														</span>
+													) : (
+														<span className='text-muted-foreground'>
+															{g ? formatTokens(g.tokens) : '—'}
+														</span>
+													)}
+												</TableCell>
+											)
+										})}
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</details>
+				</>
 			)}
 		</Section>
+	)
+}
+
+/** Past this many the columns get thinner than their labels; the table below
+ *  still lists every window. */
+const CHART_WINDOWS = 16
+
+/** One column per window, oldest on the left: its height is the account's peak,
+ *  cut into what each group contributed, against a 100% line. A window with no
+ *  limit sample gets a short hatched stub so the gap reads as missing data. */
+function WindowChart({ windows, kind }: { windows: PastWindow[]; kind: Kind }) {
+	const t = useTranslations('dash.overview')
+	const locale = useLocale()
+	const label = useWindowLabel()
+	const short = new Intl.DateTimeFormat(
+		locale,
+		kind === 'sessions'
+			? { hour: '2-digit', hourCycle: 'h23', minute: '2-digit', timeZone: 'UTC', weekday: 'short' }
+			: { day: 'numeric', month: 'short', timeZone: 'UTC' },
+	)
+	const shown = windows.slice(0, CHART_WINDOWS).toReversed()
+
+	return (
+		<div
+			aria-hidden
+			className='grid gap-1.5'
+			style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}
+		>
+			{shown.map(w => (
+				<div
+					key={w.start}
+					title={`${label(w, kind)} UTC · ${w.accountPct === null ? t('noLimitSample') : `${Math.round(w.accountPct)}%`}`}
+					className='flex min-w-0 flex-col'
+				>
+					<div className='relative flex h-36 flex-col justify-end border-t border-dashed border-foreground/20'>
+						<span
+							className={cn(
+								'mb-1 text-center text-[11px] text-muted-foreground tabular-nums',
+								w.accountPct !== null && overrun(w.accountPct),
+							)}
+						>
+							{w.accountPct === null ? 'n/a' : `${Math.round(w.accountPct)}%`}
+						</span>
+						{w.accountPct === null ? (
+							<div className='h-3 rounded-t-sm bg-[repeating-linear-gradient(135deg,var(--color-muted)_0_3px,transparent_3px_6px)]' />
+						) : (
+							<div
+								className='flex flex-col-reverse overflow-hidden rounded-t-sm'
+								style={{ height: `calc((100% - 1.25rem) * ${Math.min(100, w.accountPct) / 100})` }}
+							>
+								{w.groups.map(g => (
+									<div
+										key={g.groupId ?? 'ungrouped'}
+										className='not-first:border-b not-first:border-background'
+										style={{ backgroundColor: g.color, flexGrow: g.accountPct ?? 0 }}
+									/>
+								))}
+							</div>
+						)}
+					</div>
+					<span className='mt-1.5 truncate text-center text-[11px] text-muted-foreground'>
+						{short.format(new Date(w.start))}
+					</span>
+				</div>
+			))}
+		</div>
 	)
 }

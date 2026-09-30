@@ -10,7 +10,6 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Section } from '@/components/usage-ui'
 import type { HistoryDTO, HistoryRow } from '@/lib/data'
 import { formatTokens, formatUsd } from '@/lib/format'
@@ -278,9 +277,10 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 			(s, r) => ({
 				billable: s.billable + r.billable,
 				cost: s.cost + r.cost,
+				metric: s.metric + r.metric,
 				total: s.total + r.total,
 			}),
-			{ billable: 0, cost: 0, total: 0 },
+			{ billable: 0, cost: 0, metric: 0, total: 0 },
 		)
 		const config: ChartConfig = Object.fromEntries(series.map(s => [s.key, { color: s.color, label: s.label }]))
 		return { config, data, monthly, series, sum }
@@ -291,26 +291,22 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 			title={t('title')}
 			actions={
 				<div className='flex flex-wrap items-center gap-2'>
-					<Select
-						value={period}
-						onValueChange={v => {
-							if (v) {
-								setPeriod(v)
-							}
-						}}
-						items={PERIODS.map(p => ({ label: t(PERIOD_KEY[p]), value: p }))}
-					>
-						<SelectTrigger size='sm' aria-label={t('period')}>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{PERIODS.map(p => (
-								<SelectItem key={p} value={p}>
-									{t(PERIOD_KEY[p])}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
+					<fieldset className='inline-flex flex-wrap gap-0.5 rounded-lg border p-0.5'>
+						<legend className='sr-only'>{t('period')}</legend>
+						{PERIODS.map(p => (
+							<button
+								key={p}
+								type='button'
+								aria-pressed={period === p}
+								aria-label={t(PERIOD_KEY[p])}
+								onClick={() => setPeriod(p)}
+								className='rounded-md px-2.5 py-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:bg-muted aria-pressed:text-foreground'
+							>
+								{/* The rolling windows read fine as "30d"; the rest keep their words. */}
+								{p === '7d' || p === '30d' || p === '90d' ? p : t(PERIOD_KEY[p])}
+							</button>
+						))}
+					</fieldset>
 					<Select
 						value={metric}
 						onValueChange={v => {
@@ -483,57 +479,39 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 							</BarChart>
 						</ChartContainer>
 
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>{t(DIM_KEY[dim])}</TableHead>
-									<TableHead className='text-right'>{t('tableBillable')}</TableHead>
-									<TableHead className='text-right'>{t('tableTotal')}</TableHead>
-									<TableHead className='text-right'>{t('tableCost')}</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{view.series.map(s => (
-									<TableRow key={s.key}>
-										<TableCell>
-											<span className='inline-flex items-center gap-2'>
-												<span
-													className='size-2 shrink-0 rounded-full'
-													style={{ backgroundColor: s.color }}
-													aria-hidden
-												/>
-												{s.label}
-											</span>
-										</TableCell>
-										<TableCell className='text-right tabular-nums'>
-											{formatTokens(s.billable)}
-										</TableCell>
-										<TableCell className='text-right text-muted-foreground tabular-nums'>
-											{formatTokens(s.total)}
-										</TableCell>
-										<TableCell className='text-right font-medium tabular-nums'>
-											{formatUsd(s.cost)}
-										</TableCell>
-									</TableRow>
-								))}
-							</TableBody>
+						{/* Legend with the period's sums. Cost trails each figure unless the
+                chart already plots cost. */}
+						<ul className='mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t pt-3 text-sm'>
 							{view.series.length > 1 && (
-								<TableFooter>
-									<TableRow>
-										<TableCell>{t('tableTotal')}</TableCell>
-										<TableCell className='text-right tabular-nums'>
-											{formatTokens(view.sum.billable)}
-										</TableCell>
-										<TableCell className='text-right tabular-nums'>
-											{formatTokens(view.sum.total)}
-										</TableCell>
-										<TableCell className='text-right tabular-nums'>
+								<li className='flex items-baseline gap-2'>
+									<span className='text-muted-foreground'>{t('tableTotal')}</span>
+									<span className='font-medium tabular-nums'>
+										{formatMetric(view.sum.metric, metric)}
+									</span>
+									{metric !== 'cost' && (
+										<span className='text-xs text-muted-foreground tabular-nums'>
 											{formatUsd(view.sum.cost)}
-										</TableCell>
-									</TableRow>
-								</TableFooter>
+										</span>
+									)}
+								</li>
 							)}
-						</Table>
+							{view.series.map(s => (
+								<li key={s.key} className='flex min-w-0 items-baseline gap-2'>
+									<span
+										className='size-2 shrink-0 self-center rounded-full'
+										style={{ backgroundColor: s.color }}
+										aria-hidden
+									/>
+									<span className='truncate'>{s.label}</span>
+									<span className='font-medium tabular-nums'>{formatMetric(s.metric, metric)}</span>
+									{metric !== 'cost' && (
+										<span className='text-xs text-muted-foreground tabular-nums'>
+											{formatUsd(s.cost)}
+										</span>
+									)}
+								</li>
+							))}
+						</ul>
 					</>
 				) : (
 					<Empty className='border'>

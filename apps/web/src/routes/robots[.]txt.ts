@@ -4,7 +4,7 @@ import { siteUrl } from '@/lib/site'
 // Served, not static, because the Sitemap line needs this deployment's absolute
 // origin. Everything behind sign-in is listed so crawlers don't spend budget on
 // URLs that only ever answer with a redirect to /login.
-const DISALLOW = ['/api/', '/dashboard', '/devices', '/groups', '/billing', '/settings']
+const DISALLOW = ['/api/', '/dashboard', '/fleet', '/account', '/devices', '/groups', '/billing', '/settings']
 
 function GET() {
 	const body = [

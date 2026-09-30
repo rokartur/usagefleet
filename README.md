@@ -17,7 +17,7 @@ Free for one device.
 
 ## What you get
 
-<img src=".github/dashboard.png" alt="Dashboard: 5-hour and weekly utilization, spend, and the per-group split" width="100%">
+<img src=".github/dashboard.png" alt="Dashboard: 5-hour and weekly utilization split by group, each group against its slice, and past windows" width="100%">
 
 The percentages are Anthropic's, not an estimate: a small collector on each
 machine reads them from Anthropic's own usage endpoint (the one Claude's
@@ -81,7 +81,7 @@ time; the free plan keeps working.
 
 ## Usage over time
 
-<img src=".github/usage-over-time.png" alt="Usage over time, split by group, with the per-group token and cost ledger" width="100%">
+<img src=".github/usage-over-time.png" alt="Usage over time, split by group, with per-group token and cost totals" width="100%">
 
 Pick a period, a metric (billable, total, input, output, cache-read or cost) and
 what to split the bars by — group, model, device or source. **+ Filter** narrows

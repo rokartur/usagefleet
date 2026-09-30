@@ -5,7 +5,7 @@ import { toast } from '@/components/ui/toast'
 import { authClient } from '@/lib/auth-client'
 import type { PaidPlan } from '@/lib/plans'
 
-const BILLING_URL = '/billing'
+const BILLING_URL = '/account'
 
 /** Both calls answer with a Stripe URL and the better-auth client redirects the
  *  browser there, so a success path never has to render. */

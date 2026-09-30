@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react'
-import { IconArrowsSplit2, IconEye, IconEyeOff } from '@tabler/icons-react'
+import { IconArrowsSplit2, IconDots, IconEye, IconEyeOff } from '@tabler/icons-react'
 import { type } from 'arktype'
 import { useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
 import { RelativeTime } from '@/components/RelativeTime'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+	DropdownMenu,
+	DropdownMenuCheckboxItem,
+	DropdownMenuContent,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -132,6 +138,8 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 	const [showHidden, setShowHidden] = useState(false)
 	// Selected paths, not rows, so a selection survives filtering: narrow, tick, narrow again.
 	const [selected, setSelected] = useState<string[]>([])
+	// Merging by hand is a mode: the checkboxes only show while it is on.
+	const [picking, setPicking] = useState(false)
 	const [{ hidden, merge }, setPrefs] = useState({ hidden: [] as string[], merge: false })
 	// The server has no idea what this browser muted, so the first paint is the
 	// unfiltered table and the stored prefs land right after mount.
@@ -204,24 +212,41 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 							))}
 						</SelectContent>
 					</Select>
-					<Button
-						variant={merge ? 'secondary' : 'outline'}
-						size='sm'
-						aria-pressed={merge}
-						onClick={() => persist({ merge: !merge })}
-					>
-						{t('mergeByName')}
-					</Button>
-					{hidden.length > 0 && (
-						<Button
-							variant={hiddenView ? 'secondary' : 'ghost'}
-							size='sm'
-							aria-pressed={hiddenView}
-							onClick={() => setShowHidden(!hiddenView)}
+					{/* Rarely touched, so they sit behind one button instead of three. */}
+					<DropdownMenu>
+						<DropdownMenuTrigger
+							render={<Button variant='ghost' size='icon-sm' aria-label={t('options')} />}
 						>
-							{t('hidden', { count: hidden.length })}
-						</Button>
-					)}
+							<IconDots />
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align='end' className='w-52'>
+							<DropdownMenuCheckboxItem
+								checked={merge}
+								onCheckedChange={() => persist({ merge: !merge })}
+							>
+								{t('mergeByName')}
+							</DropdownMenuCheckboxItem>
+							{!readOnly && (
+								<DropdownMenuCheckboxItem
+									checked={picking}
+									onCheckedChange={() => {
+										setPicking(!picking)
+										setSelected([])
+									}}
+								>
+									{t('mergeByHand')}
+								</DropdownMenuCheckboxItem>
+							)}
+							{hidden.length > 0 && (
+								<DropdownMenuCheckboxItem
+									checked={hiddenView}
+									onCheckedChange={() => setShowHidden(!hiddenView)}
+								>
+									{t('hidden', { count: hidden.length })}
+								</DropdownMenuCheckboxItem>
+							)}
+						</DropdownMenuContent>
+					</DropdownMenu>
 				</div>
 			}
 		>
@@ -258,7 +283,7 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 			<Table>
 				<TableHeader>
 					<TableRow>
-						{!readOnly && (
+						{picking && (
 							<TableHead className='w-8'>
 								<span className='sr-only'>{t('merge')}</span>
 							</TableHead>
@@ -281,7 +306,7 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 						const keys = keysOf(p)
 						return (
 							<TableRow key={keys.join(' ')} className='group/row'>
-								{!readOnly && (
+								{picking && (
 									<TableCell>
 										<Checkbox
 											checked={isSelected(p)}
@@ -330,7 +355,18 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 									<Num value={p.totalTokens} format={formatTokens} />
 								</TableCell>
 								<TableCell className='text-right'>
-									<Num value={p.costUsd} format={formatUsd} />
+									<span className='inline-flex items-center justify-end gap-2'>
+										{/* Share of the listed total, so the heavy projects stand out without reading digits. */}
+										<span aria-hidden className='h-1 w-12 overflow-hidden rounded-full bg-muted'>
+											<span
+												className='block h-full rounded-full bg-foreground/60'
+												style={{
+													width: `${total.costUsd > 0 ? (p.costUsd / total.costUsd) * 100 : 0}%`,
+												}}
+											/>
+										</span>
+										<Num value={p.costUsd} format={formatUsd} />
+									</span>
 								</TableCell>
 								<TableCell className='text-right whitespace-nowrap text-muted-foreground'>
 									<RelativeTime date={p.lastActive} />
@@ -376,7 +412,7 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 					})}
 					{shown.length === 0 && (
 						<TableRow>
-							<TableCell colSpan={readOnly ? 7 : 8} className='text-muted-foreground'>
+							<TableCell colSpan={picking ? 8 : 7} className='text-muted-foreground'>
 								{q ? t('noMatchQuery', { query: query.trim() }) : t('noMatch')}
 							</TableCell>
 						</TableRow>
@@ -384,7 +420,7 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 				</TableBody>
 				<TableFooter>
 					<TableRow>
-						{!readOnly && <TableCell />}
+						{picking && <TableCell />}
 						<TableCell>
 							{t(hiddenView ? 'hiddenTotal' : 'total')}
 							<span className='ml-2 font-normal text-muted-foreground'>
