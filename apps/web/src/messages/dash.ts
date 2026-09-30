@@ -100,6 +100,8 @@ const en = {
 			'It installs the collector, starts it at login and reads your Claude login on that machine. Nothing to paste back here.',
 		tokenStep2: '2. Confirm it found your Claude login',
 		tokenStep2Hint: 'Then the dashboard fills in within a minute, and updates every five.',
+		tokenMultiAccount:
+			"Switching this machine between Claude accounts from different fleets? Run login once while signed into each account, with that fleet's token, and each account reports to its own fleet.",
 		ungrouped: 'Ungrouped',
 		updateFailed: "Couldn't update {name}. Please try again.",
 		updating: 'Updating {name}…',
@@ -474,6 +476,8 @@ const pl: typeof en = {
 			'Instaluje kolektor, uruchamia go przy logowaniu i odczytuje Twoje logowanie do Claude na tej maszynie. Nie musisz nic tu wklejać.',
 		tokenStep2: '2. Potwierdź, że znalazł Twoje logowanie do Claude',
 		tokenStep2Hint: 'Pulpit wypełni się w ciągu minuty i będzie się odświeżał co pięć.',
+		tokenMultiAccount:
+			'Przełączasz tę maszynę między kontami Claude z różnych flot? Uruchom login raz na każdym koncie, z tokenem jego floty, a każde konto będzie raportować do swojej floty.',
 		ungrouped: 'Bez grupy',
 		updateFailed: 'Nie udało się zaktualizować {name}. Spróbuj ponownie.',
 		updating: 'Aktualizowanie {name}…',

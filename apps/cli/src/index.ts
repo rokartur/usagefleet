@@ -1,16 +1,17 @@
 #!/usr/bin/env node
+import { detectClaudeAccount } from './claude-account.js'
 import { detectClaudeCreds } from './claude-creds.js'
 import { reportLimitsOnce, runOnce } from './collector.js'
 import { commands, completionScript, installCompletions, removeCompletions, shells, suggest } from './completion.js'
 import type { Shell } from './completion.js'
-import { ENDPOINT, loadConfig, positiveNumber } from './config.js'
+import { ENDPOINT, loadConfig, positiveNumber, tokenFor } from './config.js'
 import { runGuard } from './guard.js'
 import { loadNotifyConfig } from './notifier.js'
 import { sendNotification } from './notify.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
 import { serviceStatus } from './service.js'
-import { readStore, storePath } from './store.js'
+import { readStore, storePath, updateStore } from './store.js'
 import {
 	ago,
 	bar,
@@ -242,7 +243,7 @@ async function cmdStatus(): Promise<void> {
 
 	console.log('')
 	console.log(row('endpoint', host(ENDPOINT)))
-	console.log(row('device', `${state.deviceId} · token ${cfg.token.slice(0, 8)}…`))
+	console.log(row('device', `${state.deviceId} · token ${tokenFor(cfg, detectClaudeAccount()?.extId).slice(0, 8)}…`))
 	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs].filter((d): d is string => !!d)
 	for (const [i, dir] of watching.entries()) {
 		console.log(row(i === 0 ? 'watching' : '', tilde(dir)))
@@ -284,6 +285,16 @@ async function cmdLogin(): Promise<void> {
 	const token = process.argv.slice(3).find(a => !a.startsWith('-')) ?? flag('token')
 	if (token) {
 		process.env.USAGEFLEET_TOKEN = token
+		// Before install(), so the service it starts already routes this account here.
+		// Logging in once per Claude account is how a machine that switches between
+		// accounts in different fleets keeps each one's usage in its own fleet.
+		const account = detectClaudeAccount()
+		if (account) {
+			updateStore(storePath(), store => {
+				store.accountTokens = { ...store.accountTokens, [account.extId]: token }
+			})
+			console.log(step('claude account', `${account.email ?? account.extId} reports with this token`))
+		}
 	}
 	const { install } = await import('./service.js')
 	install()

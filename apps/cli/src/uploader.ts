@@ -1,5 +1,5 @@
 import type { LimitsReport } from './claude-limits.js'
-import { ENDPOINT } from './config.js'
+import { ENDPOINT, tokenFor } from './config.js'
 import type { BatchPayload, Config } from './types.js'
 
 const MAX_ATTEMPTS = 6
@@ -44,7 +44,7 @@ export async function uploadBatch(payload: BatchPayload, cfg: Config): Promise<U
 				body: JSON.stringify(payload),
 				headers: {
 					'content-type': 'application/json',
-					'x-api-key': cfg.token,
+					'x-api-key': tokenFor(cfg, payload.accountExtId),
 				},
 				method: 'POST',
 				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -121,7 +121,7 @@ export async function postLimits(report: LimitsReport, cfg: Config): Promise<'ok
 			body: JSON.stringify(report),
 			headers: {
 				'content-type': 'application/json',
-				'x-api-key': cfg.token,
+				'x-api-key': tokenFor(cfg, report.account?.extId),
 			},
 			method: 'POST',
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),

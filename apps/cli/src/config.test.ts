@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { flagOff, loadConfig, positiveNumber, resolvePiDirs } from './config.js'
+import { flagOff, loadConfig, positiveNumber, resolvePiDirs, tokenFor } from './config.js'
 
 const realEnv = { ...process.env }
 afterEach(() => {
@@ -39,6 +39,17 @@ describe(loadConfig, () => {
 		expect(loadConfig().batchSize).toBe(10)
 		process.env.USAGEFLEET_BATCH = '9999'
 		expect(loadConfig().batchSize).toBe(1000)
+	})
+})
+
+describe(tokenFor, () => {
+	it('reports each Claude account with the token bound to it, even under an env token', () => {
+		withStore({ accountTokens: { 'gmail-uuid': 'uf_personal' }, token: 'uf_work' })
+		process.env.USAGEFLEET_TOKEN = 'uf_work'
+		const cfg = loadConfig()
+		expect(tokenFor(cfg, 'gmail-uuid')).toBe('uf_personal')
+		expect(tokenFor(cfg, 'work-uuid')).toBe('uf_work')
+		expect(tokenFor(cfg, null)).toBe('uf_work')
 	})
 })
 

@@ -40,6 +40,8 @@ function TokenReveal({ token, deviceName }: { token: string; deviceName: string 
 				<FieldDescription>{t('tokenStep2Hint')}</FieldDescription>
 			</div>
 
+			<FieldDescription>{t('tokenMultiAccount')}</FieldDescription>
+
 			<details className='flex flex-col gap-2'>
 				<summary className='cursor-pointer text-sm text-muted-foreground'>{t('tokenRaw')}</summary>
 				<div className='mt-2 flex items-start gap-2'>

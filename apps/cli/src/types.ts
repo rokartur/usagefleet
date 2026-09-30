@@ -89,6 +89,9 @@ export interface LimitsMark {
 export interface Store {
 	version: 1
 	token?: string
+	/** Claude accountUuid → the device token `login` bound to it, for a machine that
+	 *  switches between accounts reporting to different fleets. */
+	accountTokens?: Record<string, string>
 	projectsDir?: string
 	desktopDir?: string
 	/** One path, or several (pi's session root moves with PI_CODING_AGENT_DIR). */
@@ -118,7 +121,9 @@ export interface Store {
 }
 
 export interface Config {
+	/** Used for any Claude account without a token of its own in `accountTokens`. */
 	token: string
+	accountTokens: Record<string, string>
 	/** The single JSON file backing every persisted value (see store.ts). */
 	storePath: string
 	projectsDir: string

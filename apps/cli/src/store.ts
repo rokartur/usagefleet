@@ -52,6 +52,7 @@ export function freshWindow(): WindowNotifyState {
  *  `updateStore` silently erases it. */
 function normalize(raw: Partial<Store>): Store {
 	return {
+		accountTokens: raw.accountTokens,
 		batch: raw.batch,
 		desktopDir: raw.desktopDir,
 		hook: raw.hook,

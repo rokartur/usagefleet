@@ -25,6 +25,9 @@ export function loadConfig(): Config {
 	const parsedBatch = Math.floor(positiveNumber(process.env.USAGEFLEET_BATCH, file.batch) ?? 100)
 	const batchSize = Number.isFinite(parsedBatch) && parsedBatch > 0 ? Math.min(parsedBatch, MAX_BATCH) : 100
 	return {
+		// Kept even when the env names a token: the service unit bakes the default
+		// one into USAGEFLEET_TOKEN, and bindings are what route around it.
+		accountTokens: file.accountTokens ?? {},
 		batchSize,
 		desktopDir: resolveOptionalDir(process.env.USAGEFLEET_DESKTOP, file.desktopDir, defaultDesktopSessionsDir()),
 		piDirs: resolvePiDirs(process.env.USAGEFLEET_PI, file.piDir),
@@ -32,6 +35,13 @@ export function loadConfig(): Config {
 		storePath: storePath(),
 		token,
 	}
+}
+
+/** The token that reports what `extId` (a Claude accountUuid) metered: the one
+ *  `login` bound to that account, else the default. Without this a machine that
+ *  switches Claude accounts files one account's usage in the other's fleet. */
+export function tokenFor(cfg: Pick<Config, 'token' | 'accountTokens'>, extId: string | null | undefined): string {
+	return (extId && cfg.accountTokens[extId]) || cfg.token
 }
 
 /** env → file → nothing, for the numeric knobs (intervals, batch): an env

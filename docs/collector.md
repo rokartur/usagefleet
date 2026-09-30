@@ -38,7 +38,10 @@ Every `USAGEFLEET_INTERVAL` seconds (default 15) `runOnce()`:
 3. `uploader.ts` posts them in batches of ≤1000 (the server's `BatchSchema` cap)
    with retry + backoff. Each batch also carries `accountExtId`, the Claude
    account `~/.claude.json` names at send time, so the server books it on the
-   account that metered it across a `/login` switch.
+   account that metered it across a `/login` switch. The batch goes out with
+   `tokenFor(cfg, accountExtId)`: the token `login` bound to that account in the
+   store's `accountTokens`, else the default one. Limits reports and `guard` pick
+   their token the same way, so an account in another fleet never reports here.
    Each batch carries `sentAt`, this machine's clock at
    send time; the server measures its own receipt time against it to correct the
    device's clock drift, without which usage lands in the wrong attribution

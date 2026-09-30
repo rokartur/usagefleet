@@ -21,6 +21,25 @@ first report, not at login), sets the collector to start with your session and
 writes `~/.config/usagefleet/config.json` (mode `600`). The dashboard fills in
 within a minute.
 
+### One machine, several Claude accounts
+
+If you switch this machine between Claude accounts that belong to different
+fleets (a work subscription and a personal one), run `login` once per account,
+each time while signed into that account in Claude Code:
+
+```bash
+claude /login                  # sign into the work account
+usagefleet login uf_work       # token from the work fleet
+claude /login                  # sign into the personal account
+usagefleet login uf_personal   # token from your own fleet
+```
+
+`login` binds its token to the Claude account signed in at that moment, and
+the collector reports each account's usage and limits with its own token. An
+account without a binding uses the last token you logged in with. Without this,
+whatever you do on the personal account lands in the work fleet and vanishes
+from yours. `usagefleet status` shows which token the current account uses.
+
 `login` takes the token and nothing else. The collector reports to
 `usagefleet.com` and there is no way to redirect it: the request carries your
 device token and a log of what this machine is working on.

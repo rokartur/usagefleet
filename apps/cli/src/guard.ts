@@ -1,4 +1,5 @@
-import { ENDPOINT, loadConfig } from './config.js'
+import { detectClaudeAccount } from './claude-account.js'
+import { ENDPOINT, loadConfig, tokenFor } from './config.js'
 import type { Config } from './types.js'
 
 /** Hooks run on the interactive path — a slow/hung server must not stall a
@@ -57,7 +58,7 @@ export async function runGuard(): Promise<number> {
 	let view: GuardView | null
 	try {
 		const res = await fetch(`${ENDPOINT}/api/v1/limits`, {
-			headers: { 'x-api-key': cfg.token },
+			headers: { 'x-api-key': tokenFor(cfg, detectClaudeAccount()?.extId) },
 			signal: AbortSignal.timeout(TIMEOUT_MS),
 		})
 		if (!res.ok) {
