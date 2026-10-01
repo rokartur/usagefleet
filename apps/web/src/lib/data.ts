@@ -490,8 +490,10 @@ export function shouldRecordPoint(prev: { pct: number } | undefined, pct: number
  * rise between two readings is split by the cost of the events inside that
  * interval, so a percentage point is charged to whoever was active when it was
  * actually burned instead of being smeared over the whole window by cost. A
- * rise over an interval with no priceable events is skipped, so normalizing to
- * the official pct spreads it over the groups by their attributed shares.
+ * rise over an interval with no priceable events stays unattributed: it was
+ * burned outside the fleet (claude.ai, another machine), not by the groups.
+ * Weights are pct points, scaled down only when corrections leave the official
+ * pct below the sum of rises.
  *
  * The window opens at 0% by definition, which anchors the first rise; a final
  * synthetic reading at (`now`, `targetPct`) carries any rise the account row
@@ -503,8 +505,8 @@ export function shouldRecordPoint(prev: { pct: number } | undefined, pct: number
  * the work that caused it rather than with whatever was running when it
  * surfaced.
  *
- * Returns null when no rise has events behind it; callers then fall back to the
- * plain cost split.
+ * Returns null when the window has no readings and no rise has events behind
+ * it; callers then fall back to the plain cost split.
  */
 function riseWeights(
 	timeline: { ts: number; key: string | null; cost: number }[],
@@ -544,6 +546,7 @@ function riseWeights(
 	// window it started in; the window filter upstream only sees its end.
 	const events = timeline.filter(e => e.ts >= startMs).toSorted((a, b) => a.ts - b.ts)
 	const weights = new Map<string | null, number>()
+	let totalRise = 0
 	let i = 0
 	for (let b = 1; b < bounds.length; b++) {
 		const end = bounds[b].at
@@ -562,6 +565,7 @@ function riseWeights(
 		if (rise <= 0) {
 			continue
 		}
+		totalRise += rise
 		let costSum = 0
 		for (let e = from; e < i; e++) {
 			costSum += events[e].cost
@@ -574,7 +578,14 @@ function riseWeights(
 			weights.set(key, (weights.get(key) ?? 0) + rise * (cost / costSum))
 		}
 	}
-	return weights.size > 0 ? weights : null
+	if (weights.size === 0 && kept.length === 0) {
+		return null
+	}
+	const scale = totalRise > targetPct ? targetPct / totalRise : 1
+	for (const [key, w] of weights) {
+		weights.set(key, w * scale)
+	}
+	return weights
 }
 
 interface ShareEntry {
@@ -592,8 +603,9 @@ interface ShareEntry {
 
 /** Split an official account-wide percentage across groups by default, or a
  *  caller-supplied event key. With recorded {@link PctPoint}s, each rise is
- *  attributed to the keys active in its interval ({@link riseWeights}); without
- *  them (or with no rise), the whole percentage is split by each key's share of estimated cost
+ *  attributed to the keys active in its interval ({@link riseWeights}) and a
+ *  rise nobody here explains is left out, so the keys may sum below the official
+ *  pct. Without readings the whole percentage is split by each key's share of estimated cost
  *  (API list prices) within the window — weighting buckets (output 5×, cache
  *  write 1.25×, cache read 0.1×) and models (Fable > Opus > Sonnet > Haiku)
  *  like Anthropic's cost-based limit accounting. Token fields stay
@@ -653,15 +665,8 @@ export function splitByShare(
 	}
 	const target = Math.max(0, officialPct)
 	const rise = points ? riseWeights(timeline, points, windowStart, now, target, calibration?.lagMs ?? 0) : null
-	// Weights sum to the total recorded rise; normalizing to `target` keeps the
-	// official percentage authoritative even after a downward correction.
-	let totalWeight = 0
-	for (const w of rise?.values() ?? []) {
-		totalWeight += w
-	}
 	const costShareOf = (k: string | null) => (totalCost > 0 ? target * ((costByKey.get(k) ?? 0) / totalCost) : 0)
-	const shareOf = (k: string | null) =>
-		rise && totalWeight > 0 ? target * ((rise.get(k) ?? 0) / totalWeight) : costShareOf(k)
+	const shareOf = (k: string | null) => (rise ? (rise.get(k) ?? 0) : costShareOf(k))
 
 	const out = new Map<string | null, ShareEntry>()
 	for (const [k, tok] of tokensByKey) {

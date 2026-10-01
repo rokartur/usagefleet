@@ -230,9 +230,9 @@ describe(splitByShare, () => {
 		expect(s.get(null)?.exactPct).toBeCloseTo(20, 6)
 	})
 
-	it('spreads a rise no monitored event can explain over the groups by their attributed shares', () => {
+	it('leaves a rise no monitored event explains outside the groups', () => {
 		// The account hit 40% before any monitored event existed; only the last 10pp
-		// has events behind it, split 3:1 by cost, and that ratio carries the full 50.
+		// has events behind it, split 3:1 by cost. The other 40 was burned elsewhere.
 		const s = splitByShare(
 			[
 				ev('a', 'claude-sonnet-4', 3_000_000, new Date('2026-06-18T13:00:00Z')),
@@ -244,9 +244,35 @@ describe(splitByShare, () => {
 			'5m',
 			[pt('2026-06-18T11:00:00Z', 40)],
 		)
-		expect(s.get('a')?.exactPct).toBeCloseTo(37.5, 6)
-		expect(s.get('b')?.exactPct).toBeCloseTo(12.5, 6)
+		expect(s.get('a')?.exactPct).toBeCloseTo(7.5, 6)
+		expect(s.get('b')?.exactPct).toBeCloseTo(2.5, 6)
 		expect(s.size).toBe(2)
+	})
+
+	it('gives a lone prompt only the rise it sat in, not the whole account', () => {
+		// Someone outside the fleet climbed the account to 11%; one prompt then moved it to 12%.
+		const s = splitByShare(
+			[ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T13:30:00Z'))],
+			WIN_START,
+			NOW,
+			12,
+			'5m',
+			[pt('2026-06-18T12:00:00Z', 11), pt('2026-06-18T13:40:00Z', 12)],
+		)
+		expect(s.get('a')?.exactPct).toBeCloseTo(1, 6)
+	})
+
+	it('attributes nothing when readings exist but no rise has events behind it', () => {
+		// The prompt is newer than the last reading, so no recorded rise can be its yet.
+		const s = splitByShare(
+			[ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T13:30:00Z'))],
+			WIN_START,
+			NOW,
+			12,
+			'5m',
+			[pt('2026-06-18T12:00:00Z', 12)],
+		)
+		expect(s.get('a')?.exactPct).toBe(0)
 	})
 
 	it('degrades to the whole-window cost split when no readings exist', () => {
@@ -309,8 +335,8 @@ describe(splitByShare, () => {
 				pt('2026-06-18T10:36:00Z', 20),
 			],
 		)
-		expect(s.get('a')?.exactPct).toBeCloseTo(10, 6)
-		expect(s.get('b')?.exactPct).toBeCloseTo(10, 6)
+		expect(s.get('a')?.exactPct).toBeCloseTo(5, 6)
+		expect(s.get('b')?.exactPct).toBeCloseTo(5, 6)
 	})
 
 	it('gives a falling interval no weight and keeps its events out of the next one', () => {

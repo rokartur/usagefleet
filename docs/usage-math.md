@@ -121,7 +121,7 @@ in the morning. Details that matter:
   default, its start when the account's calibration says so (`anchorTs`). The
   two differ only for a response that streamed across a reading, but those are
   the expensive ones, and with the wrong anchor their rise lands in an interval
-  with no events and is spread over the wrong groups. Which end Anthropic's meter moves
+  with no events and reads as outside the fleet. Which end Anthropic's meter moves
   at is not documented, so it is fitted, not guessed.
 - Every rise is stored; readings closer than **one minute** merge into one
   interval at read time. A minute is the collector's poll period, so two
@@ -137,18 +137,17 @@ in the morning. Details that matter:
   The merge interval is the attribution resolution: inside one, we are back to
   splitting by cost.
 - A rise over an interval with no priceable events (usage from before the
-  collector ran or from a device outside the fleet) is skipped, and normalizing
-  to the official pct spreads it over the groups in proportion to their
-  attributed rises. When no rise has events behind it at all, the split falls
-  back to plain cost share; with no fleet events in the window at all the groups
-  read 0 and the meter shows the whole pct as "Outside the fleet" (the gap
-  between the official pct and the groups' sum, `Meter` in `LiveDashboard.tsx`).
+  collector ran or from a device outside the fleet) goes to no group. The
+  groups then sum below the official pct and the meter shows the gap as
+  "Outside the fleet" (`Meter` in `LiveDashboard.tsx`). Spreading it instead
+  handed one prompt after a long idle the whole climb someone else made. Only a
+  window with no readings at all falls back to plain cost share.
 - Only identified accounts get change points. The `ext_id = NULL` bucket can
   hold several logins at once, whose interleaved readings would look like one
   account sawtoothing and invent rises; those accounts keep the cost split,
   which reads no series shape.
-- Weights are normalized to the official pct, which stays authoritative even
-  after a downward correction; concurrent activity inside one interval still
+- Weights are pct points, scaled down only when a downward correction leaves
+  the official pct below the sum of rises; concurrent activity inside one interval still
   splits by cost, which is as far as Anthropic's aggregate number can be taken.
 
 ### Calibration
@@ -191,8 +190,8 @@ What keeps this honest:
   the same climb seconds apart leave sub-poll intervals in the raw log — fitting
   on those would certify a sampling production never sees, and the held-out gate
   could not catch it because train and test would share the bias.
-- Only ratios between buckets reach the split, since weights are normalized to
-  the official pct like any other cost. The absolute scale (pct per dollar) is
+- Only ratios between buckets reach the split, since each rise is divided by
+  cost share inside its interval like any other cost. The absolute scale (pct per dollar) is
   fitted too, and is what a forecast would need, but nothing reads it yet.
 
 `groupBudgetPct()` then scales a share into what the UI shows:
@@ -272,7 +271,7 @@ table is tokens and estimated cost, per user, across every account.
 `usage.test.ts` and `daily-agg.test.ts` pin the fold and the aggregate sums;
 `data.test.ts` pins the past-window construction, `groupBudgetPct` and
 `splitByShare` — i.e. the budget-slice rule above, the delta attribution
-(rise-per-interval, spreading unexplained rises, the reading merge, the no-points fallback)
+(rise-per-interval, leaving unexplained rises out, the reading merge, the no-points fallback)
 and the cost weighting that feeds it, including the window bounds, the fold
 and the zero-cost case. Run
 `bun run test` in `apps/web`. Keep new math in `lib/usage/` as a pure function
