@@ -24,15 +24,15 @@ const fleetData = createServerFn().handler(async () => {
 	// Enforce the "every device is grouped" invariant before listing.
 	await backfillUngroupedDevices(user.id)
 	const [devices, groups, plan] = await Promise.all([listDevices(user.id), listGroups(user.id), accountPlan(user.id)])
-	// budgetShares in loadLiveDashboard: groups with a live device on an account split
-	// that account. Stated only when every account splits the same way, otherwise the
-	// dashboard names the slice per account and one number here would contradict it.
-	const watchOnly = new Set(groups.filter(g => g.watchOnly).map(g => g.id))
+	// Groups with a live device on an account split that account by weight. Stated
+	// only when every account splits the same way, otherwise the dashboard names the
+	// slice per account and one number here would contradict it.
 	const accounts = new Set(devices.filter(d => !d.revoked).map(d => d.claudeAccountId))
 	const shares = new Set<number>()
 	for (const account of accounts) {
 		const onAccount = devices.filter(d => d.claudeAccountId === account)
-		shares.add(slottedGroups(onAccount, watchOnly).size)
+		const slotted = slottedGroups(onAccount, groups)
+		shares.add(groups.filter(g => slotted.has(g.id)).reduce((parts, g) => parts + g.sliceWeight, 0))
 	}
 	return {
 		devices,
@@ -152,6 +152,10 @@ function FleetPage() {
 							{[
 								t('active', { count: items.filter(d => !d.revoked).length }),
 								g?.watchOnly && tGroups('watchOnly'),
+								g &&
+									!g.watchOnly &&
+									g.sliceWeight !== 1 &&
+									tGroups('weight', { weight: g.sliceWeight }),
 								(g?.blockOnSessionLimit || g?.blockOnWeeklyLimit) &&
 									tGroups('blocksAt', {
 										windows: [
@@ -174,6 +178,7 @@ function FleetPage() {
 										color: g.color,
 										id: g.id,
 										name: g.name,
+										sliceWeight: g.sliceWeight,
 										watchOnly: g.watchOnly,
 									}}
 								/>

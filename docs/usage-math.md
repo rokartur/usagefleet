@@ -195,18 +195,20 @@ What keeps this honest:
   fitted too, and is what a forecast would need, but nothing reads it yet.
 
 `groupBudgetPct()` then scales a share into what the UI shows:
-`round(exactPct × groupCount)`, where `groupCount` counts the groups holding a
-live (non-revoked) device on *this* account — a group that never touches a
-subscription cannot eat its budget, and a group whose only device was revoked
-stops claiming a slice (its historical events still weigh in the split). Every
-such group is budgeted an equal slice of the account, so **with two groups, a
-group sitting at half the account reads 100%**. A watch-only group (e.g. a VPS
-you want to see but not budget) is left out of `groupCount` and scaled by 1,
+`round(exactPct / slice)`. `slottedGroups()` decides the slices: only groups
+holding a live (non-revoked) device on *this* account get one — a group that
+never touches a subscription cannot eat its budget, and a group whose only device
+was revoked stops claiming a slice (its historical events still weigh in the
+split). Each such group's slice is its `slice_weight` over the sum of theirs
+(default 1 each, i.e. equal slices), so **with two equal groups, a group sitting
+at half the account reads 100%**, and weights 2, 1, 1 budget a half and two
+quarters. A watch-only group (e.g. a VPS you want to see but not budget) gets no
+slice and is scaled by 1,
 i.e. it reads its plain share of the account. So is a group with no live device
 left on the account: it switched away, so it holds no slice there, only history.
 Deliberately uncapped: past 100% that group is eating another's slice, which is
 the thing worth seeing. Rounding happens once, at the end — rounding the share
-first would multiply the error by the group count.
+first would multiply the error by 1/slice.
 
 The group table also carries the plain cost-share figure (“by cost”) beside the
 attributed one whenever the two disagree — the same split as if the account had

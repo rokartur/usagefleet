@@ -57,11 +57,12 @@ Break one of these and the product silently reports wrong numbers or leaks acces
   device counts against the account it is signed into, while each usage row
   keeps the account stamped on it at ingest (`usage_event.claude_account_id`), so
   switching a machine between accounts never moves history. One user can hold several.
-- **A group's percentage is its budget slice**, i.e. share × the number of groups
-  with a live (non-revoked) device on that account: with two such groups, one at
-  half the account reads 100%. Uncapped past 100% on purpose. A watch-only group,
-  or one whose devices all left that account, is not counted and reads its plain
-  account share.
+- **A group's percentage is its budget slice**, i.e. share × 1/slice, where only groups
+  with a live (non-revoked) device on that account hold a slice, each the group's
+  `slice_weight` over the sum of theirs (`slottedGroups()`): with two equal such
+  groups, one at half the account reads 100%. Uncapped past 100% on purpose. A
+  watch-only group, or one whose devices all left that account, holds no slice
+  and reads its plain account share.
 - **The collector reports to one server and cannot be redirected.** `ENDPOINT` in
   `apps/cli/src/config.ts` is a constant; there is no flag, env var or stored
   field. `login` exits non-zero on `--endpoint` rather than ignoring it, because

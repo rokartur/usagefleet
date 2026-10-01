@@ -1,0 +1,1 @@
+ALTER TABLE "groups" ADD COLUMN "slice_weight" integer DEFAULT 1 NOT NULL;

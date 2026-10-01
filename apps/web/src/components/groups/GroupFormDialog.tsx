@@ -110,6 +110,7 @@ export function GroupFormDialog({
 		color: string
 		blockOnSessionLimit: boolean
 		blockOnWeeklyLimit: boolean
+		sliceWeight: number
 		watchOnly: boolean
 	}
 	atCap?: boolean
@@ -179,6 +180,21 @@ export function GroupFormDialog({
 							/>
 						</Field>
 						<ColorField selected={group?.color} />
+						<Field>
+							<FieldLabel htmlFor='group-slice-weight'>{t('sliceWeight')}</FieldLabel>
+							<Input
+								id='group-slice-weight'
+								name='sliceWeight'
+								type='number'
+								required
+								min={1}
+								max={100}
+								step={1}
+								defaultValue={group?.sliceWeight ?? 1}
+								className='w-24 tabular-nums'
+							/>
+							<FieldDescription>{t('sliceWeightDescription')}</FieldDescription>
+						</Field>
 						<CheckField
 							name='watchOnly'
 							label={t('watchOnly')}

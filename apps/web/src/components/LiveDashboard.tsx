@@ -474,14 +474,11 @@ function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[
 	const t = useTranslations('dash.overview')
 	return (
 		<section aria-labelledby='groups-heading'>
-			<div className='mb-2 flex flex-wrap items-baseline justify-between gap-x-3'>
-				<h2 id='groups-heading' className='text-sm font-medium'>
-					<abbr title={t('sliceHint')} className='no-underline'>
-						{t('groups')}
-					</abbr>
-				</h2>
-				<span className='text-xs text-muted-foreground'>{t('slices', { count: dash.slices })}</span>
-			</div>
+			<h2 id='groups-heading' className='mb-2 text-sm font-medium'>
+				<abbr title={t('sliceHint')} className='no-underline'>
+					{t('groups')}
+				</abbr>
+			</h2>
 			<ul className='border-t'>
 				{dash.groups.map(g => (
 					<GroupItem
@@ -516,6 +513,7 @@ function GroupItem({
 						<span className='truncate font-medium'>{g.name}</span>
 						{g.watchOnly && <WatchOnlyMark />}
 						<span className='ml-auto shrink-0 text-xs text-muted-foreground'>
+							{g.slicePct !== null && `${t('slice', { pct: Math.round(g.slicePct) })} · `}
 							{t('devicesCount', { count: g.devices.length })}
 						</span>
 					</span>

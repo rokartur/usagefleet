@@ -280,7 +280,10 @@ export interface LiveGroupUsage {
 	color: string
 	/** Claims no slice: its budget percentages are of the whole account. */
 	watchOnly: boolean
-	/** Usage measured against the group's budget slice (an equal share of the
+	/** Percent of the account limit this group is budgeted; null when it holds no
+	 *  slice here (watch-only, ungrouped, or moved to another account). */
+	slicePct: number | null
+	/** Usage measured against the group's budget slice (its weighted share of the
 	 *  account limit) — the "am I eating the other group's half?" view. */
 	sessionBudgetPct: number
 	weeklyBudgetPct: number
@@ -334,7 +337,7 @@ export interface LiveModelLimitGroup {
 	name: string
 	color: string
 	watchOnly: boolean
-	/** Against the group's equal budget slice, like sessionBudgetPct. */
+	/** Against the group's budget slice, like sessionBudgetPct. */
 	budgetPct: number
 	/** Billable tokens of this model family in the limit's window. */
 	tokens: number
@@ -368,8 +371,6 @@ export interface LiveDashboard {
 	accountLabel: string | null
 	/** True once the collector has reported real utilization at least once. */
 	connected: boolean
-	/** Groups holding a budget slice on this account (the N in 1/N). */
-	slices: number
 	source: 'sub' | 'api' | null
 	reportedAt: Date | null
 	fiveHourPct: number
@@ -400,29 +401,39 @@ function windowDurationMs(window: string): number | null {
 	return n * unit
 }
 
-/** Scale an account-share pct to a per-group budget pct — every group that
- *  exists is budgeted an equal slice (1/groupCount) of the account limit, so
- *  with 2 groups one at its half reads 100% while the account is at 50%.
+/** Scale an account-share pct to a per-group budget pct against the group's
+ *  slice (the fraction of the account limit it is budgeted, 1 = whole), so with
+ *  a half slice a group at 50% of the account reads 100%.
  *  Uncapped: past 100% the group has overrun its slice and is eating another
- *  group's, which is worth seeing. Takes the *unrounded* share so the multiply
- *  doesn't amplify a rounding error (at 10 groups 0.5pt would become 5pt). */
-export const groupBudgetPct = (share: { exactPct: number } | undefined, groupCount: number) =>
-	Math.round((share?.exactPct ?? 0) * groupCount)
+ *  group's, which is worth seeing. Takes the *unrounded* share so the scaling
+ *  doesn't amplify a rounding error (at a 1/10 slice 0.5pt would become 5pt). */
+export const groupBudgetPct = (share: { exactPct: number } | undefined, slice: number) =>
+	Math.round((share?.exactPct ?? 0) / slice)
 
-/** The groups that claim a slice of an account: those with a live device on it.
- *  A watch-only group claims none, and a group whose devices all moved to another
- *  account stops claiming one here while its usage stays. */
+/** The groups that claim a slice of an account (those with a live device on it),
+ *  each with its slice as a fraction of the account: its weight over the sum of
+ *  theirs. A watch-only group claims none, and a group whose devices all moved to
+ *  another account stops claiming one here while its usage stays. */
 export function slottedGroups(
 	accountDevices: { revoked: boolean; groupId: string | null }[],
-	watchOnly: Set<string>,
-): Set<string> {
-	const slotted = new Set<string>()
+	groupRows: { id: string; watchOnly: boolean; sliceWeight: number }[],
+): Map<string, number> {
+	const weights = new Map<string, number>()
 	for (const d of accountDevices) {
-		if (!d.revoked && d.groupId !== null && !watchOnly.has(d.groupId)) {
-			slotted.add(d.groupId)
+		const g = groupRows.find(g => g.id === d.groupId)
+		if (!d.revoked && g && !g.watchOnly) {
+			weights.set(g.id, g.sliceWeight)
 		}
 	}
-	return slotted
+	let total = 0
+	for (const w of weights.values()) {
+		total += w
+	}
+	const slices = new Map<string, number>()
+	for (const [id, w] of weights) {
+		slices.set(id, w / total)
+	}
+	return slices
 }
 
 /** A recorded reading of the official percentage at an instant. The rise
@@ -798,7 +809,6 @@ async function loadLiveDashboard(
 			connected: false,
 			groups: [],
 			modelLimits: [],
-			slices: 0,
 			spend: emptySpend(),
 			...base,
 		}
@@ -835,17 +845,13 @@ async function loadLiveDashboard(
 	const events = allEvents.filter(e => inAccount(view, e.claudeAccountId ?? null))
 	const aggRows = allAggRows.filter(r => inAccount(view, r.claudeAccountId))
 
-	// Every group with a LIVE device on this account claims an equal slice of
-	// that account's limit — a group that never touches this subscription can't
+	// Every group with a LIVE device on this account claims a weighted slice of
+	// that account's limit: a group that never touches this subscription can't
 	// spend its budget, and a group whose only device was revoked stops claiming
-	// one (its historical events still count in the split above). The "Ungrouped"
-	// row is divided by that same count without being counted in it, so when
-	// loose devices exist the displayed slices deliberately over-allocate rather
-	// than shrink every real group to make room for them. A watch-only group claims
-	// no slice and reads against the whole account instead.
+	// one (its historical events still count in the split above). "Ungrouped" and
+	// watch-only rows claim no slice and read against the whole account instead.
 	const watchOnly = new Set(groupRows.filter(g => g.watchOnly).map(g => g.id))
-	const slotted = slottedGroups(myDevices, watchOnly)
-	const budgetShares = Math.max(1, slotted.size)
+	const slotted = slottedGroups(myDevices, groupRows)
 	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	const calibration = acct?.calibration ?? null
 	const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, ttl, pointsFor('5h'), calibration)
@@ -861,10 +867,15 @@ async function loadLiveDashboard(
 			watchOnly: isWatchOnly(id),
 		}
 	}
+	const sliceOf = (id: string | null) => (id === null ? undefined : slotted.get(id))
+	const slicePctOf = (id: string | null) => {
+		const slice = sliceOf(id)
+		return slice === undefined ? null : slice * 100
+	}
 	const budgetPctFor = (id: string | null, pct = 0) =>
 		// A group holds a slice only while a live device of it is on this account;
 		// one that switched away (or watches) reads its plain share of what it left.
-		groupBudgetPct({ exactPct: pct }, id !== null && slotted.has(id) ? budgetShares : 1)
+		groupBudgetPct({ exactPct: pct }, sliceOf(id) ?? 1)
 
 	const lastUsed = new Map<string | null, number>()
 	for (const e of events) {
@@ -878,8 +889,7 @@ async function loadLiveDashboard(
 	const groupUsages: LiveGroupUsage[] = [...keys].map(id => ({
 		groupId: id,
 		...labelFor(id),
-		// Usage against the group's equal slice of the account limit: a group
-		// filling its share reads 100% while the account is at 50%.
+		slicePct: slicePctOf(id),
 		sessionBudgetPct: budgetPctFor(id, sessionSplit.get(id)?.exactPct),
 		weeklyBudgetPct: budgetPctFor(id, weeklySplit.get(id)?.exactPct),
 		sessionCostPct: budgetPctFor(id, sessionSplit.get(id)?.costPct),
@@ -975,7 +985,6 @@ async function loadLiveDashboard(
 		connected: true,
 		groups: groupUsages,
 		modelLimits,
-		slices: slotted.size,
 		spend,
 		...base,
 	}
@@ -1782,7 +1791,6 @@ export interface DashboardDTO {
 	accountId: string | null
 	accountLabel: string | null
 	connected: boolean
-	slices: number
 	source: 'sub' | 'api' | null
 	reportedAt: string | null
 	fiveHourPct: number
@@ -1799,7 +1807,6 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
 		accountId: d.accountId,
 		accountLabel: d.accountLabel,
 		connected: d.connected,
-		slices: d.slices,
 		fiveHourPct: d.fiveHourPct,
 		fiveHourResetsAt: d.fiveHourResetsAt?.toISOString() ?? null,
 		groups: d.groups,

@@ -99,7 +99,7 @@ async function GET(req: Request) {
 
 	// Per-group enforcement switches, gated by the device's own blocking toggle
 	// — a machine switched off on the devices page is never refused, whatever
-	// its group says. Every limit is measured against the group's equal budget
+	// its group says. Every limit is measured against the group's budget
 	// slice, so 100% means "ate my share", not "the account is out" — a group
 	// only blocks itself, never its siblings.
 	const block = fresh && device.blockingEnabled && group ? groupBlock(dash, device.groupId, group) : null

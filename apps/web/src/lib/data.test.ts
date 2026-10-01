@@ -144,8 +144,8 @@ describe(splitByShare, () => {
 	it("lets a group exceed 100% of its slice when it eats another's", () => {
 		// 'a' spends 3x 'b', so with two groups it is well past its half.
 		const s = split([ev('a', 'claude-sonnet-4', 3_000_000), ev('b', 'claude-sonnet-4', 1_000_000)], 80)
-		expect(groupBudgetPct(s.get('a'), 2)).toBe(120)
-		expect(groupBudgetPct(s.get('b'), 2)).toBe(40)
+		expect(groupBudgetPct(s.get('a'), 1 / 2)).toBe(120)
+		expect(groupBudgetPct(s.get('b'), 1 / 2)).toBe(40)
 	})
 
 	it('keeps exactPct unrounded so the budget scale rounds only once', () => {
@@ -154,7 +154,7 @@ describe(splitByShare, () => {
 		const events = Array.from({ length: 10 }, (_, i) => ev(`g${i}`, 'claude-sonnet-4', 1_000_000))
 		const s = split(events, 1)
 		expect(s.get('g0')?.exactPct).toBeCloseTo(0.1, 6)
-		expect(groupBudgetPct(s.get('g0'), 10)).toBe(1)
+		expect(groupBudgetPct(s.get('g0'), 1 / 10)).toBe(1)
 	})
 
 	it('reports zero share when the window has usage but no priceable cost', () => {
@@ -506,30 +506,33 @@ describe(shouldRecordPoint, () => {
 })
 
 describe(groupBudgetPct, () => {
-	it('reads a group at its own equal slice of the account as 100%', () => {
-		// The headline rule: each group is budgeted 1/groupCount of the account, so
-		// two groups splitting a 50%-used account evenly are each at their limit.
-		expect(groupBudgetPct({ exactPct: 25 }, 2)).toBe(50)
-		expect(groupBudgetPct({ exactPct: 50 }, 2)).toBe(100)
-		expect(groupBudgetPct({ exactPct: 25 }, 4)).toBe(100)
+	it('reads a group at its own slice of the account as 100%', () => {
+		expect(groupBudgetPct({ exactPct: 25 }, 1 / 2)).toBe(50)
+		expect(groupBudgetPct({ exactPct: 50 }, 1 / 2)).toBe(100)
+		expect(groupBudgetPct({ exactPct: 25 }, 1 / 4)).toBe(100)
 	})
 
 	it("stays uncapped past 100%, where a group is eating another's slice", () => {
-		expect(groupBudgetPct({ exactPct: 80 }, 2)).toBe(160)
+		expect(groupBudgetPct({ exactPct: 80 }, 1 / 2)).toBe(160)
 	})
 
-	it('rounds once, after scaling, so the multiply cannot amplify the error', () => {
+	it('rounds once, after scaling, so the scaling cannot amplify the error', () => {
 		// Rounding exactPct first would give 1 * 10 = 10, not 5.
-		expect(groupBudgetPct({ exactPct: 0.5 }, 10)).toBe(5)
+		expect(groupBudgetPct({ exactPct: 0.5 }, 1 / 10)).toBe(5)
 	})
 
 	it('treats a group with no share as zero rather than throwing', () => {
-		expect(groupBudgetPct(undefined, 3)).toBe(0)
+		expect(groupBudgetPct(undefined, 1 / 3)).toBe(0)
 	})
 })
 
 describe(slottedGroups, () => {
 	it('slices only groups with a live device on the account', () => {
+		const groupRows = [
+			{ id: 'laptops', sliceWeight: 1, watchOnly: false },
+			{ id: 'server', sliceWeight: 1, watchOnly: false },
+			{ id: 'watch', sliceWeight: 1, watchOnly: true },
+		]
 		const onAccount = [
 			{ groupId: 'laptops', revoked: false },
 			{ groupId: 'laptops', revoked: false },
@@ -537,7 +540,23 @@ describe(slottedGroups, () => {
 			{ groupId: 'watch', revoked: false },
 			{ groupId: null, revoked: false },
 		]
-		expect(slottedGroups(onAccount, new Set(['watch']))).toStrictEqual(new Set(['laptops']))
+		expect(slottedGroups(onAccount, groupRows)).toStrictEqual(new Map([['laptops', 1]]))
+	})
+
+	it('splits the account by weight: 2, 1, 1 is a half and two quarters', () => {
+		const groupRows = [
+			{ id: 'main', sliceWeight: 2, watchOnly: false },
+			{ id: 'a', sliceWeight: 1, watchOnly: false },
+			{ id: 'b', sliceWeight: 1, watchOnly: false },
+		]
+		const onAccount = groupRows.map(g => ({ groupId: g.id, revoked: false }))
+		expect(slottedGroups(onAccount, groupRows)).toStrictEqual(
+			new Map([
+				['main', 1 / 2],
+				['a', 1 / 4],
+				['b', 1 / 4],
+			]),
+		)
 	})
 })
 

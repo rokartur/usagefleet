@@ -158,8 +158,12 @@ const en = {
 		saving: 'Saving…',
 		savingGroup: 'Saving group…',
 		// The "{count} / {limit}" pair renders next to this, so it is not repeated here.
-		slots: 'groups · a slice is 1/{share} of the account limit',
+		sliceWeight: 'Slice weight',
+		sliceWeightDescription:
+			'How many parts of the account limit this group gets. Weights 2, 1, 1 split it into a half and two quarters.',
+		slots: 'groups · the account limit splits into {share, plural, one {# part} other {# parts}}',
 		slotsPerAccount: 'groups · the slice differs per Claude account, see the dashboard',
+		weight: '{weight, plural, one {# part} other {# parts}}',
 		updateFailed: "Couldn't update group",
 		updated: 'Group updated',
 		watchOnly: 'Watch only',
@@ -197,7 +201,7 @@ const en = {
 		movedBadge: '{count} moved',
 		sliceHint:
 			"A group's percentage is its slice of the account limit, so 100% means it used its share. Anthropic reports the account total; the split per group is our estimate.",
-		slices: '{count, plural, =0 {no group holds a slice} one {slice: whole account} other {slice: 1/# of the account}}',
+		slice: 'slice {pct}%',
 		table: 'Table',
 		month: 'month',
 		noLimitSample: 'no limit sample',
@@ -539,8 +543,12 @@ const pl: typeof en = {
 		saving: 'Zapisywanie…',
 		savingGroup: 'Zapisywanie grupy…',
 		// The "{count} / {limit}" pair renders next to this, so it is not repeated here.
-		slots: 'grup · udział to 1/{share} limitu konta',
+		sliceWeight: 'Waga udziału',
+		sliceWeightDescription:
+			'Ile części limitu konta dostaje ta grupa. Wagi 2, 1, 1 dzielą je na połowę i dwie ćwiartki.',
+		slots: 'grup · limit konta dzielony na {share, plural, one {# część} few {# części} many {# części} other {# części}}',
 		slotsPerAccount: 'grup · udział zależy od konta Claude, zobacz pulpit',
+		weight: '{weight, plural, one {# część} few {# części} many {# części} other {# części}}',
 		updateFailed: 'Nie udało się zaktualizować grupy',
 		updated: 'Zaktualizowano grupę',
 		watchOnly: 'Tylko podgląd',
@@ -578,7 +586,7 @@ const pl: typeof en = {
 		movedBadge: 'przeniesione: {count}',
 		sliceHint:
 			'Procent grupy to jej przydział limitu konta, więc 100% znaczy, że zużyła swoją część. Anthropic podaje sumę konta, podział na grupy to nasze oszacowanie.',
-		slices: '{count, plural, =0 {żadna grupa nie ma przydziału} one {przydział: całe konto} other {przydział: 1/# konta}}',
+		slice: 'przydział {pct}%',
 		table: 'Tabela',
 		month: 'miesiąc',
 		noLimitSample: 'brak próbki limitu',

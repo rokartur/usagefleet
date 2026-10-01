@@ -18,6 +18,15 @@ function safeColor(v: string): string {
 	return /^#[0-9a-fA-F]{6}$/.test(v) ? v : '#6366f1'
 }
 
+/** A group's slice weight from the form; the dialog's number input enforces the same range. */
+function sliceWeight(value: unknown): number {
+	const weight = Number(value)
+	if (!Number.isInteger(weight) || weight < 1 || weight > 100) {
+		throw new Error('Slice weight must be a whole number from 1 to 100')
+	}
+	return weight
+}
+
 /** Longest device or group name we store. Both columns are `text`, so nothing
  *  underneath bounds them, and every name is echoed into each dashboard poll —
  *  one oversized name would be re-sent to every tab every 5 seconds. */
@@ -88,11 +97,12 @@ export const createGroup = createServerFn({ method: 'POST' })
 			id: randomUUID(),
 			name,
 			ownerId: user.id,
+			sliceWeight: sliceWeight(formData.get('sliceWeight')),
 			watchOnly: formData.has('watchOnly'),
 		})
 	})
 
-/** Edit a group's color, name, its two blocking switches and watch-only. */
+/** Edit a group's color, name, slice weight, its two blocking switches and watch-only. */
 export const updateGroup = createServerFn({ method: 'POST' })
 	.inputValidator((formData: FormData) => formData)
 	.handler(async ({ data: formData }) => {
@@ -106,11 +116,13 @@ export const updateGroup = createServerFn({ method: 'POST' })
 			blockOnWeeklyLimit: boolean
 			color: string
 			name?: string
+			sliceWeight: number
 			watchOnly: boolean
 		} = {
 			blockOnSessionLimit: formData.has('blockOnSessionLimit'),
 			blockOnWeeklyLimit: formData.has('blockOnWeeklyLimit'),
 			color,
+			sliceWeight: sliceWeight(formData.get('sliceWeight')),
 			watchOnly: formData.has('watchOnly'),
 		}
 		// An absent field and a blank one mean the same thing here: leave the stored

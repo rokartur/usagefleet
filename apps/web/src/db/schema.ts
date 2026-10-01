@@ -34,7 +34,7 @@ export const groups = pgTable(
 		name: text('name').notNull(),
 		color: text('color').notNull().default('#6366f1'),
 		// When on, this group's devices refuse new prompts once the group has eaten
-		// its budget slice (an equal share of the account limit) for that window.
+		// its budget slice (its weighted share of the account limit) for that window.
 		// Enforced by `usagefleet guard` via GET /api/v1/limits; owners toggle them
 		// per group in the group dialog.
 		blockOnSessionLimit: boolean('block_on_session_limit').notNull().default(false),
@@ -42,6 +42,9 @@ export const groups = pgTable(
 		// Shown on the dashboard but claims no slice: the other groups split the
 		// account without it, and its own percentage reads against the whole account.
 		watchOnly: boolean('watch_only').notNull().default(false),
+		// The group's slice is sliceWeight / the sum over slice-holding groups on the
+		// account: 2, 1, 1 gives a half and two quarters.
+		sliceWeight: integer('slice_weight').notNull().default(1),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 	},
 	t => [index('groups_owner_idx').on(t.ownerId)],

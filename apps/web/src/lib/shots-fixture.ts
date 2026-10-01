@@ -61,6 +61,7 @@ const group = (
 	models,
 	name: GROUPS[i].name,
 	// Three groups hold a slice each, so a group's points of the account are a third of its slice.
+	slicePct: 100 / GROUPS.length,
 	sessionAccountPct: sessionPct / GROUPS.length,
 	sessionBudgetPct: sessionPct,
 	// Demo data: cost share agrees with attribution, so the by-cost figure hides.
@@ -104,7 +105,6 @@ export const dashboard: DashboardDTO = {
 	accountId: 'shots-account',
 	accountLabel: null,
 	connected: true,
-	slices: GROUPS.length,
 	fiveHourPct: 41,
 	fiveHourResetsAt: new Date(NOW + 2 * HOUR + 14 * MIN).toISOString(),
 	groups: liveGroups,
