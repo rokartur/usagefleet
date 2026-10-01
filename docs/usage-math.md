@@ -139,8 +139,10 @@ in the morning. Details that matter:
 - A rise over an interval with no priceable events (usage from before the
   collector ran or from a device outside the fleet) is skipped, and normalizing
   to the official pct spreads it over the groups in proportion to their
-  attributed rises. There is no "Unattributed" row. When no rise has events
-  behind it at all, the split falls back to plain cost share.
+  attributed rises. When no rise has events behind it at all, the split falls
+  back to plain cost share; with no fleet events in the window at all the groups
+  read 0 and the meter shows the whole pct as "Outside the fleet" (the gap
+  between the official pct and the groups' sum, `Meter` in `LiveDashboard.tsx`).
 - Only identified accounts get change points. The `ext_id = NULL` bucket can
   hold several logins at once, whose interleaved readings would look like one
   account sawtoothing and invent rises; those accounts keep the cost split,

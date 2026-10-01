@@ -381,7 +381,8 @@ interface Segment {
 }
 
 /** One limit window: the account's own figure, and a bar cut into the groups'
- *  contributions, which sum to that figure. */
+ *  contributions. What they leave of that figure no collector's events explain:
+ *  usage from outside the fleet (claude.ai, phone, a machine without the collector). */
 function Meter({
 	label,
 	pct,
@@ -396,6 +397,11 @@ function Meter({
 	children?: React.ReactNode
 }) {
 	const t = useTranslations('dash.usage')
+	const outside = pct - segments.reduce((sum, s) => sum + s.points, 0)
+	const showOutside = outside >= 1
+	const bars = showOutside
+		? [...segments, { color: 'var(--muted-foreground)', name: t('outside'), points: outside }]
+		: segments
 	return (
 		<div className='py-4'>
 			<div className='flex flex-wrap items-baseline justify-between gap-x-3 text-sm'>
@@ -410,13 +416,12 @@ function Meter({
 				className={cn('mt-2 mb-3 block font-heading text-3xl font-medium tabular-nums', overrun(pct))}
 			/>
 			<p className='sr-only'>
-				{[
-					t('barLabel', { pct: Math.round(pct) }),
-					...segments.map(s => `${s.name} ${Math.round(s.points)}`),
-				].join(', ')}
+				{[t('barLabel', { pct: Math.round(pct) }), ...bars.map(s => `${s.name} ${Math.round(s.points)}`)].join(
+					', ',
+				)}
 			</p>
 			<div aria-hidden className='flex h-2 overflow-hidden rounded-full bg-muted'>
-				{segments.map(s => (
+				{bars.map(s => (
 					<div
 						key={s.name}
 						title={`${s.name}: ${Math.round(s.points)}`}
@@ -425,6 +430,14 @@ function Meter({
 					/>
 				))}
 			</div>
+			{showOutside && (
+				<p aria-hidden className='mt-3 flex items-center gap-x-3 text-sm'>
+					<abbr title={t('outsideHint')} className='no-underline'>
+						{t('outside')}
+					</abbr>
+					<span className='font-medium tabular-nums'>{pctText(outside)}</span>
+				</p>
+			)}
 			{children}
 		</div>
 	)

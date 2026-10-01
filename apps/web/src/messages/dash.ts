@@ -352,6 +352,9 @@ const en = {
 		metricOutput: 'Output tokens',
 		metricTotal: 'Total tokens',
 		nothingMatches: 'Nothing matches.',
+		outside: 'Outside the fleet',
+		outsideHint:
+			'Anthropic counted this, but no collector reported usage behind it: claude.ai, the mobile app, or a machine without the collector.',
 		period: 'Period',
 		period7d: 'Last 7 days',
 		period30d: 'Last 30 days',
@@ -731,6 +734,9 @@ const pl: typeof en = {
 		metricOutput: 'Tokeny wyjściowe',
 		metricTotal: 'Tokeny łącznie',
 		nothingMatches: 'Nic nie pasuje.',
+		outside: 'Spoza floty',
+		outsideHint:
+			'Anthropic to naliczył, ale żaden kolektor nie zgłosił stojącego za tym użycia: claude.ai, aplikacja mobilna albo maszyna bez kolektora.',
 		period: 'Okres',
 		period7d: 'Ostatnie 7 dni',
 		period30d: 'Ostatnie 30 dni',
