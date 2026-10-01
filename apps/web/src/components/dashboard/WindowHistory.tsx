@@ -11,6 +11,10 @@ import { cn } from '@/lib/utils'
 const KINDS = ['sessions', 'weeks'] as const
 type Kind = (typeof KINDS)[number]
 
+/** Chart columns on offer; the largest must not exceed `PAST_WINDOWS` in lib/data.ts. */
+const WINDOW_COUNTS = [4, 8, 16] as const
+type WindowCount = (typeof WINDOW_COUNTS)[number]
+
 /** "Feb 12, 10:00–15:00" for a session, "Feb 5 – Feb 12" for a week.
  *
  *  Pinned to UTC in every locale: these are the boundaries Anthropic's own
@@ -73,7 +77,8 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 	const t = useTranslations('dash.overview')
 	const windowLabel = useWindowLabel()
 	const [kind, setKind] = useState<Kind>('sessions')
-	const windows = history[kind]
+	const [count, setCount] = useState<WindowCount>(8)
+	const windows = history[kind].slice(0, count)
 	const columns = columnsOf(windows)
 	const kindLabel = { sessions: t('windowsSessions'), weeks: t('windowsWeeks') }
 
@@ -102,6 +107,20 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 							</button>
 						))}
 					</fieldset>
+					<fieldset className='inline-flex gap-0.5 rounded-lg border p-0.5'>
+						<legend className='sr-only'>{t('windowCount')}</legend>
+						{WINDOW_COUNTS.map(n => (
+							<button
+								key={n}
+								type='button'
+								aria-pressed={count === n}
+								onClick={() => setCount(n)}
+								className='rounded-md px-2.5 py-1 text-xs text-muted-foreground tabular-nums outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:bg-muted aria-pressed:text-foreground'
+							>
+								{n}
+							</button>
+						))}
+					</fieldset>
 				</div>
 			}
 		>
@@ -118,7 +137,7 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 				</Empty>
 			) : (
 				<>
-					<WindowChart windows={windows} kind={kind} />
+					<WindowChart windows={windows} kind={kind} columns={count} />
 					<details className='mt-4 text-sm'>
 						<summary className='w-max cursor-pointer text-muted-foreground hover:text-foreground'>
 							{t('table')}
@@ -196,14 +215,11 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 	)
 }
 
-/** Past this many the columns get thinner than their labels; the table below
- *  still lists every window. */
-const CHART_WINDOWS = 16
-
 /** One column per window, oldest on the left: its height is the account's peak,
  *  cut into what each group contributed, against a 100% line. A window with no
- *  limit sample gets a short hatched stub so the gap reads as missing data. */
-function WindowChart({ windows, kind }: { windows: PastWindow[]; kind: Kind }) {
+ *  limit sample gets a short hatched stub so the gap reads as missing data.
+ *  Always `columns` wide, padded on the left, so few windows don't stretch. */
+function WindowChart({ windows, kind, columns }: { windows: PastWindow[]; kind: Kind; columns: number }) {
 	const t = useTranslations('dash.overview')
 	const locale = useLocale()
 	const label = useWindowLabel()
@@ -213,14 +229,13 @@ function WindowChart({ windows, kind }: { windows: PastWindow[]; kind: Kind }) {
 			? { hour: '2-digit', hourCycle: 'h23', minute: '2-digit', timeZone: 'UTC', weekday: 'short' }
 			: { day: 'numeric', month: 'short', timeZone: 'UTC' },
 	)
-	const shown = windows.slice(0, CHART_WINDOWS).toReversed()
+	const shown = windows.toReversed()
 
 	return (
-		<div
-			aria-hidden
-			className='grid gap-1.5'
-			style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}
-		>
+		<div aria-hidden className='grid gap-1.5' style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+			{Array.from({ length: columns - shown.length }, (_, i) => (
+				<div key={`empty-${i}`} className='h-36 border-t border-dashed border-foreground/20' />
+			))}
 			{shown.map(w => (
 				<div
 					key={w.start}

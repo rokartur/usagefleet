@@ -1114,8 +1114,9 @@ export function groupBlock(
 	return block
 }
 
-/** How many completed windows back the past-windows card looks. */
-const PAST_WINDOWS = 8
+/** How many completed windows back the past-windows card looks; the largest of
+ *  its `WINDOW_COUNTS` in WindowHistory.tsx. */
+const PAST_WINDOWS = 16
 
 /** Folded token totals for one (window span × group × model) cell. Model is
  *  carried because a window's official utilization is split across groups by
