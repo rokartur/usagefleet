@@ -521,6 +521,12 @@ describe(groupBudgetPct, () => {
 		expect(groupBudgetPct({ exactPct: 0.5 }, 1 / 10)).toBe(5)
 	})
 
+	it('takes watch-only usage off the top before slicing', () => {
+		// Watch spent 10%, two equal groups split the 90% left: 45 each.
+		expect(groupBudgetPct({ exactPct: 45 }, 1 / 2, 10)).toBe(100)
+		expect(groupBudgetPct({ exactPct: 18 }, 1 / 2, 10)).toBe(40)
+	})
+
 	it('treats a group with no share as zero rather than throwing', () => {
 		expect(groupBudgetPct(undefined, 1 / 3)).toBe(0)
 	})

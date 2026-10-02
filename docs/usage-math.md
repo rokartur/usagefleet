@@ -204,7 +204,9 @@ split). Each such group's slice is its `slice_weight` over the sum of theirs
 at half the account reads 100%**, and weights 2, 1, 1 budget a half and two
 quarters. A watch-only group (e.g. a VPS you want to see but not budget) gets no
 slice and is scaled by 1,
-i.e. it reads its plain share of the account. So is a group with no live device
+i.e. it reads its plain share of the account. What it spent comes off the top
+first: slotted groups slice the `100 - watch%` left in that window, so with watch
+at 10% and two equal groups each budget is 45% of the account. So is a group with no live device
 left on the account: it switched away, so it holds no slice there, only history.
 Deliberately uncapped: past 100% that group is eating another's slice, which is
 the thing worth seeing. Rounding happens once, at the end — rounding the share

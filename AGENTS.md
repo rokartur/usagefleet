@@ -62,7 +62,8 @@ Break one of these and the product silently reports wrong numbers or leaks acces
   `slice_weight` over the sum of theirs (`slottedGroups()`): with two equal such
   groups, one at half the account reads 100%. Uncapped past 100% on purpose. A
   watch-only group, or one whose devices all left that account, holds no slice
-  and reads its plain account share.
+  and reads its plain account share. Watch-only usage comes off the top: slices
+  are of the `100 - watch%` left in that window.
 - **The collector reports to one server and cannot be redirected.** `ENDPOINT` in
   `apps/cli/src/config.ts` is a constant; there is no flag, env var or stored
   field. `login` exits non-zero on `--endpoint` rather than ignoring it, because

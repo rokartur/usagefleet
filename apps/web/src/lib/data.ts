@@ -406,9 +406,14 @@ function windowDurationMs(window: string): number | null {
  *  a half slice a group at 50% of the account reads 100%.
  *  Uncapped: past 100% the group has overrun its slice and is eating another
  *  group's, which is worth seeing. Takes the *unrounded* share so the scaling
- *  doesn't amplify a rounding error (at a 1/10 slice 0.5pt would become 5pt). */
-export const groupBudgetPct = (share: { exactPct: number } | undefined, slice: number) =>
-	Math.round((share?.exactPct ?? 0) / slice)
+ *  doesn't amplify a rounding error (at a 1/10 slice 0.5pt would become 5pt).
+ *  `watchPct` is what watch-only groups spent in the same window: it comes off the
+ *  top, so the slice is of the (100 - watchPct)% they left. */
+export function groupBudgetPct(share: { exactPct: number } | undefined, slice: number, watchPct = 0) {
+	// Floor at 1% left: watch groups that ate the whole account would otherwise divide by zero.
+	const left = Math.max(0.01, 1 - watchPct / 100)
+	return Math.round((share?.exactPct ?? 0) / (slice * left))
+}
 
 /** The groups that claim a slice of an account (those with a live device on it),
  *  each with its slice as a fraction of the account: its weight over the sum of
@@ -872,10 +877,30 @@ async function loadLiveDashboard(
 		const slice = sliceOf(id)
 		return slice === undefined ? null : slice * 100
 	}
-	const budgetPctFor = (id: string | null, pct = 0) =>
-		// A group holds a slice only while a live device of it is on this account;
-		// one that switched away (or watches) reads its plain share of what it left.
-		groupBudgetPct({ exactPct: pct }, sliceOf(id) ?? 1)
+	// A group holds a slice only while a live device of it is on this account; one
+	// that switched away (or watches) reads its plain share. Slotted groups split
+	// what the watch-only groups left in the same window.
+	const budgetPctFor = (
+		id: string | null,
+		split: Map<string | null, ShareEntry>,
+		pctOf: (s: ShareEntry) => number,
+	) => {
+		const share = split.get(id)
+		const exactPct = share === undefined ? 0 : pctOf(share)
+		const slice = sliceOf(id)
+		if (slice === undefined) {
+			return groupBudgetPct({ exactPct }, 1)
+		}
+		let watchPct = 0
+		for (const [key, s] of split) {
+			if (isWatchOnly(key)) {
+				watchPct += pctOf(s)
+			}
+		}
+		return groupBudgetPct({ exactPct }, slice, watchPct)
+	}
+	const exactPctOf = (s: ShareEntry) => s.exactPct
+	const costPctOf = (s: ShareEntry) => s.costPct
 
 	const lastUsed = new Map<string | null, number>()
 	for (const e of events) {
@@ -890,10 +915,10 @@ async function loadLiveDashboard(
 		groupId: id,
 		...labelFor(id),
 		slicePct: slicePctOf(id),
-		sessionBudgetPct: budgetPctFor(id, sessionSplit.get(id)?.exactPct),
-		weeklyBudgetPct: budgetPctFor(id, weeklySplit.get(id)?.exactPct),
-		sessionCostPct: budgetPctFor(id, sessionSplit.get(id)?.costPct),
-		weeklyCostPct: budgetPctFor(id, weeklySplit.get(id)?.costPct),
+		sessionBudgetPct: budgetPctFor(id, sessionSplit, exactPctOf),
+		weeklyBudgetPct: budgetPctFor(id, weeklySplit, exactPctOf),
+		sessionCostPct: budgetPctFor(id, sessionSplit, costPctOf),
+		weeklyCostPct: budgetPctFor(id, weeklySplit, costPctOf),
 		sessionAccountPct: sessionSplit.get(id)?.exactPct ?? 0,
 		weeklyAccountPct: weeklySplit.get(id)?.exactPct ?? 0,
 		lastUsedAt: lastUsedAt(id),
@@ -942,7 +967,7 @@ async function loadLiveDashboard(
 		const weeklyContributionPct = weeklyShare?.exactPct ?? 0
 		const weeklyCostPct = weeklyShare?.costPct ?? 0
 		const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(([id, s]) => ({
-			budgetPct: budgetPctFor(id, s.exactPct),
+			budgetPct: budgetPctFor(id, split, exactPctOf),
 			groupId: id,
 			...labelFor(id),
 			tokens: s.tokens,
