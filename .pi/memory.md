@@ -1,5 +1,3 @@
-# Current memory
-
 ## Always
 - User prefers Polish; app is translated to Polish and priced in PLN
 - Chart configurations should use fixed values that can be changed (like usage overtime), not auto-scale based on column count
@@ -7,12 +5,14 @@
 - Usage attribution bugs: investigate when group receives higher % than individual user, especially after long inactivity followed by single action
 - When a token's usage doesn't match its assignment, trace and reassign it to the correct account/owner
 - Token assignment: verify if a token is actively used before reassigning; if used on wrong account/device, reassign to correct owner
+- Watch-status groups don't consume quota; distribute their usage % to non-watch groups as: `(100% - watch_group_%) / count_of_non_watch_groups`
 
 ## When touching apps/web
 - Dashboard and explorer are primary UI surfaces; changes often touch both
 - Per-model limits, account slices, and group splits are core features
 - Prioritize performance: skip polls when tab is hidden, load past windows in parallel, scan from earliest open limit window
 - Usage attribution debugging: detect when % usage comes from unexpected source or inflated vs actual behavior
+- Group quota allocation: watch-status groups pass their usage down to non-watch groups proportionally
 
 ## When touching apps/cli
 - Service is Node.js based with V8 semi-space capped; keep memory usage in mind
