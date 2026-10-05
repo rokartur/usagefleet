@@ -24,10 +24,20 @@ describe(guardCommand, () => {
 
 	it('uses cmd.exe syntax on Windows, which has no inline VAR=value form', () => {
 		expect(guardCommand(['C:\\usagefleet.exe', 'guard'], 'C:\\Users\\x\\work.json', 'win32')).toBe(
-			'set "USAGEFLEET_CONFIG=C:\\Users\\x\\work.json" && C:\\usagefleet.exe guard',
+			'set "USAGEFLEET_CONFIG=C:\\Users\\x\\work.json" && "C:\\usagefleet.exe" guard',
 		)
 		// No config: no prefix on either platform, so the plain command is unchanged.
-		expect(guardCommand(['C:\\usagefleet.exe', 'guard'], undefined, 'win32')).toBe('C:\\usagefleet.exe guard')
+		expect(guardCommand(['C:\\usagefleet.exe', 'guard'], undefined, 'win32')).toBe('"C:\\usagefleet.exe" guard')
+	})
+
+	it('quotes backslash paths, which Git Bash would otherwise strip', () => {
+		expect(
+			guardCommand(
+				['C:\\Program Files\\nodejs\\node.exe', 'C:\\Users\\k\\cli\\dist\\index.js', 'guard'],
+				undefined,
+				'win32',
+			),
+		).toBe('"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\k\\cli\\dist\\index.js" guard')
 	})
 
 	it('still matches the uninstall pattern once prefixed, on both shells', () => {

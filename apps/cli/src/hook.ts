@@ -38,7 +38,9 @@ interface ClaudeSettings {
  *  shells can be tested; cmd.exe has no inline `VAR=value cmd` form, and the
  *  POSIX prefix there would be read as a program name and never launch. */
 export function guardCommand(program: string[], configPath?: string, platform: string = process.platform): string {
-	const quote = (p: string) => (p.includes(' ') ? `"${p}"` : p)
+	// Claude Code on Windows runs hooks through Git Bash, which strips the backslashes
+	// from an unquoted `C:\Users\...\index.js`; node then exits 1 and the prompt passes.
+	const quote = (p: string) => (p.includes(' ') || p.includes('\\') ? `"${p}"` : p)
 	const command = program.map(quote).join(' ')
 	if (!configPath) {
 		return command
