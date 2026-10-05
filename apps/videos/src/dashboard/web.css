@@ -1,0 +1,5 @@
+/* The web app's stylesheet, with its component tree declared as the class source
+   because Tailwind only auto-scans the directory the CSS is built from. */
+@import '../../../web/src/styles/globals.css';
+@source '../../../web/src/components';
+@source '../../../web/src/lib';

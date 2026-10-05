@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Num, overrun, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
 import { useMounted } from '@/hooks/use-mounted'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO } from '@/lib/data'
-import { formatPct, formatRelative, formatTokens, formatUsd } from '@/lib/format'
+import { formatPct, formatPctNumber, formatRelative, formatTokens, formatUsd } from '@/lib/format'
 import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
 import type { ModelUsage } from '@/lib/usage'
 import { billableTokens, LIMITS_STALE_MS } from '@/lib/usage'
@@ -413,7 +413,7 @@ function Meter({
 				className={cn('mt-2 mb-3 block font-heading text-3xl font-medium tabular-nums', overrun(pct))}
 			/>
 			<p className='sr-only'>
-				{[t('barLabel', { pct: pct.toFixed(1) }), ...bars.map(s => `${s.name} ${s.points.toFixed(1)}`)].join(
+				{[t('barLabel', { pct: formatPctNumber(pct) }), ...bars.map(s => `${s.name} ${formatPctNumber(s.points)}`)].join(
 					', ',
 				)}
 			</p>
@@ -421,7 +421,7 @@ function Meter({
 				{bars.map(s => (
 					<div
 						key={s.name}
-						title={`${s.name}: ${s.points.toFixed(1)}`}
+						title={`${s.name}: ${formatPctNumber(s.points)}`}
 						className='h-full not-first:border-l not-first:border-background'
 						style={{ backgroundColor: s.color, width: `${Math.min(100, s.points)}%` }}
 					/>
@@ -511,7 +511,7 @@ function GroupItem({
 						<span className='truncate font-medium'>{g.name}</span>
 						{g.watchOnly && <WatchOnlyMark />}
 						<span className='ml-auto shrink-0 text-xs text-muted-foreground'>
-							{g.slicePct !== null && `${t('slice', { pct: g.slicePct.toFixed(1) })} · `}
+							{g.slicePct !== null && `${t('slice', { pct: formatPctNumber(g.slicePct) })} · `}
 							{t('devicesCount', { count: g.devices.length })}
 						</span>
 					</span>

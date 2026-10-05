@@ -11,7 +11,11 @@ export function formatTokens(n: number): string {
 
 export const roundTenth = (n: number) => Math.round(n * 10) / 10
 
-export const formatPct = (n: number) => `${n.toFixed(1)}%`
+const stripTrailingZero = (s: string) => (s.endsWith('.0') ? s.slice(0, -2) : s)
+
+export const formatPct = (n: number) => `${stripTrailingZero(n.toFixed(1))}%`
+
+export const formatPctNumber = (n: number) => stripTrailingZero(n.toFixed(1))
 
 export function formatUsd(n: number): string {
 	if (n === 0) {

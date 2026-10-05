@@ -112,7 +112,10 @@ export type Log = (level: 'ok' | 'warn', msg: string) => void
 /** Percentage with one decimal, fixed-width so successive log lines line up
  *  (wide enough for "100.0%"). */
 export function pct(value: number | null): string {
-	return `${value === null ? '?' : value.toFixed(1)}%`.padStart(6)
+	if (value === null) return '?'.padStart(6)
+	const s = value.toFixed(1)
+	const str = s.endsWith('.0') ? s.slice(0, -2) : s
+	return `${str}%`.padStart(6)
 }
 
 /** Usage bar, coloured by how close the window is to its limit.

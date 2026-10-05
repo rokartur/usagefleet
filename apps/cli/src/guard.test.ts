@@ -7,11 +7,11 @@ describe(blockMessage, () => {
 			'118.4% of its 5h budget',
 		)
 		expect(blockMessage({ blocked: true, blockedPct: 104, blockedWindow: 'weekly' })).toContain(
-			'104.0% of its weekly budget',
+			'104% of its weekly budget',
 		)
 		expect(
 			blockMessage({ blocked: true, blockedModel: 'Fable', blockedPct: 101, blockedWindow: 'weekly' }),
-		).toContain('101.0% of its Fable weekly budget')
+		).toContain('101% of its Fable weekly budget')
 	})
 
 	// Fail-open is the whole safety property: a tracker outage, an old server, or

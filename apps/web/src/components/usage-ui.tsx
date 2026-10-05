@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { EyeIcon } from 'lucide-react'
 import { animate, useReducedMotion } from 'motion/react'
 import { useTranslations } from 'use-intl'
-import { roundTenth } from '@/lib/format'
+import { formatPctNumber, roundTenth } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 /**
@@ -104,7 +104,7 @@ export function UsageBar({ pct, color, className }: { pct: number; color?: strin
 	const value = Math.min(100, Math.max(0, pct))
 	return (
 		<span className={cn('block h-1.5 w-full overflow-hidden rounded-full bg-muted', className)}>
-			<span className='sr-only'>{t('barLabel', { pct: value.toFixed(1) })}</span>
+			<span className='sr-only'>{t('barLabel', { pct: formatPctNumber(value) })}</span>
 			<span
 				aria-hidden
 				className='block h-full rounded-full bg-primary'

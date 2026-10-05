@@ -115,8 +115,12 @@ export function maybeNotify(
 		const five = evaluateWindow(state.fiveHour, report.fiveHourPct, report.fiveHourResetsAt, cfg.thresholds)
 		const seven = evaluateWindow(state.sevenDay, report.sevenDayPct, report.sevenDayResetsAt, cfg.thresholds)
 
-		const fivePct = (report.fiveHourPct ?? 0).toFixed(1)
-		const sevenPct = (report.sevenDayPct ?? 0).toFixed(1)
+		const fmt = (n: number) => {
+			const s = n.toFixed(1)
+			return s.endsWith('.0') ? s.slice(0, -2) : s
+		}
+		const fivePct = fmt(report.fiveHourPct ?? 0)
+		const sevenPct = fmt(report.sevenDayPct ?? 0)
 		if (five.fire != null) {
 			sendNotification(
 				'Claude usage · 5-hour limit',
