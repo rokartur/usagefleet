@@ -36,8 +36,10 @@ function totals(billable: number): TokenTotals {
 
 const model = (id: string, label: string, billable: number): ModelUsage => ({
 	billableTokens: billable,
+	costUsd: billable / 100_000,
 	label,
 	model: id,
+	requests: Math.round(billable / 20_000),
 	totals: totals(billable),
 })
 

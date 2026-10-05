@@ -1,3 +1,4 @@
+# Current memory
 ## Always
 - User prefers Polish; app is translated to Polish and priced in PLN
 - Chart configurations should use fixed values that can be changed (like usage overtime), not auto-scale based on column count
@@ -6,6 +7,7 @@
 - When a token's usage doesn't match its assignment, trace and reassign it to the correct account/owner
 - Token assignment: verify if a token is actively used before reassigning; if used on wrong account/device, reassign to correct owner
 - Watch-status groups don't consume quota; distribute their usage % to non-watch groups as: `(100% - watch_group_%) / count_of_non_watch_groups`
+- Group percentage display in CLI config needs fixing; verify correct calculation and display formatting
 
 ## When touching apps/web
 - Dashboard and explorer are primary UI surfaces; changes often touch both
@@ -18,6 +20,7 @@
 - Service is Node.js based with V8 semi-space capped; keep memory usage in mind
 - CLI versioning is semantic and committed back to repo after publish
 - Config file keys mirror environment variable knobs
+- Group percentage display calculation and formatting must match web UI expectations
 
 ## Team (from git)
 - Monorepo: apps/web (primary), apps/cli (secondary), apps/videos (content), docs

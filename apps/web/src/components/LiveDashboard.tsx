@@ -11,6 +11,7 @@ import { useMounted } from '@/hooks/use-mounted'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO } from '@/lib/data'
 import { formatRelative, formatTokens, formatUsd } from '@/lib/format'
 import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
+import type { ModelUsage } from '@/lib/usage'
 import { billableTokens, LIMITS_STALE_MS } from '@/lib/usage'
 import { cn } from '@/lib/utils'
 
@@ -504,6 +505,7 @@ function GroupItem({
 }) {
 	const t = useTranslations('dash.overview')
 	const moved = movedAway(g)
+	const groupCostUsd = g.models.reduce((sum, m) => sum + m.costUsd, 0)
 	return (
 		<li className='border-b'>
 			<details className='group/row'>
@@ -568,15 +570,43 @@ function GroupItem({
 						<p className='mb-1 text-muted-foreground'>{t('models')}</p>
 						<ul>
 							{g.models.map(m => (
-								<li key={m.model} className='flex justify-between gap-3 py-0.5'>
-									<span className='truncate'>{m.label}</span>
-									<span className='shrink-0 tabular-nums'>{formatTokens(m.billableTokens)}</span>
-								</li>
+								<ModelRow key={m.model} model={m} groupCostUsd={groupCostUsd} />
 							))}
 						</ul>
 					</div>
 				</div>
 			</details>
+		</li>
+	)
+}
+
+function ModelRow({ model: m, groupCostUsd }: { model: ModelUsage; groupCostUsd: number }) {
+	const t = useTranslations('dash.overview')
+	const sharePct = groupCostUsd > 0 ? Math.round((m.costUsd / groupCostUsd) * 100) : 0
+	const buckets = [
+		{ key: 'tokensIn', tokens: m.totals.inputTokens },
+		{ key: 'tokensOut', tokens: m.totals.outputTokens },
+		{ key: 'tokensCacheWrite', tokens: m.totals.cacheCreationTokens },
+		{ key: 'tokensCacheRead', tokens: m.totals.cacheReadTokens },
+	] as const
+	return (
+		<li className='py-1.5'>
+			<div className='flex justify-between gap-3'>
+				<span className='truncate'>{m.label}</span>
+				<span className='shrink-0 tabular-nums'>
+					{formatTokens(m.billableTokens)} · {sharePct}%
+				</span>
+			</div>
+			<p className='truncate text-muted-foreground'>
+				{m.model} · {t('modelRequests', { count: m.requests })}
+			</p>
+			<p className='mt-0.5 grid grid-cols-2 gap-x-6 text-muted-foreground'>
+				{buckets.map(b => (
+					<span key={b.key} className='flex justify-between gap-2'>
+						{t(b.key)} <span className='text-foreground tabular-nums'>{formatTokens(b.tokens)}</span>
+					</span>
+				))}
+			</p>
 		</li>
 	)
 }

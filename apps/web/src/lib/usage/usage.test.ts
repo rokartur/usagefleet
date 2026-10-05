@@ -278,6 +278,8 @@ describe('model breakdown', () => {
 		expect(sonnet.billableTokens).toBe(13_558 + 60)
 		expect(sonnet.totals.totalTokens).toBe(31_057 + 1060) // folded, not 3x m1
 		expect(mb.find(m => m.label === 'Opus 4.8')!.billableTokens).toBe(1000)
+		expect(sonnet.requests).toBe(2) // m1's segments are one message, m2 another
+		expect(sonnet.costUsd).toBeGreaterThan(0)
 	})
 
 	it('drops token-less pseudo-models like <synthetic>', () => {

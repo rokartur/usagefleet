@@ -195,6 +195,11 @@ const en = {
 		accountSwitcher: 'Claude account',
 		devicesCount: '{count, plural, one {# device} other {# devices}}',
 		models: 'Models',
+		modelRequests: '{count, plural, one {# request} other {# requests}}',
+		tokensIn: 'in',
+		tokensOut: 'out',
+		tokensCacheWrite: 'cache write',
+		tokensCacheRead: 'cache read',
 		moved: 'No device of this group is on this account now. Its usage this week stays here; it holds no slice.',
 		movedTo:
 			'Moved to <mark>{account}</mark>, last used here <time></time>. Its usage this week stays here; it holds no slice.',
@@ -580,6 +585,11 @@ const pl: typeof en = {
 		accountSwitcher: 'Konto Claude',
 		devicesCount: '{count, plural, one {# urządzenie} few {# urządzenia} many {# urządzeń} other {# urządzenia}}',
 		models: 'Modele',
+		modelRequests: '{count, plural, one {# zapytanie} few {# zapytania} many {# zapytań} other {# zapytania}}',
+		tokensIn: 'wej.',
+		tokensOut: 'wyj.',
+		tokensCacheWrite: 'zapis cache',
+		tokensCacheRead: 'odczyt cache',
 		moved: 'Żadne urządzenie tej grupy nie jest teraz na tym koncie. Jej zużycie z tego tygodnia zostaje tutaj, bez przydziału.',
 		movedTo:
 			'Przeniesiona na <mark>{account}</mark>, ostatnio tutaj <time></time>. Jej zużycie z tego tygodnia zostaje tutaj, bez przydziału.',

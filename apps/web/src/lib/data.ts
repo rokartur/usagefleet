@@ -676,7 +676,7 @@ export function splitByShare(
 		costByKey.set(k, cost)
 		// `folded`, not `evs`: modelBreakdown folds internally anyway, so handing it
 		// the raw list just refolds what the line above already did.
-		modelsByKey.set(k, modelBreakdown(folded))
+		modelsByKey.set(k, modelBreakdown(folded, ttl))
 		totalCost += cost
 	}
 	const target = Math.max(0, officialPct)

@@ -1,5 +1,18 @@
-import { versionParts } from './models'
 import type { TokenCounts, UsageRecord } from './types'
+
+/**
+ * Version digits of a raw model id, ignoring the "[1m]" context-variant tag and a
+ * -YYYYMMDD snapshot date, so single-number versions work as well as major.minor:
+ * "opus-5[1m]" → ["5"], "opus-4-8-20251101" → ["4","8"], "3-5-sonnet-…" → ["3","5"].
+ */
+export function versionParts(model: string): string[] {
+	return (
+		model
+			.replace(/\[.*$/, '')
+			.replace(/-\d{8}$/, '')
+			.match(/\d+/g) ?? []
+	)
+}
 
 /** USD per 1M tokens. Public Claude API list prices from
  *  https://platform.claude.com/docs/en/about-claude/pricing — the $ column, and

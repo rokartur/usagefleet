@@ -1,19 +1,7 @@
 import { billableTokens, foldEvents, sumTokens } from './fold'
+import type { CacheTtl } from './pricing'
+import { costUsd, versionParts } from './pricing'
 import type { TokenTotals, UsageRecord } from './types'
-
-/**
- * Version digits of a raw model id, ignoring the "[1m]" context-variant tag and a
- * -YYYYMMDD snapshot date, so single-number versions work as well as major.minor:
- * "opus-5[1m]" → ["5"], "opus-4-8-20251101" → ["4","8"], "3-5-sonnet-…" → ["3","5"].
- */
-export function versionParts(model: string): string[] {
-	return (
-		model
-			.replace(/\[.*$/, '')
-			.replace(/-\d{8}$/, '')
-			.match(/\d+/g) ?? []
-	)
-}
 
 /**
  * Friendly display label for a raw Claude model id
@@ -57,6 +45,10 @@ export interface ModelUsage {
 	/** input + output + cache_creation (EXCLUDES replayed cache reads), matching
 	 *  the billable measure used for the group share split. */
 	billableTokens: number
+	/** Logical messages (folded rows) sent to this model. */
+	requests: number
+	/** List-price USD of those messages; display only, a model's share of the group's spend. */
+	costUsd: number
 }
 
 /**
@@ -64,7 +56,7 @@ export interface ModelUsage {
  * per logical message), then groups the folded rows by model and sums each.
  * Sorted by billable tokens desc, with total tokens as a tiebreaker.
  */
-export function modelBreakdown(events: UsageRecord[]): ModelUsage[] {
+export function modelBreakdown(events: UsageRecord[], ttl: CacheTtl = '5m'): ModelUsage[] {
 	// Key by the raw id ("unknown" when absent), but keep the original (possibly
 	// null) model so the label reads "Unknown" rather than the literal key.
 	const byModel = new Map<string, { model: string | null; evs: UsageRecord[] }>()
@@ -87,8 +79,10 @@ export function modelBreakdown(events: UsageRecord[]): ModelUsage[] {
 		}
 		out.push({
 			billableTokens: billableTokens(totals),
+			costUsd: evs.reduce((sum, e) => sum + costUsd(e, ttl), 0),
 			label: modelLabel(model),
 			model: key,
+			requests: evs.length,
 			totals,
 		})
 	}
