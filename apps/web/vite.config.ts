@@ -14,6 +14,6 @@ export default defineConfig({
 		// react's plugin must come after start's plugin
 		viteReact(),
 		// The server serves /assets itself; without this a first dashboard load ships ~1.3 MB of raw JS and CSS.
-		nitro({ preset: 'bun', compressPublicAssets: true }),
+		nitro({ preset: 'bun', compressPublicAssets: true, plugins: ['./src/server/no-store-missing-assets.ts'] }),
 	],
 })
