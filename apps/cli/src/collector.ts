@@ -15,7 +15,7 @@ import { tailFile } from './tailer.js'
 import type { Config, UsageRecord, UsageSource } from './types.js'
 import type { Log } from './ui.js'
 import { tilde } from './ui.js'
-import { postLimits, uploadBatch } from './uploader.js'
+import { fetchGroupLimits, postLimits, uploadBatch } from './uploader.js'
 import type { UploadFailure } from './uploader.js'
 
 /** Only files inside a `.../.claude/projects/...` subtree are real usage logs.
@@ -328,8 +328,19 @@ export async function reportLimitsOnce(
 			source: report.source,
 		}
 	})
-	// Local desktop notification on freshly-crossed thresholds. Independent of the
-	// server upload (notify even if the POST failed) and never throws.
-	maybeNotify(report, undefined, log)
+	// Local desktop notification on freshly-crossed thresholds, judged on the
+	// device's group slice because that is the budget it is held to. Only a device
+	// without a group falls back to the account reading. No answer from the server
+	// means no notification rather than one on the wrong number.
+	const groupLimits = await fetchGroupLimits(cfg, account?.extId)
+	if (groupLimits) {
+		maybeNotify(
+			groupLimits.group === null
+				? report
+				: { ...report, fiveHourPct: groupLimits.sessionPct, sevenDayPct: groupLimits.weeklyPct },
+			undefined,
+			log,
+		)
+	}
 	return report
 }

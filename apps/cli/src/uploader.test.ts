@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { LimitsReport } from './claude-limits.js'
 import type { BatchPayload, Config } from './types.js'
-import { postLimits, uploadBatch } from './uploader.js'
+import { fetchGroupLimits, postLimits, uploadBatch } from './uploader.js'
 
 const cfg: Config = {
 	batchSize: 100,
@@ -134,5 +134,23 @@ describe(postLimits, () => {
 			}),
 		)
 		await expect(postLimits(report, cfg)).resolves.toBe('transient')
+	})
+})
+
+describe(fetchGroupLimits, () => {
+	it('reads the group slice, not the account reading', async () => {
+		mockFetch(200, JSON.stringify({ group: 'Laptop', sessionPct: 12.5, weeklyPct: 40, blocked: false }))
+		await expect(fetchGroupLimits(cfg, undefined)).resolves.toStrictEqual({
+			group: 'Laptop',
+			sessionPct: 12.5,
+			weeklyPct: 40,
+		})
+	})
+
+	it('a server that cannot answer is null', async () => {
+		mockFetch(500)
+		await expect(fetchGroupLimits(cfg, undefined)).resolves.toBeNull()
+		mockFetch(200, 'null')
+		await expect(fetchGroupLimits(cfg, undefined)).resolves.toBeNull()
 	})
 })

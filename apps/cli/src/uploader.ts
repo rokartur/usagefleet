@@ -131,3 +131,32 @@ export async function postLimits(report: LimitsReport, cfg: Config): Promise<'ok
 		return 'transient'
 	}
 }
+
+/** The device's group slice from GET /api/v1/limits: the numbers the dashboard
+ *  shows for it, which differ from the account-wide reading whenever the account
+ *  is shared. `group` is null for a device with no group, whose percentages are 0. */
+export interface GroupLimits {
+	group: string | null
+	sessionPct: number
+	weeklyPct: number
+}
+
+/** Null when the server cannot answer (offline, rejected, older than this field). */
+export async function fetchGroupLimits(cfg: Config, accountExtId: string | undefined): Promise<GroupLimits | null> {
+	try {
+		const res = await fetch(`${ENDPOINT}/api/v1/limits`, {
+			headers: { 'x-api-key': tokenFor(cfg, accountExtId) },
+			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+		})
+		if (!res.ok) {
+			return null
+		}
+		const body = (await res.json()) as Partial<GroupLimits> | null
+		if (typeof body?.sessionPct !== 'number' || typeof body.weeklyPct !== 'number') {
+			return null
+		}
+		return { group: body.group ?? null, sessionPct: body.sessionPct, weeklyPct: body.weeklyPct }
+	} catch {
+		return null
+	}
+}
