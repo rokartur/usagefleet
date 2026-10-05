@@ -97,8 +97,8 @@ describe(buildPastWindows, () => {
 		const spans = [{ end: START.getTime() + STRIDE, pct: 60, start: START.getTime() }]
 		expect(buildPastWindows(rows, spans, '1h', label)[0].groups.map(g => g.accountPct)).toStrictEqual([30, 30])
 		const [w] = buildPastWindows(rows, spans, '1h', label, CHEAP_CACHE_READS)
-		expect(w.groups.find(g => g.groupId === 'a')?.accountPct).toBe(57)
-		expect(w.groups.find(g => g.groupId === 'b')?.accountPct).toBe(3)
+		expect(w.groups.find(g => g.groupId === 'a')?.accountPct).toBe(57.1)
+		expect(w.groups.find(g => g.groupId === 'b')?.accountPct).toBe(2.9)
 	})
 })
 
@@ -516,9 +516,10 @@ describe(groupBudgetPct, () => {
 		expect(groupBudgetPct({ exactPct: 80 }, 1 / 2)).toBe(160)
 	})
 
-	it('rounds once, after scaling, so the scaling cannot amplify the error', () => {
+	it('rounds once, after scaling, to a tenth of a point', () => {
 		// Rounding exactPct first would give 1 * 10 = 10, not 5.
 		expect(groupBudgetPct({ exactPct: 0.5 }, 1 / 10)).toBe(5)
+		expect(groupBudgetPct({ exactPct: 12.34 }, 1)).toBe(12.3)
 	})
 
 	it('takes watch-only usage off the top before slicing', () => {

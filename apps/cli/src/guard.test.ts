@@ -3,15 +3,15 @@ import { blockMessage } from './guard.js'
 
 describe(blockMessage, () => {
 	it('blocks only on an explicit blocked:true', () => {
-		expect(blockMessage({ blocked: true, blockedPct: 118, blockedWindow: 'session' })).toContain(
-			'118% of its 5h budget',
+		expect(blockMessage({ blocked: true, blockedPct: 118.4, blockedWindow: 'session' })).toContain(
+			'118.4% of its 5h budget',
 		)
 		expect(blockMessage({ blocked: true, blockedPct: 104, blockedWindow: 'weekly' })).toContain(
-			'104% of its weekly budget',
+			'104.0% of its weekly budget',
 		)
 		expect(
 			blockMessage({ blocked: true, blockedModel: 'Fable', blockedPct: 101, blockedWindow: 'weekly' }),
-		).toContain('101% of its Fable weekly budget')
+		).toContain('101.0% of its Fable weekly budget')
 	})
 
 	// Fail-open is the whole safety property: a tracker outage, an old server, or

@@ -9,15 +9,11 @@ import { Button } from '@/components/ui/button'
 import { Num, overrun, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
 import { useMounted } from '@/hooks/use-mounted'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO } from '@/lib/data'
-import { formatRelative, formatTokens, formatUsd } from '@/lib/format'
+import { formatPct, formatRelative, formatTokens, formatUsd } from '@/lib/format'
 import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
 import type { ModelUsage } from '@/lib/usage'
 import { billableTokens, LIMITS_STALE_MS } from '@/lib/usage'
 import { cn } from '@/lib/utils'
-
-/** Percentages are Anthropic's own utilization, shown uncapped: an overrun
- *  ("105%") is the interesting case, even though the bar stops at full. */
-const pctText = (n: number) => `${Math.round(n)}%`
 
 const POLL_MS = 5000
 
@@ -356,13 +352,13 @@ function AccountSwitcher({
 							<span>
 								5h{' '}
 								<span className={cn('text-foreground', overrun(d.fiveHourPct))}>
-									{pctText(d.fiveHourPct)}
+									{formatPct(d.fiveHourPct)}
 								</span>
 							</span>
 							<span>
 								{t('week')}{' '}
 								<span className={cn('text-foreground', overrun(d.sevenDayPct))}>
-									{pctText(d.sevenDayPct)}
+									{formatPct(d.sevenDayPct)}
 								</span>
 							</span>
 							{moved > 0 && <span className='text-foreground'>{t('movedBadge', { count: moved })}</span>}
@@ -413,11 +409,11 @@ function Meter({
 			</div>
 			<Num
 				value={pct}
-				format={pctText}
+				format={formatPct}
 				className={cn('mt-2 mb-3 block font-heading text-3xl font-medium tabular-nums', overrun(pct))}
 			/>
 			<p className='sr-only'>
-				{[t('barLabel', { pct: Math.round(pct) }), ...bars.map(s => `${s.name} ${Math.round(s.points)}`)].join(
+				{[t('barLabel', { pct: pct.toFixed(1) }), ...bars.map(s => `${s.name} ${s.points.toFixed(1)}`)].join(
 					', ',
 				)}
 			</p>
@@ -425,7 +421,7 @@ function Meter({
 				{bars.map(s => (
 					<div
 						key={s.name}
-						title={`${s.name}: ${Math.round(s.points)}`}
+						title={`${s.name}: ${s.points.toFixed(1)}`}
 						className='h-full not-first:border-l not-first:border-background'
 						style={{ backgroundColor: s.color, width: `${Math.min(100, s.points)}%` }}
 					/>
@@ -436,7 +432,7 @@ function Meter({
 					<abbr title={t('outsideHint')} className='no-underline'>
 						{t('outside')}
 					</abbr>
-					<span className='font-medium tabular-nums'>{pctText(outside)}</span>
+					<span className='font-medium tabular-nums'>{formatPct(outside)}</span>
 				</p>
 			)}
 			{children}
@@ -451,7 +447,7 @@ function ModelLimitRow({ limit, weeklyResetsAt }: { limit: ModelLimitDTO; weekly
 		<div className='mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm'>
 			<span>{limit.label}</span>
 			<UsageBar pct={limit.pct} className='w-24' />
-			<span className={cn('font-medium tabular-nums', overrun(limit.pct))}>{pctText(limit.pct)}</span>
+			<span className={cn('font-medium tabular-nums', overrun(limit.pct))}>{formatPct(limit.pct)}</span>
 			{limit.resetsAt !== weeklyResetsAt && (
 				<span className='text-xs text-muted-foreground'>
 					<ResetCountdown resetsAt={limit.resetsAt} />
@@ -515,7 +511,7 @@ function GroupItem({
 						<span className='truncate font-medium'>{g.name}</span>
 						{g.watchOnly && <WatchOnlyMark />}
 						<span className='ml-auto shrink-0 text-xs text-muted-foreground'>
-							{g.slicePct !== null && `${t('slice', { pct: Math.round(g.slicePct) })} · `}
+							{g.slicePct !== null && `${t('slice', { pct: g.slicePct.toFixed(1) })} · `}
 							{t('devicesCount', { count: g.devices.length })}
 						</span>
 					</span>
@@ -616,8 +612,8 @@ function SliceBar({ label, pct, color }: { label: string; pct: number; color: st
 		<span className='flex items-center gap-2 text-xs'>
 			<span className='min-w-7 shrink-0 text-muted-foreground'>{label}</span>
 			<UsageBar pct={pct} color={color} />
-			<span className={cn('w-10 shrink-0 text-right text-sm font-medium tabular-nums', overrun(pct))}>
-				{pctText(pct)}
+			<span className={cn('w-14 shrink-0 text-right text-sm font-medium tabular-nums', overrun(pct))}>
+				{formatPct(pct)}
 			</span>
 		</span>
 	)

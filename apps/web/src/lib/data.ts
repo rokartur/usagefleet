@@ -13,6 +13,7 @@ import {
 	userSettings,
 } from '@/db/schema'
 import type { ClaudeAccount as ClaudeAccountRow, LimitWindow, PointWindow, StoredModelLimit } from '@/db/schema'
+import { roundTenth } from '@/lib/format'
 import { createPromiseCache } from '@/lib/promise-cache'
 import {
 	anchorTs,
@@ -407,12 +408,13 @@ function windowDurationMs(window: string): number | null {
  *  Uncapped: past 100% the group has overrun its slice and is eating another
  *  group's, which is worth seeing. Takes the *unrounded* share so the scaling
  *  doesn't amplify a rounding error (at a 1/10 slice 0.5pt would become 5pt).
+ *  Rounds to a tenth of a point, the precision the UI shows.
  *  `watchPct` is what watch-only groups spent in the same window: it comes off the
  *  top, so the slice is of the (100 - watchPct)% they left. */
 export function groupBudgetPct(share: { exactPct: number } | undefined, slice: number, watchPct = 0) {
 	// Floor at 1% left: watch groups that ate the whole account would otherwise divide by zero.
 	const left = Math.max(0.01, 1 - watchPct / 100)
-	return Math.round((share?.exactPct ?? 0) / (slice * left))
+	return roundTenth((share?.exactPct ?? 0) / (slice * left))
 }
 
 /** The groups that claim a slice of an account (those with a live device on it),
@@ -1535,7 +1537,7 @@ export function buildPastWindows(
 			}
 			return {
 				// Samples carry decimals; display rounds once, here at the end.
-				accountPct: accountPct === null ? null : Math.round(accountPct),
+				accountPct: accountPct === null ? null : roundTenth(accountPct),
 				end: new Date(spanOf.end).toISOString(),
 				groups: [...byGroup.entries()]
 					.map(([groupId, g]) => ({
@@ -1544,7 +1546,7 @@ export function buildPastWindows(
 						accountPct:
 							accountPct === null || totalCost === 0
 								? null
-								: Math.round(accountPct * (g.cost / totalCost)),
+								: roundTenth(accountPct * (g.cost / totalCost)),
 						tokens: g.tokens,
 					}))
 					.toSorted((a, b) => b.tokens - a.tokens),

@@ -9,6 +9,10 @@ export function formatTokens(n: number): string {
 	return String(Math.round(n))
 }
 
+export const roundTenth = (n: number) => Math.round(n * 10) / 10
+
+export const formatPct = (n: number) => `${n.toFixed(1)}%`
+
 export function formatUsd(n: number): string {
 	if (n === 0) {
 		return '$0'

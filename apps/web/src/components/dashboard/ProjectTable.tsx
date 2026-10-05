@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Num, Section } from '@/components/usage-ui'
 import { mergeProjects, unmergeProject } from '@/lib/actions'
 import type { ProjectUsage } from '@/lib/data'
-import { formatTokens, formatUsd } from '@/lib/format'
+import { formatPct, formatTokens, formatUsd } from '@/lib/format'
 import { PROJECT_DAYS } from '@/lib/usage'
 import { cn } from '@/lib/utils'
 
@@ -203,7 +203,7 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 	const restCost = matched.slice(STRIP).reduce((sum, r) => sum + r.costUsd, 0)
 	const rowKey = (r: Row) => keysOf(r).join(' ')
 	const hoveredRest = hovered !== null && !striped.some(r => rowKey(r) === hovered)
-	const share = (n: number) => `${Math.round(costUsd > 0 ? (n / costUsd) * 100 : 0)}%`
+	const share = (n: number) => formatPct(costUsd > 0 ? (n / costUsd) * 100 : 0)
 
 	return (
 		<Section
@@ -553,7 +553,7 @@ function Sparkline({ daily }: { daily: number[] }) {
 
 function GroupSplit({ groups }: { groups: ProjectUsage['groups'] }) {
 	const sum = groups.reduce((acc, g) => acc + g.costUsd, 0)
-	const label = groups.map(g => `${g.name} ${Math.round(sum > 0 ? (g.costUsd / sum) * 100 : 0)}%`).join(', ')
+	const label = groups.map(g => `${g.name} ${formatPct(sum > 0 ? (g.costUsd / sum) * 100 : 0)}`).join(', ')
 	return (
 		<div title={label} className='flex h-1.5 w-20 gap-px overflow-hidden rounded-xs'>
 			<span className='sr-only'>{label}</span>
@@ -569,11 +569,11 @@ function Change({ now, prev }: { now: number; prev: number }) {
 	if (prev === 0) {
 		return <span>{t('new')}</span>
 	}
-	const pct = Math.round(((now - prev) / prev) * 100)
+	const pct = ((now - prev) / prev) * 100
 	return (
 		<span className={cn('tabular-nums', pct < 0 && 'text-muted-foreground')}>
 			{pct > 0 ? '+' : ''}
-			{pct}%
+			{formatPct(pct)}
 		</span>
 	)
 }

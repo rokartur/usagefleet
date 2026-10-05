@@ -52,7 +52,7 @@ function flag(name: string): string | undefined {
 	return undefined
 }
 
-/** "5h ██░░░░░░░░   2% · weekly ████░░░░░░  13%" — the shared limits line.
+/** "5h ██░░░░░░░░   2.4% · weekly ████░░░░░░  13.0%" — the shared limits line.
  *  Bars are plain characters, so they survive a service log as well as a TTY. */
 function limitsSummary(limits: {
 	fiveHourPct: number | null

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { EyeIcon } from 'lucide-react'
 import { animate, useReducedMotion } from 'motion/react'
 import { useTranslations } from 'use-intl'
+import { roundTenth } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 /**
@@ -90,8 +91,8 @@ export function Section({
 
 /** Percentages are shown uncapped while the bar stops at full, so the number is
  *  what carries an overrun: paint it destructive once it reads 100%. Rounded
- *  like the printed value, so "100%" is never white. */
-export const overrun = (pct: number) => (Math.round(pct) >= 100 ? 'text-destructive' : undefined)
+ *  like the printed value, so "100.0%" is never white. */
+export const overrun = (pct: number) => (roundTenth(pct) >= 100 ? 'text-destructive' : undefined)
 
 /** A limit bar: neutral up to 70%, amber past it, destructive past 90% — so a
  *  group that is about to eat its budget is visible without reading numbers. */
@@ -103,7 +104,7 @@ export function UsageBar({ pct, color, className }: { pct: number; color?: strin
 	const value = Math.min(100, Math.max(0, pct))
 	return (
 		<span className={cn('block h-1.5 w-full overflow-hidden rounded-full bg-muted', className)}>
-			<span className='sr-only'>{t('barLabel', { pct: Math.round(value) })}</span>
+			<span className='sr-only'>{t('barLabel', { pct: value.toFixed(1) })}</span>
 			<span
 				aria-hidden
 				className='block h-full rounded-full bg-primary'

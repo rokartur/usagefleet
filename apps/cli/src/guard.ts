@@ -31,7 +31,7 @@ export function blockMessage(view: GuardView): string | null {
 	}
 	const window = view.blockedWindow === 'weekly' ? 'weekly' : '5h'
 	const limit = view.blockedModel ? `${view.blockedModel} ${window}` : window
-	const pct = view.blockedPct ?? 100
+	const pct = (view.blockedPct ?? 100).toFixed(1)
 	const group = view.group ? `"${view.group}"` : 'this group'
 	const until = view.blockedUntil ? new Date(view.blockedUntil) : null
 	const resets =

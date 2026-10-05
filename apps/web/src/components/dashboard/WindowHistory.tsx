@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { overrun, Section, UsageBar } from '@/components/usage-ui'
 import type { PastWindow, WindowHistoryDTO } from '@/lib/data'
-import { formatTokens } from '@/lib/format'
+import { formatPct, formatTokens } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 const KINDS = ['sessions', 'weeks'] as const
@@ -180,7 +180,7 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 															overrun(w.accountPct),
 														)}
 													>
-														{w.accountPct}%
+														{formatPct(w.accountPct)}
 													</span>
 												</span>
 											)}
@@ -194,7 +194,7 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 												<TableCell key={c.key} className='text-right tabular-nums'>
 													{g && g.accountPct !== null ? (
 														<span className={cn('font-medium', overrun(g.accountPct))}>
-															{g.accountPct}%
+															{formatPct(g.accountPct)}
 														</span>
 													) : (
 														<span className='text-muted-foreground'>
@@ -239,7 +239,7 @@ function WindowChart({ windows, kind, columns }: { windows: PastWindow[]; kind: 
 			{shown.map(w => (
 				<div
 					key={w.start}
-					title={`${label(w, kind)} UTC · ${w.accountPct === null ? t('noLimitSample') : `${Math.round(w.accountPct)}%`}`}
+					title={`${label(w, kind)} UTC · ${w.accountPct === null ? t('noLimitSample') : formatPct(w.accountPct)}`}
 					className='flex min-w-0 flex-col'
 				>
 					<div className='relative flex h-36 flex-col justify-end border-t border-dashed border-foreground/20'>
@@ -249,7 +249,7 @@ function WindowChart({ windows, kind, columns }: { windows: PastWindow[]; kind: 
 								w.accountPct !== null && overrun(w.accountPct),
 							)}
 						>
-							{w.accountPct === null ? 'n/a' : `${Math.round(w.accountPct)}%`}
+							{w.accountPct === null ? 'n/a' : formatPct(w.accountPct)}
 						</span>
 						{w.accountPct === null ? (
 							<div className='h-3 rounded-t-sm bg-[repeating-linear-gradient(135deg,var(--color-muted)_0_3px,transparent_3px_6px)]' />
