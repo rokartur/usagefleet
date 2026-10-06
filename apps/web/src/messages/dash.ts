@@ -14,6 +14,13 @@ const en = {
 	},
 	admin: {
 		account: 'Account',
+		delete: 'Delete',
+		deleteDescription:
+			'Every device, group and usage record of this account is deleted immediately. This cannot be undone.',
+		deleteFailed: "Couldn't delete {email}.",
+		deleteTitle: 'Delete {email}?',
+		deleted: '{email} deleted',
+		deleting: 'Deleting {email}…',
 		devices: 'Devices',
 		freeAllowance: 'Free allowance',
 		joined: 'Joined',
@@ -401,6 +408,13 @@ const pl: typeof en = {
 	},
 	admin: {
 		account: 'Konto',
+		delete: 'Usuń',
+		deleteDescription:
+			'Każde urządzenie, grupa i zapis zużycia tego konta zostaną natychmiast usunięte. Tego nie da się cofnąć.',
+		deleteFailed: 'Nie udało się usunąć {email}.',
+		deleteTitle: 'Usunąć {email}?',
+		deleted: 'Usunięto {email}',
+		deleting: 'Usuwanie {email}…',
 		devices: 'Urządzenia',
 		freeAllowance: 'Darmowy przydział',
 		joined: 'Dołączył',

@@ -107,6 +107,29 @@ async function sendMail(to: string, subject: string, text: string) {
 	}
 }
 
+/** Refuses to delete an account that would lock out the admin panel or keep a
+ *  card charged. Shared by self-service deletion and the admin panel's. */
+export async function assertDeletable(user: { id: string; email: string }) {
+	// An admin is defined by ADMIN_EMAILS, so deleting the account leaves the
+	// panel pointing at a user that no longer exists. Signing up again would
+	// restore it, except on a deployment with ALLOW_SIGNUP=false — there the
+	// admin locks themselves out for good. Remove the address from
+	// ADMIN_EMAILS first, which is a deliberate act rather than one click.
+	if (isAdminEmail(user.email)) {
+		throw new APIError('BAD_REQUEST', {
+			message: 'Remove this address from ADMIN_EMAILS before deleting the account.',
+		})
+	}
+	// Removing the user row cascades to devices, groups, usage and the local
+	// subscription row, but nothing here can cancel the subscription in Stripe.
+	const { plan } = await accountPlan(user.id)
+	if (plan !== 'free') {
+		throw new APIError('BAD_REQUEST', {
+			message: 'Cancel the subscription before deleting the account.',
+		})
+	}
+}
+
 export const auth = betterAuth({
 	secret,
 	database: drizzleAdapter(db, {
@@ -204,30 +227,9 @@ export const auth = betterAuth({
 	user: {
 		deleteUser: {
 			enabled: true,
-			// Removing the user row cascades to devices, groups, usage and the local
-			// subscription row, but nothing here can cancel the subscription in
-			// Stripe — so deleting mid-plan would keep charging a card for an account
-			// that no longer exists. Refuse instead, and let billing.tsx cancel first.
-			// This lives in the hook rather than the settings UI because /delete-user
-			// is reachable directly with any valid session.
-			beforeDelete: async user => {
-				// An admin is defined by ADMIN_EMAILS, so deleting the account leaves the
-				// panel pointing at a user that no longer exists. Signing up again would
-				// restore it, except on a deployment with ALLOW_SIGNUP=false — there the
-				// admin locks themselves out for good. Remove the address from
-				// ADMIN_EMAILS first, which is a deliberate act rather than one click.
-				if (isAdminEmail(user.email)) {
-					throw new APIError('BAD_REQUEST', {
-						message: 'Remove this address from ADMIN_EMAILS before deleting the account.',
-					})
-				}
-				const { plan } = await accountPlan(user.id)
-				if (plan !== 'free') {
-					throw new APIError('BAD_REQUEST', {
-						message: 'Cancel your subscription before deleting your account.',
-					})
-				}
-			},
+			// In the hook rather than the settings UI because /delete-user is
+			// reachable directly with any valid session.
+			beforeDelete: user => assertDeletable(user),
 		},
 	},
 	plugins: [

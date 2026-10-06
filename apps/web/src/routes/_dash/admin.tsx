@@ -4,14 +4,27 @@ import { desc, eq, inArray, sql } from 'drizzle-orm'
 import { useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
 import { RelativeTime } from '@/components/RelativeTime'
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { db } from '@/db'
 import { devices, subscription, user, userSettings } from '@/db/schema'
+import { assertDeletable } from '@/lib/auth'
 import { ENTITLING_STATUSES } from '@/lib/billing'
 import { ensureSettings } from '@/lib/data'
+import { isAdminEmail } from '@/lib/flags'
 import { FREE_DEVICES, isPaidPlan, PLANS, parseFreeDeviceLimit, planDevices, planLabel } from '@/lib/plans'
 import type { PlanId } from '@/lib/plans'
 import { requireAdmin } from '@/lib/session'
@@ -66,6 +79,8 @@ const adminData = createServerFn().handler(async () => {
 		return {
 			...a,
 			activeDevices: active.get(a.id) ?? 0,
+			// Mirrors assertDeletable() so the button only shows where it can work.
+			deletable: plan === 'free' && !isAdminEmail(a.email),
 			deviceLimit: plan === 'free' ? (a.freeDeviceLimit ?? FREE_DEVICES) : planDevices(plan, sub?.seats ?? null),
 			plan,
 		}
@@ -82,6 +97,22 @@ const setFreeDeviceLimit = createServerFn({ method: 'POST' })
 		const limit = parseFreeDeviceLimit(String(formData.get('freeDeviceLimit') ?? ''))
 		await ensureSettings(userId)
 		await db.update(userSettings).set({ freeDeviceLimit: limit }).where(eq(userSettings.userId, userId))
+	})
+
+const deleteUser = createServerFn({ method: 'POST' })
+	.inputValidator((formData: FormData) => formData)
+	.handler(async ({ data: formData }) => {
+		await requireAdmin()
+		const [target] = await db
+			.select({ email: user.email, id: user.id })
+			.from(user)
+			.where(eq(user.id, String(formData.get('userId'))))
+		if (!target) {
+			throw new Error('User not found')
+		}
+		await assertDeletable(target)
+		// Sessions, devices, groups and usage all cascade from the user row.
+		await db.delete(user).where(eq(user.id, target.id))
 	})
 
 export const Route = createFileRoute('/_dash/admin')({
@@ -160,14 +191,47 @@ function AdminPage() {
 								</ActionForm>
 							</TableCell>
 							<TableCell>
-								<Button
-									render={<Link to='/admin/$userId' params={{ userId: a.id }} />}
-									nativeButton={false}
-									variant='outline'
-									size='sm'
-								>
-									{t('view')}
-								</Button>
+								<div className='flex gap-2'>
+									<Button
+										render={<Link to='/admin/$userId' params={{ userId: a.id }} />}
+										nativeButton={false}
+										variant='outline'
+										size='sm'
+									>
+										{t('view')}
+									</Button>
+									{a.deletable && (
+										<AlertDialog>
+											<AlertDialogTrigger render={<Button variant='destructive' size='sm' />}>
+												{t('delete')}
+											</AlertDialogTrigger>
+											<AlertDialogContent>
+												<AlertDialogHeader>
+													<AlertDialogTitle>
+														{t('deleteTitle', { email: a.email })}
+													</AlertDialogTitle>
+													<AlertDialogDescription>
+														{t('deleteDescription')}
+													</AlertDialogDescription>
+												</AlertDialogHeader>
+												<ActionForm
+													action={deleteUser}
+													loadingMessage={t('deleting', { email: a.email })}
+													successMessage={t('deleted', { email: a.email })}
+													errorMessage={t('deleteFailed', { email: a.email })}
+												>
+													<input type='hidden' name='userId' value={a.id} />
+													<AlertDialogFooter>
+														<AlertDialogCancel>{tActions('cancel')}</AlertDialogCancel>
+														<AlertDialogAction type='submit' variant='destructive'>
+															{t('delete')}
+														</AlertDialogAction>
+													</AlertDialogFooter>
+												</ActionForm>
+											</AlertDialogContent>
+										</AlertDialog>
+									)}
+								</div>
 							</TableCell>
 						</TableRow>
 					))}
