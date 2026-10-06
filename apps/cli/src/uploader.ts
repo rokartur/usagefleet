@@ -142,7 +142,7 @@ export interface GroupLimits {
 }
 
 /** Null when the server cannot answer (offline, rejected, older than this field). */
-export async function fetchGroupLimits(cfg: Config, accountExtId: string | undefined): Promise<GroupLimits | null> {
+export async function fetchGroupLimits(cfg: Config, accountExtId?: string): Promise<GroupLimits | null> {
 	try {
 		const res = await fetch(`${ENDPOINT}/api/v1/limits`, {
 			headers: { 'x-api-key': tokenFor(cfg, accountExtId) },

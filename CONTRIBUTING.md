@@ -7,6 +7,7 @@ docker run -d --name usagefleet-db -e POSTGRES_DB=app -e POSTGRES_USER=app \
   -e POSTGRES_PASSWORD=app -p 5432:5432 postgres:17-alpine
 cp .env.example .env   # one .env at the repo root serves compose and dev
 bun install
+git config core.hooksPath .githooks   # pre-commit runs lint + format check
 bun run db:migrate
 bun run dev            # http://localhost:3000
 ```

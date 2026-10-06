@@ -1,0 +1,5 @@
+#!/bin/sh
+# Pushes to main publish the CLI, and release.yml fails on the same two checks.
+set -e
+bun run lint
+bun run format:check

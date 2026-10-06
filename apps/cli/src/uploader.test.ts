@@ -140,7 +140,7 @@ describe(postLimits, () => {
 describe(fetchGroupLimits, () => {
 	it('reads the group slice, not the account reading', async () => {
 		mockFetch(200, JSON.stringify({ group: 'Laptop', sessionPct: 12.5, weeklyPct: 40, blocked: false }))
-		await expect(fetchGroupLimits(cfg, undefined)).resolves.toStrictEqual({
+		await expect(fetchGroupLimits(cfg)).resolves.toStrictEqual({
 			group: 'Laptop',
 			sessionPct: 12.5,
 			weeklyPct: 40,
@@ -149,8 +149,8 @@ describe(fetchGroupLimits, () => {
 
 	it('a server that cannot answer is null', async () => {
 		mockFetch(500)
-		await expect(fetchGroupLimits(cfg, undefined)).resolves.toBeNull()
+		await expect(fetchGroupLimits(cfg)).resolves.toBeNull()
 		mockFetch(200, 'null')
-		await expect(fetchGroupLimits(cfg, undefined)).resolves.toBeNull()
+		await expect(fetchGroupLimits(cfg)).resolves.toBeNull()
 	})
 })
