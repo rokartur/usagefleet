@@ -413,9 +413,10 @@ function Meter({
 				className={cn('mt-2 mb-3 block font-heading text-3xl font-medium tabular-nums', overrun(pct))}
 			/>
 			<p className='sr-only'>
-				{[t('barLabel', { pct: formatPctNumber(pct) }), ...bars.map(s => `${s.name} ${formatPctNumber(s.points)}`)].join(
-					', ',
-				)}
+				{[
+					t('barLabel', { pct: formatPctNumber(pct) }),
+					...bars.map(s => `${s.name} ${formatPctNumber(s.points)}`),
+				].join(', ')}
 			</p>
 			<div aria-hidden className='flex h-2 overflow-hidden rounded-full bg-muted'>
 				{bars.map(s => (
