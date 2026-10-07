@@ -9,9 +9,10 @@ import type { Config, Store } from './types.js'
 // These tests pin exactly which upload outcomes are allowed to advance.
 
 const uploadBatch = vi.fn()
-vi.mock(import('./uploader.js'), () => ({ postLimits: vi.fn(), uploadBatch }))
+const postLimits = vi.fn()
+vi.mock(import('./uploader.js'), () => ({ fetchGroupLimits: vi.fn(async () => null), postLimits, uploadBatch }))
 
-const { runOnce } = await import('./collector.js')
+const { reportLimitsOnce, runOnce } = await import('./collector.js')
 
 function usageLine(uuid: string, tokens = 1): string {
 	return `${JSON.stringify({
@@ -55,7 +56,12 @@ function savedOffset(cfg: Config, logPath: string): number | undefined {
 	}
 }
 
-afterEach(() => uploadBatch.mockReset())
+afterEach(() => {
+	uploadBatch.mockReset()
+	postLimits.mockReset()
+	vi.unstubAllEnvs()
+	vi.unstubAllGlobals()
+})
 
 describe('runOnce offset commitment', () => {
 	it('advances only after the server accepts', async () => {
@@ -131,5 +137,38 @@ describe('runOnce offset commitment', () => {
 		// The offset is kept, so the records probed on the way down get retried.
 		expect(r.dropped).toBe(0)
 		expect(savedOffset(cfg, logPath)).toBeUndefined()
+	})
+})
+
+// 2026-10-06: a Windows login switch posted one account's 75% weekly reading under
+// the other's uuid, and every real rise after it went unrecorded until reset.
+describe('reportLimitsOnce account check', () => {
+	function signedInAs(fileAccount: string, tokenOwner: string): Config {
+		const dir = mkdtempSync(join(tmpdir(), 'uf-lim-'))
+		writeFileSync(join(dir, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: fileAccount } }))
+		writeFileSync(
+			join(dir, '.credentials.json'),
+			JSON.stringify({ claudeAiOauth: { accessToken: 'tok', expiresAt: Date.now() + 3_600_000 } }),
+		)
+		vi.stubEnv('CLAUDE_CONFIG_DIR', dir)
+		vi.stubGlobal('fetch', async (url: string) =>
+			Response.json(
+				url.endsWith('/profile')
+					? { account: { uuid: tokenOwner } }
+					: { five_hour: { utilization: 54 }, seven_day: { utilization: 75 } },
+			),
+		)
+		postLimits.mockResolvedValue('ok')
+		return { ...fixture(0).cfg, storePath: join(dir, 'config.json') }
+	}
+
+	it('posts a reading whose token belongs to the signed-in account', async () => {
+		await reportLimitsOnce(signedInAs('acc-a', 'acc-a'))
+		expect(postLimits).toHaveBeenCalledOnce()
+	})
+
+	it('skips a reading whose token belongs to another account', async () => {
+		await reportLimitsOnce(signedInAs('acc-a', 'acc-b'))
+		expect(postLimits).not.toHaveBeenCalled()
 	})
 })

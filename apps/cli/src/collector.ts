@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { sep } from 'node:path'
-import { detectClaudeAccount } from './claude-account.js'
+import { detectClaudeAccount, tokenOwner } from './claude-account.js'
 import { detectClaudeCreds, macKeychainDenied } from './claude-creds.js'
 import { fetchLimits } from './claude-limits.js'
 import type { LimitsReport } from './claude-limits.js'
@@ -305,6 +305,13 @@ export async function reportLimitsOnce(
 	// two subscriptions gets two independent budgets instead of one row both
 	// machines overwrite. Subscription logins only — an API key has no account.
 	const account = report.source === 'sub' ? detectClaudeAccount() : null
+	// Mid-/login the token and ~/.claude.json name two accounts; see docs/collector.md.
+	// ponytail: one profile call per limits cycle, cache it per token if Anthropic starts 429ing.
+	const owner = account ? await tokenOwner(creds.token) : null
+	if (account && owner !== null && owner !== account.extId) {
+		log('warn', 'limits skipped · claude login is mid-switch between accounts · retrying next cycle')
+		return null
+	}
 	const outcome = await postLimits({ ...report, account }, cfg)
 	if (outcome === 'plan') {
 		log('warn', planWall())

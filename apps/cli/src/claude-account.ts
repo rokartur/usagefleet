@@ -46,3 +46,29 @@ export function detectClaudeAccount(path = claudeStatePath()): ClaudeAccount | n
 		return null
 	}
 }
+
+const OAUTH_PROFILE_URL = 'https://api.anthropic.com/api/oauth/profile'
+
+/** The accountUuid Anthropic says owns this OAuth token, or null when it cannot
+ *  say. Null fails open to the file's identity: the endpoint is undocumented, and
+ *  losing it must not stop every collector from reporting limits. */
+export async function tokenOwner(token: string): Promise<string | null> {
+	try {
+		const res = await fetch(OAUTH_PROFILE_URL, {
+			headers: {
+				'anthropic-beta': 'oauth-2025-04-20',
+				authorization: `Bearer ${token}`,
+				'user-agent': 'claude-code/2.1.5 (usagefleet)',
+			},
+			signal: AbortSignal.timeout(15_000),
+		})
+		if (!res.ok) {
+			return null
+		}
+		const body = (await res.json()) as { account?: { uuid?: unknown } } | null
+		const uuid = body?.account?.uuid
+		return typeof uuid === 'string' && uuid !== '' ? uuid.slice(0, 100) : null
+	} catch {
+		return null
+	}
+}

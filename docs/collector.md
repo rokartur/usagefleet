@@ -73,6 +73,12 @@ free (no billable ping), returns the exact account-wide 5h/7d percentages that
 screen shows, and is the source of the per-model caps ("Fable · 24% used").
 When it answers, that IS the report and nothing else is sent to Anthropic.
 
+Before posting, the collector asks `api/oauth/profile` who owns the token and
+skips the cycle if that is not the account `~/.claude.json` names. Claude Code
+writes the two files separately, so during `/login` they can disagree, and a
+reading tagged with the wrong account blocks that account's real rises until its
+window resets. If the profile call fails, the collector posts anyway.
+
 When oauth/usage yields nothing (down, or a changed shape), the collector
 **skips the cycle** rather than report degraded numbers: the server keeps its
 last-good percentages and `guard` has its own staleness rule. There is no
