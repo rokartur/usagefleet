@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { pgTable, text, timestamp, boolean, index, integer } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, boolean, index, integer, uniqueIndex } from 'drizzle-orm/pg-core'
 
 export const user = pgTable('user', {
 	id: text('id').primaryKey(),
@@ -62,7 +62,12 @@ export const account = pgTable(
 			.notNull()
 			.references(() => user.id, { onDelete: 'cascade' }),
 	},
-	table => [index('account_userId_idx').on(table.userId)],
+	// better-auth looks an identity up by (providerId, accountId) and refuses to
+	// sign in when that finds two rows, but declares no constraint to stop them.
+	table => [
+		index('account_userId_idx').on(table.userId),
+		uniqueIndex('account_providerId_accountId_idx').on(table.providerId, table.accountId),
+	],
 )
 
 export const verification = pgTable(
