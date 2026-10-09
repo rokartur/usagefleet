@@ -34,14 +34,14 @@ function piFile(lines: string[]): string {
 describe(tailFile, () => {
 	it('fills pi records with the session header cwd', () => {
 		const fp = piFile([header, message])
-		expect(tailFile(fp, undefined, 'pi')?.records[0]?.cwd).toBe('/Users/artur/Developer/usagefleet')
+		expect(tailFile(fp, undefined, 'pi')?.segments[0]?.records[0]?.cwd).toBe('/Users/artur/Developer/usagefleet')
 	})
 
 	it('still finds the cwd when the tail resumes past the header', () => {
 		const fp = piFile([header, message])
 		const offset = Buffer.byteLength(`${header}\n`)
 		const tail = tailFile(fp, { inode: Number(statSync(fp).ino), offset }, 'pi')
-		expect(tail?.records[0]?.cwd).toBe('/Users/artur/Developer/usagefleet')
+		expect(tail?.segments[0]?.records[0]?.cwd).toBe('/Users/artur/Developer/usagefleet')
 	})
 
 	it('parses each usage line once and leaves a partial trailing line for the next cycle', () => {
@@ -51,12 +51,12 @@ describe(tailFile, () => {
 		const complete = statSync(fp).size
 		appendFileSync(fp, message.slice(0, 40))
 		const tail = tailFile(fp, undefined, 'pi')
-		expect(tail?.records).toHaveLength(2)
+		expect(tail?.segments[0]?.records).toHaveLength(2)
 		expect(tail?.consumedBytes).toBe(complete)
 	})
 
 	it('leaves cwd null when the header has none', () => {
 		const fp = piFile([JSON.stringify({ id: 'x', type: 'session' }), message])
-		expect(tailFile(fp, undefined, 'pi')?.records[0]?.cwd).toBeNull()
+		expect(tailFile(fp, undefined, 'pi')?.segments[0]?.records[0]?.cwd).toBeNull()
 	})
 })

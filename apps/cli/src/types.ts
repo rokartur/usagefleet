@@ -46,12 +46,14 @@ export interface BatchPayload {
 	records: UsageRecord[]
 }
 
-/** Per-log tail position. Only these two fields decide anything: the inode
- *  detects rotation, the offset resumes the read. Older state files carry extra
+/** Per-log tail position. The inode detects rotation, the offset resumes the read,
+ *  and for a pi session the account it was pinned to at that offset carries over,
+ *  since the line naming it lies behind the offset. Older state files carry extra
  *  keys (dev/size/mtimeMs) that were never read; they are simply ignored. */
 export interface FileState {
 	inode: number
 	offset: number
+	accountExtId?: string
 }
 
 /** Tail progress: which logs we have read and how far. */

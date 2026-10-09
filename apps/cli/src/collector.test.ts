@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -137,6 +137,54 @@ describe('runOnce offset commitment', () => {
 		// The offset is kept, so the records probed on the way down get retried.
 		expect(r.dropped).toBe(0)
 		expect(savedOffset(cfg, logPath)).toBeUndefined()
+	})
+})
+
+// 2026-10-09: two pi sessions on two Claude accounts both booked under whichever
+// account the collector's login dir named last.
+describe('runOnce pi account attribution', () => {
+	const piMessage = (id: string) =>
+		`${JSON.stringify({
+			id,
+			message: {
+				provider: 'anthropic',
+				responseId: `msg_${id}`,
+				role: 'assistant',
+				usage: { input: 1, output: 1 },
+			},
+			timestamp: '2026-10-09T07:00:00.000Z',
+			type: 'message',
+		})}\n`
+	const accountEntry = (uuid: string) =>
+		`${JSON.stringify({ customType: 'claude-account', data: { email: `${uuid}@x`, uuid }, id: uuid, type: 'custom' })}\n`
+
+	it('books each pi record on the account its session was pinned to', async () => {
+		const { cfg } = fixture(0)
+		const claudeDir = mkdtempSync(join(tmpdir(), 'uf-acc-'))
+		writeFileSync(join(claudeDir, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: 'acc-device' } }))
+		vi.stubEnv('CLAUDE_CONFIG_DIR', claudeDir)
+		const piDir = mkdtempSync(join(tmpdir(), 'uf-pi-'))
+		const session = join(piDir, 'session.jsonl')
+		writeFileSync(
+			session,
+			`{"type":"session","cwd":"/x"}\n${piMessage('a')}${accountEntry('acc-r')}${piMessage('b')}${accountEntry('acc-c')}${piMessage('c')}`,
+		)
+		const booked: [string | undefined, string[]][] = []
+		uploadBatch.mockImplementation(async (payload: { accountExtId?: string; records: { uuid: string }[] }) => {
+			booked.push([payload.accountExtId, payload.records.map(r => r.uuid)])
+			return { accepted: payload.records.length, duplicates: 0, ok: true }
+		})
+
+		await runOnce({ ...cfg, piDirs: [piDir] })
+		appendFileSync(session, piMessage('d'))
+		await runOnce({ ...cfg, piDirs: [piDir] })
+
+		expect(booked).toStrictEqual([
+			['acc-device', ['pi:msg_a']],
+			['acc-r', ['pi:msg_b']],
+			['acc-c', ['pi:msg_c']],
+			['acc-c', ['pi:msg_d']],
+		])
 	})
 })
 

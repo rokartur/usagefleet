@@ -8,6 +8,8 @@ const MAX_READ = 16 * 1024 * 1024
 
 // Both parsers need a `usage` object, and about 3/4 of log bytes are lines without one.
 const USAGE_KEY = Buffer.from('"usage"')
+// Unescaped quotes: the same text quoted inside a message is `\"customType\"` and never matches.
+const ACCOUNT_KEY = Buffer.from('"customType":"claude-account"')
 
 /**
  * The working directory of a pi session, read from the file's first line
@@ -30,8 +32,27 @@ function piSessionCwd(fd: number): string | null {
 	}
 }
 
-export interface TailResult {
+/** The account a pi session pinned itself to, from the dotfiles claude-accounts extension's
+ *  `{"type":"custom","customType":"claude-account","data":{"email","uuid"}}` line. Every
+ *  later line in the file ran on it, until the next such line. */
+function piSessionAccount(line: string): string | undefined {
+	try {
+		const uuid = (JSON.parse(line) as { data?: { uuid?: unknown } } | null)?.data?.uuid
+		return typeof uuid === 'string' && uuid !== '' ? uuid.slice(0, 100) : undefined
+	} catch {
+		return undefined
+	}
+}
+
+/** Consecutive records booked on one Claude account; undefined means the device's login. */
+export interface AccountSegment {
+	accountExtId: string | undefined
 	records: UsageRecord[]
+}
+
+export interface TailResult {
+	/** New records in file order, split wherever a pi session switched accounts. */
+	segments: AccountSegment[]
 	/** New offset to persist ONLY after the records are acknowledged by the server. */
 	nextState: FileState
 	/** Bytes newly consumed (0 if nothing new). */
@@ -57,11 +78,12 @@ export function tailFile(
 
 	const rotated = prev !== undefined && (st.ino !== prev.inode || st.size < prev.offset)
 	const start = rotated || prev === undefined ? 0 : prev.offset
+	const startAccount = rotated ? undefined : prev?.accountExtId
 
-	const base: FileState = { inode: Number(st.ino), offset: start }
+	const base: FileState = { accountExtId: startAccount, inode: Number(st.ino), offset: start }
 
 	if (st.size <= start) {
-		return { consumedBytes: 0, nextState: base, records: [] }
+		return { consumedBytes: 0, nextState: base, segments: [] }
 	}
 
 	// Cap the per-cycle read so a huge backlog can't OOM; the next cycle resumes
@@ -89,31 +111,54 @@ export function tailFile(
 			return {
 				consumedBytes: length,
 				nextState: { ...base, offset: start + length },
-				records: [],
+				segments: [],
 			}
 		}
-		return { consumedBytes: 0, nextState: base, records: [] }
+		return { consumedBytes: 0, nextState: base, segments: [] }
 	}
 	const consumed = buf.subarray(0, lastNl + 1)
 
-	// Decode only the lines that can hold usage: decoding and splitting the whole
-	// 16 MB read peaked a first-run backlog at ~490 MB RSS.
-	const records: UsageRecord[] = []
-	let at = consumed.indexOf(USAGE_KEY)
-	while (at !== -1) {
+	// Decode only the lines that can hold usage or a pi account switch: decoding and
+	// splitting the whole 16 MB read peaked a first-run backlog at ~490 MB RSS.
+	const segments: AccountSegment[] = []
+	let account = startAccount
+	let usageAt = consumed.indexOf(USAGE_KEY)
+	let accountAt = source === 'pi' ? consumed.indexOf(ACCOUNT_KEY) : -1
+	while (usageAt !== -1 || accountAt !== -1) {
+		const isAccountLine = accountAt !== -1 && (usageAt === -1 || accountAt < usageAt)
+		const at = isAccountLine ? accountAt : usageAt
 		const lineStart = consumed.lastIndexOf(0x0a, at) + 1
 		const lineEnd = consumed.indexOf(0x0a, at)
-		const rec = parseLine(consumed.toString('utf-8', lineStart, lineEnd), source, sessionCwd)
-		if (rec) {
-			records.push(rec)
+		const text = consumed.toString('utf-8', lineStart, lineEnd)
+		if (isAccountLine) {
+			account = piSessionAccount(text)
+		} else {
+			const rec = parseLine(text, source, sessionCwd)
+			if (rec) {
+				addRecord(segments, account, rec)
+			}
 		}
-		at = consumed.indexOf(USAGE_KEY, lineEnd)
+		if (usageAt !== -1 && usageAt < lineEnd) {
+			usageAt = consumed.indexOf(USAGE_KEY, lineEnd)
+		}
+		if (accountAt !== -1 && accountAt < lineEnd) {
+			accountAt = consumed.indexOf(ACCOUNT_KEY, lineEnd)
+		}
 	}
 
 	const consumedBytes = consumed.length
 	return {
 		consumedBytes,
-		nextState: { ...base, offset: start + consumedBytes },
-		records,
+		nextState: { accountExtId: account, inode: base.inode, offset: start + consumedBytes },
+		segments,
+	}
+}
+
+function addRecord(segments: AccountSegment[], accountExtId: string | undefined, record: UsageRecord): void {
+	const last = segments.at(-1)
+	if (last && last.accountExtId === accountExtId) {
+		last.records.push(record)
+	} else {
+		segments.push({ accountExtId, records: [record] })
 	}
 }

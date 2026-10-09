@@ -12,6 +12,7 @@ import { RELEASE_VERSION } from './release.js'
 import { listJsonlFiles } from './scanner.js'
 import { readStore, updateStore } from './store.js'
 import { tailFile } from './tailer.js'
+import type { AccountSegment } from './tailer.js'
 import type { Config, UsageRecord, UsageSource } from './types.js'
 import type { Log } from './ui.js'
 import { tilde } from './ui.js'
@@ -99,7 +100,7 @@ export async function runOnce(
 			continue
 		}
 
-		if (tail.records.length === 0) {
+		if (tail.segments.length === 0) {
 			// Consumed only non-usage lines — safe to advance immediately.
 			state.files[fp] = tail.nextState
 			advanced = true
@@ -108,8 +109,8 @@ export async function runOnce(
 
 		// sendChunk absorbs "invalid" by bisecting, so only auth/plan/transient escape.
 		let outcome: 'ok' | UploadFailure = 'ok'
-		for (let i = 0; i < tail.records.length; i += step) {
-			outcome = await sendChunk(tail.records.slice(i, i + step), cfg, result, log)
+		for (const chunk of chunks(tail.segments, step)) {
+			outcome = await sendChunk(chunk.records, chunk.accountExtId, cfg, result, log)
 			if (outcome !== 'ok') {
 				break
 			}
@@ -186,6 +187,7 @@ const MAX_DROPPED_PER_CHUNK = 2
 
 async function sendChunk(
 	records: UsageRecord[],
+	accountExtId: string | undefined,
 	cfg: Config,
 	result: CycleResult,
 	log: Log,
@@ -193,7 +195,7 @@ async function sendChunk(
 ): Promise<'ok' | UploadFailure> {
 	const res = await uploadBatch(
 		{
-			accountExtId: detectClaudeAccount()?.extId,
+			accountExtId: accountExtId ?? detectClaudeAccount()?.extId,
 			collectorVersion: RELEASE_VERSION,
 			hostname: hostname(),
 			os: detectOs(),
@@ -229,8 +231,19 @@ async function sendChunk(
 	}
 
 	const mid = Math.ceil(records.length / 2)
-	const head = await sendChunk(records.slice(0, mid), cfg, result, log, dropCeiling)
-	return head === 'ok' ? sendChunk(records.slice(mid), cfg, result, log, dropCeiling) : head
+	const head = await sendChunk(records.slice(0, mid), accountExtId, cfg, result, log, dropCeiling)
+	return head === 'ok' ? sendChunk(records.slice(mid), accountExtId, cfg, result, log, dropCeiling) : head
+}
+
+/** Upload-sized slices of each segment; a chunk never spans two accounts. */
+function chunks(segments: AccountSegment[], step: number): AccountSegment[] {
+	const out: AccountSegment[] = []
+	for (const { accountExtId, records } of segments) {
+		for (let i = 0; i < records.length; i += step) {
+			out.push({ accountExtId, records: records.slice(i, i + step) })
+		}
+	}
+	return out
 }
 
 /**
