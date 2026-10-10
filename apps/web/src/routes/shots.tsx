@@ -3,7 +3,7 @@
 // never show someone's actual usage. Dev-only — see the notFound below.
 import { useEffect } from 'react'
 import { createFileRoute, notFound } from '@tanstack/react-router'
-import { AppTopbar } from '@/components/app-topbar'
+import { AppShell } from '@/components/app-shell'
 import { Cockpit } from '@/components/dashboard/Cockpit'
 import { dashboard, history, projects, windows } from '@/lib/shots-fixture'
 
@@ -31,11 +31,8 @@ function ShotsPage() {
 
 	// Same shell as _dash.tsx, or the screenshots stop matching the app.
 	return (
-		<>
-			<AppTopbar email='you@example.com' isAdmin={false} />
-			<main className='flex w-full flex-col gap-6 p-4 md:p-6'>
-				<Cockpit accounts={[{ dash: dashboard, windows }]} history={history} projects={projects} setup={null} />
-			</main>
-		</>
+		<AppShell email='you@example.com' isAdmin={false}>
+			<Cockpit accounts={[{ dash: dashboard, windows }]} history={history} projects={projects} setup={null} />
+		</AppShell>
 	)
 }

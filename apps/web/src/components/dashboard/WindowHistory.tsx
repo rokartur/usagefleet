@@ -196,8 +196,9 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 	)
 }
 
-/** One column per window, oldest on the left: its height is the account's peak,
- *  cut into what each group contributed, against a 100% line. A window with no
+/** Arc's bar chart anatomy: one column per window, oldest on the left, against
+ *  a 0–100% scale in the right gutter with the average dashed across. Each bar
+ *  is the account's peak cut into what each group contributed. A window with no
  *  limit sample gets a short hatched stub so the gap reads as missing data.
  *  Always `columns` wide, padded on the left, so few windows don't stretch. */
 function WindowChart({ windows, kind, columns }: { windows: PastWindow[]; kind: Kind; columns: number }) {
@@ -211,49 +212,113 @@ function WindowChart({ windows, kind, columns }: { windows: PastWindow[]; kind: 
 			: { day: 'numeric', month: 'short', timeZone: 'UTC' },
 	)
 	const shown = windows.toReversed()
+	const padding = Array.from({ length: columns - shown.length }, (_, i) => `empty-${i}`)
+	const sampled = windows.flatMap(w => (w.accountPct === null ? [] : [Math.min(100, w.accountPct)]))
+	const average = sampled.length > 0 ? Math.round(sampled.reduce((sum, pct) => sum + pct, 0) / sampled.length) : null
+	const grid = { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }
+	// A tick label makes way where the average label sits beside it.
+	const ticks = [0, 50, 100].filter(tick => average === null || Math.abs(tick - average) > 12)
 
 	return (
-		<div aria-hidden className='grid gap-1.5' style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
-			{Array.from({ length: columns - shown.length }, (_, i) => (
-				<div key={`empty-${i}`} className='h-36 border-t border-dashed border-foreground/20' />
-			))}
-			{shown.map(w => (
-				<div
-					key={w.start}
-					title={`${label(w, kind)} UTC · ${w.accountPct === null ? t('noLimitSample') : formatPct(w.accountPct)}`}
-					className='flex min-w-0 flex-col'
-				>
-					<div className='relative flex h-36 flex-col justify-end border-t border-dashed border-foreground/20'>
-						<span
-							className={cn(
-								'mb-1 text-center text-[11px] text-muted-foreground tabular-nums',
-								w.accountPct !== null && overrun(w.accountPct),
-							)}
-						>
-							{w.accountPct === null ? 'n/a' : formatPct(w.accountPct)}
+		<figure aria-hidden className='m-0 grid gap-5'>
+			{average !== null && (
+				<div className='grid gap-0.5'>
+					<span className='text-sm text-(--text-secondary)'>{t('average')}</span>
+					<span className='flex items-baseline gap-1.5 font-(family-name:--font-display) text-3xl leading-(--leading-display) font-medium tracking-(--tracking-display) tabular-nums'>
+						{average}
+						<span className='font-(family-name:--font-body) text-base font-normal tracking-(--tracking-body) text-(--text-secondary)'>
+							%
 						</span>
-						{w.accountPct === null ? (
-							<div className='h-3 rounded-t-sm bg-[repeating-linear-gradient(135deg,var(--color-muted)_0_3px,transparent_3px_6px)]' />
-						) : (
-							<div
-								className='flex flex-col-reverse overflow-hidden rounded-t-sm'
-								style={{ height: `calc((100% - 1.25rem) * ${Math.min(100, w.accountPct) / 100})` }}
-							>
-								{w.groups.map(g => (
-									<div
-										key={g.groupId ?? 'ungrouped'}
-										className='not-first:border-b not-first:border-background'
-										style={{ backgroundColor: g.color, flexGrow: g.accountPct ?? 0 }}
-									/>
-								))}
-							</div>
-						)}
-					</div>
-					<span className='mt-1.5 truncate text-center text-[11px] text-muted-foreground'>
-						{short.format(new Date(w.start))}
 					</span>
 				</div>
-			))}
-		</div>
+			)}
+			<div className='grid grid-cols-[minmax(0,1fr)_52px] grid-rows-[auto_26px]'>
+				{/* The top inset leaves room for the label over a full bar. */}
+				<div className='relative h-40'>
+					<div className='absolute inset-x-0 top-4 bottom-0'>
+						{[50, 100].map(tick => (
+							<span key={tick} className='absolute inset-x-0 border-t' style={{ bottom: `${tick}%` }} />
+						))}
+						{average !== null && (
+							<span
+								className='absolute inset-x-0 border-t border-dashed border-(--text-secondary)'
+								style={{ bottom: `${average}%` }}
+							/>
+						)}
+						<div
+							className='absolute inset-0 grid items-end gap-1.5 border-b border-(--border-strong)'
+							style={grid}
+						>
+							{padding.map(key => (
+								<span key={key} />
+							))}
+							{shown.map(w => (
+								<div
+									key={w.start}
+									title={`${label(w, kind)} UTC · ${w.accountPct === null ? t('noLimitSample') : formatPct(w.accountPct)}`}
+									className='relative mx-auto flex h-full w-full max-w-[28px] flex-col justify-end'
+								>
+									<span
+										className={cn(
+											'absolute inset-x-[-1rem] mb-1 text-center text-xs leading-none text-(--text-muted) tabular-nums',
+											w.accountPct !== null && overrun(w.accountPct),
+										)}
+										style={{ bottom: `${Math.min(100, w.accountPct ?? 4)}%` }}
+									>
+										{w.accountPct === null ? 'n/a' : formatPct(w.accountPct)}
+									</span>
+									{w.accountPct === null ? (
+										<div className='h-[4%] rounded-t-[4px] bg-[repeating-linear-gradient(135deg,var(--color-muted)_0_3px,transparent_3px_6px)]' />
+									) : (
+										<div
+											className='flex flex-col-reverse gap-px overflow-hidden rounded-t-[4px]'
+											style={{ height: `${Math.min(100, w.accountPct)}%` }}
+										>
+											{w.groups.map(g => (
+												<div
+													key={g.groupId ?? 'ungrouped'}
+													style={{ backgroundColor: g.color, flexGrow: g.accountPct ?? 0 }}
+												/>
+											))}
+										</div>
+									)}
+								</div>
+							))}
+						</div>
+					</div>
+				</div>
+				<div className='relative'>
+					<div className='absolute inset-x-0 top-4 bottom-0'>
+						{ticks.map(tick => (
+							<span
+								key={tick}
+								className='absolute left-2.5 translate-y-1/2 text-xs leading-none text-(--text-muted) tabular-nums'
+								style={{ bottom: `${tick}%` }}
+							>
+								{tick}%
+							</span>
+						))}
+						{average !== null && (
+							<span
+								className='absolute left-2.5 translate-y-1/2 text-xs leading-none font-medium tabular-nums'
+								style={{ bottom: `${average}%` }}
+							>
+								{average}%
+							</span>
+						)}
+					</div>
+				</div>
+				<div className='grid gap-1.5 pt-2' style={grid}>
+					{padding.map(key => (
+						<span key={key} />
+					))}
+					{shown.map(w => (
+						<span key={w.start} className='truncate text-center text-xs leading-none text-(--text-muted)'>
+							{short.format(new Date(w.start))}
+						</span>
+					))}
+				</div>
+			</div>
+		</figure>
 	)
 }

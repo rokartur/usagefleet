@@ -13,9 +13,11 @@ const en = {
 	nav: {
 		account: 'Account',
 		admin: 'Admin',
+		breadcrumb: 'Breadcrumb',
 		dashboard: 'Dashboard',
 		fleet: 'Fleet',
 		label: 'Main',
+		open: 'Open navigation',
 	},
 	notFound: {
 		devices: 'reporting, unaffected',
@@ -34,6 +36,7 @@ const en = {
 		'Track coding agent token usage and rate limits across every machine on one subscription. Live 5-hour and weekly windows, split per device and per group.',
 	theme: { dark: 'Dark', label: 'Theme', light: 'Light', system: 'System' },
 	user: {
+		menu: 'Account menu, {name}',
 		signOut: 'Sign out',
 		signOutFailed: "Couldn't sign out",
 		signOutFailedHint: 'Please sign in again if your session remains active.',
@@ -56,9 +59,11 @@ const pl: typeof en = {
 	nav: {
 		account: 'Konto',
 		admin: 'Administracja',
+		breadcrumb: 'Ścieżka',
 		dashboard: 'Pulpit',
 		fleet: 'Flota',
 		label: 'Główna',
+		open: 'Otwórz nawigację',
 	},
 	notFound: {
 		devices: 'raportują, bez zmian',
@@ -77,6 +82,7 @@ const pl: typeof en = {
 		'Śledź zużycie tokenów i limity agentów kodujących na wszystkich maszynach w jednej subskrypcji. Okna 5-godzinne i tygodniowe na żywo, w podziale na urządzenia i grupy.',
 	theme: { dark: 'Ciemny', label: 'Motyw', light: 'Jasny', system: 'Systemowy' },
 	user: {
+		menu: 'Menu konta, {name}',
 		signOut: 'Wyloguj się',
 		signOutFailed: 'Nie udało się wylogować',
 		signOutFailedHint: 'Jeśli sesja nadal działa, zaloguj się ponownie.',

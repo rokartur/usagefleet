@@ -4,13 +4,14 @@ import { CheckIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'use-intl'
 import { Badge } from '@/components/arc/badge/badge'
 import { buttonClassName } from '@/components/arc/button/button'
+import { MetricCard } from '@/components/arc/metric-card/metric-card'
 import SegmentedControl from '@/components/arc/segmented-control/segmented-control'
 import type { UsageMeterSegment } from '@/components/arc/usage-meter/usage-meter'
 import { UsageMeter } from '@/components/arc/usage-meter/usage-meter'
 import { InstallCommand } from '@/components/InstallCommand'
 import { RelativeTime } from '@/components/RelativeTime'
 import { ResetCountdown } from '@/components/ResetCountdown'
-import { Num, overrun, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
+import { overrun, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
 import { useMounted } from '@/hooks/use-mounted'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO } from '@/lib/data'
 import { formatPct, formatPctNumber, formatRelative, formatTokens, formatUsd, roundTenth } from '@/lib/format'
@@ -289,11 +290,13 @@ export function LiveDashboard({
 	}
 
 	return (
-		<div className='flex flex-col gap-5'>
-			{dashes.length > 1 && (
-				<AccountSwitcher dashes={dashes} selected={accountKey(dash)} onSelect={onSelect} now={now} />
-			)}
-			<StatusLine dash={dash} now={now} pollDown={pollDown} />
+		<div className='flex flex-col divide-y'>
+			<div className='flex flex-col gap-3 pb-5'>
+				{dashes.length > 1 && (
+					<AccountSwitcher dashes={dashes} selected={accountKey(dash)} onSelect={onSelect} now={now} />
+				)}
+				<StatusLine dash={dash} now={now} pollDown={pollDown} />
+			</div>
 			<Meter
 				label={t('fiveHourSession')}
 				pct={dash.fiveHourPct}
@@ -389,7 +392,7 @@ function Meter({
 			? [...segments, { color: 'var(--text-muted)', id: 'outside', label: t('outside'), value: outside }]
 			: segments
 	return (
-		<section className='flex flex-col gap-3 rounded-(--radius-surface) border bg-surface p-6'>
+		<section className='flex flex-col gap-3 py-5'>
 			<UsageMeter
 				label={label}
 				segments={bars}
@@ -448,7 +451,7 @@ function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[
 	}
 	const t = useTranslations('dash.overview')
 	return (
-		<section aria-labelledby='groups-heading' className='rounded-(--radius-surface) border bg-surface p-6'>
+		<section aria-labelledby='groups-heading' className='py-5'>
 			<h2 id='groups-heading' className='mb-2 text-sm font-medium'>
 				<abbr title={t('sliceHint')} className='no-underline'>
 					{t('groups')}
@@ -600,17 +603,14 @@ function SliceBar({ label, pct, color }: { label: string; pct: number; color: st
 function Spend({ dash }: { dash: DashboardDTO }) {
 	const t = useTranslations('dash.overview')
 	return (
-		<section className='rounded-(--radius-surface) border bg-surface p-6'>
-			<h2 className='text-sm text-muted-foreground'>{t('spendWeek')}</h2>
-			<Num
+		<div className='pt-5'>
+			<MetricCard
+				label={t('spendWeek')}
 				value={dash.spend.week.costUsd}
-				format={formatUsd}
-				className='mt-2 block font-heading text-3xl font-medium tracking-tight tabular-nums'
+				prefix='$'
+				decimals={2}
+				context={`${formatTokens(billableTokens(dash.spend.week.totals))} · ${formatUsd(dash.spend.month.costUsd)} ${t('month')}`}
 			/>
-			<p className='mt-1 text-sm text-muted-foreground tabular-nums'>
-				{formatTokens(billableTokens(dash.spend.week.totals))} · {formatUsd(dash.spend.month.costUsd)}{' '}
-				{t('month')}
-			</p>
-		</section>
+		</div>
 	)
 }

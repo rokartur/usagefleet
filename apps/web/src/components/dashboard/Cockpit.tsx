@@ -8,10 +8,10 @@ import { accountKey, LiveDashboard } from '@/components/LiveDashboard'
 import type { SetupState } from '@/components/LiveDashboard'
 import type { DashboardDTO, WindowHistoryDTO } from '@/lib/data'
 
-/** The dashboard layout: the live column for one account stays put on the left
- *  while the analysis scrolls on the right; below lg it stacks. The page owns
- *  which account is shown so both columns follow the same one. Shared by the
- *  user's dashboard and the admin's view of it. */
+/** The dashboard layout: the analysis scrolls in the middle while the live column
+ *  for one account stays put on the right; below lg it stacks, live first. The
+ *  page owns which account is shown so both columns follow the same one. Shared
+ *  by the user's dashboard and the admin's view of it. */
 export function Cockpit({
 	accounts,
 	history,
@@ -46,6 +46,7 @@ export function Cockpit({
 	)
 	const analysis = (
 		<>
+			{history.rows.length > 0 && <UsageExplorer history={history} />}
 			{/* Past windows only show up once the account has closed one. */}
 			{windows && (windows.sessions.length > 0 || windows.weeks.length > 0) && (
 				<WindowHistory
@@ -53,7 +54,6 @@ export function Cockpit({
 					account={accounts.length > 1 ? (current.dash.accountLabel ?? t('unidentifiedAccount')) : undefined}
 				/>
 			)}
-			{history.rows.length > 0 && <UsageExplorer history={history} />}
 			{projects.length > 0 && <ProjectTable projects={projects} readOnly={readOnly} />}
 		</>
 	)
@@ -70,11 +70,11 @@ export function Cockpit({
 	}
 
 	return (
-		<div className='grid gap-10 lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-0'>
-			<aside className='lg:sticky lg:top-18 lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto lg:border-r lg:pr-6'>
+		<div className='grid gap-10 lg:grid-cols-[minmax(0,1fr)_21rem] lg:gap-0'>
+			<aside className='lg:sticky lg:top-18 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto lg:border-l lg:pl-6'>
 				{live}
 			</aside>
-			<div className='flex min-w-0 flex-col gap-10 lg:pl-6'>{analysis}</div>
+			<div className='flex min-w-0 flex-col gap-6 lg:pr-6'>{analysis}</div>
 		</div>
 	)
 }

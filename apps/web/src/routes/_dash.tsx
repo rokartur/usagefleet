@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { AppTopbar, PageTitle } from '@/components/app-topbar'
+import { AppShell } from '@/components/app-shell'
 import { isAdminEmail } from '@/lib/flags'
 import { requireUser } from '@/lib/session'
 
@@ -20,12 +20,8 @@ export const Route = createFileRoute('/_dash')({
 function DashLayout() {
 	const { email, isAdmin } = Route.useRouteContext()
 	return (
-		<>
-			<AppTopbar email={email} isAdmin={isAdmin} />
-			<main className='flex w-full flex-col gap-6 p-4 md:p-6'>
-				<PageTitle />
-				<Outlet />
-			</main>
-		</>
+		<AppShell email={email} isAdmin={isAdmin}>
+			<Outlet />
+		</AppShell>
 	)
 }

@@ -183,6 +183,7 @@ const en = {
 	overview: {
 		accountLimit: 'Account limit',
 		addDevice: 'Add device',
+		average: 'Average',
 		beta: 'Beta',
 		betaHint:
 			'Window history is new: it reconstructs closed windows from the samples the collector happened to record, so a window that nobody reported during reads as tokens only.',
@@ -588,6 +589,7 @@ const pl: typeof en = {
 	overview: {
 		accountLimit: 'Limit konta',
 		addDevice: 'Dodaj urządzenie',
+		average: 'Średnio',
 		beta: 'Beta',
 		betaHint:
 			'Historia okien jest nowa: odtwarza zamknięte okna z próbek, które kolektor akurat zapisał, więc okno, w trakcie którego nikt nie raportował, pokazuje tylko tokeny.',
