@@ -1,24 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { CheckIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'use-intl'
 import { Accordion } from '@/components/arc/accordion/accordion'
+import { AnimatedCounter } from '@/components/arc/animated-counter/animated-counter'
 import { Badge } from '@/components/arc/badge/badge'
 import { buttonClassName } from '@/components/arc/button/button'
-import { MetricCard } from '@/components/arc/metric-card/metric-card'
 import SegmentedControl from '@/components/arc/segmented-control/segmented-control'
+import { Tooltip } from '@/components/arc/tooltip/tooltip'
 import type { UsageMeterSegment } from '@/components/arc/usage-meter/usage-meter'
 import { UsageMeter } from '@/components/arc/usage-meter/usage-meter'
 import { InstallCommand } from '@/components/InstallCommand'
 import { RelativeTime } from '@/components/RelativeTime'
 import { ResetCountdown } from '@/components/ResetCountdown'
-import { overrun, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
+import { overrun, Section, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
 import { useMounted } from '@/hooks/use-mounted'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO } from '@/lib/data'
 import { formatPct, formatPctNumber, formatRelative, formatTokens, formatUsd, roundTenth } from '@/lib/format'
 import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
-import type { ModelUsage } from '@/lib/usage'
-import { billableTokens, LIMITS_STALE_MS, sameReset } from '@/lib/usage'
+import type { ModelUsage, TokenTotals } from '@/lib/usage'
+import { billableTokens, LIMITS_STALE_MS } from '@/lib/usage'
 import { cn } from '@/lib/utils'
 
 const POLL_MS = 5000
@@ -181,9 +182,9 @@ function SetupRail({ setup }: { setup: SetupState | null }) {
 	)
 }
 
-/** The live column for one Anthropic account at a time: its two windows cut into
- *  the groups' contributions, the groups against their slices, and spend. With
- *  several accounts a switcher on top picks which. Polls the whole set at once:
+/** The top section for one Anthropic account at a time: its limit windows cut
+ *  into the groups' contributions, spend, and the groups against their slices.
+ *  With several accounts a switcher picks which. Polls the whole set at once:
  *  /api/dashboard answers for all of them.
  *  `poll: false` renders `initial` as the route loader last returned it — the
  *  admin's per-user view, where /api/dashboard would answer with the viewer's
@@ -291,42 +292,49 @@ export function LiveDashboard({
 	}
 
 	return (
-		<div className='flex flex-col divide-y'>
-			<div className='flex flex-col gap-3 pb-5'>
+		<Section title={t('currentUsage')} actions={<StatusLine dash={dash} now={now} pollDown={pollDown} />}>
+			<div className='flex flex-col gap-8'>
 				{dashes.length > 1 && (
 					<AccountSwitcher dashes={dashes} selected={accountKey(dash)} onSelect={onSelect} now={now} />
 				)}
-				<StatusLine dash={dash} now={now} pollDown={pollDown} />
+				<div className='grid grid-cols-[repeat(auto-fit,minmax(15rem,1fr))] gap-x-8 gap-y-6'>
+					<Meter
+						label={t('fiveHourSession')}
+						pct={dash.fiveHourPct}
+						resetsAt={dash.fiveHourResetsAt}
+						segments={dash.groups.map(g => ({
+							color: g.color,
+							id: groupKey(g.groupId),
+							label: g.name,
+							value: g.sessionAccountPct,
+						}))}
+					/>
+					<Meter
+						label={tUsage('weekly')}
+						pct={dash.sevenDayPct}
+						resetsAt={dash.sevenDayResetsAt}
+						segments={dash.groups.map(g => ({
+							color: g.color,
+							id: groupKey(g.groupId),
+							label: g.name,
+							value: g.weeklyAccountPct,
+						}))}
+					/>
+					{/* No per-group account split exists for a model limit, so it reads as one bar. */}
+					{dash.modelLimits.map(limit => (
+						<Meter
+							key={limit.model}
+							label={limit.label}
+							pct={limit.pct}
+							resetsAt={limit.resetsAt}
+							segments={[{ id: limit.model, label: limit.label, value: limit.pct }]}
+						/>
+					))}
+					<Spend dash={dash} />
+				</div>
+				<GroupList dash={dash} dashes={dashes} />
 			</div>
-			<Meter
-				label={t('fiveHourSession')}
-				pct={dash.fiveHourPct}
-				resetsAt={dash.fiveHourResetsAt}
-				segments={dash.groups.map(g => ({
-					color: g.color,
-					id: groupKey(g.groupId),
-					label: g.name,
-					value: g.sessionAccountPct,
-				}))}
-			/>
-			<Meter
-				label={tUsage('weekly')}
-				pct={dash.sevenDayPct}
-				resetsAt={dash.sevenDayResetsAt}
-				segments={dash.groups.map(g => ({
-					color: g.color,
-					id: groupKey(g.groupId),
-					label: g.name,
-					value: g.weeklyAccountPct,
-				}))}
-			>
-				{dash.modelLimits.map(limit => (
-					<ModelLimitRow key={limit.model} limit={limit} weeklyResetsAt={dash.sevenDayResetsAt} />
-				))}
-			</Meter>
-			<GroupList dash={dash} dashes={dashes} />
-			<Spend dash={dash} />
-		</div>
+		</Section>
 	)
 }
 function AccountSwitcher({
@@ -374,13 +382,11 @@ function Meter({
 	pct,
 	resetsAt,
 	segments,
-	children,
 }: {
 	label: string
 	pct: number
 	resetsAt: string | null
 	segments: UsageMeterSegment[]
-	children?: React.ReactNode
 }) {
 	const t = useTranslations('dash.usage')
 	const tMeter = useTranslations('dash.usage.meter')
@@ -393,13 +399,14 @@ function Meter({
 			? [...segments, { color: 'var(--text-muted)', id: 'outside', label: t('outside'), value: outside }]
 			: segments
 	return (
-		<section className='flex flex-col gap-3 py-5'>
+		<div className='flex min-w-0 flex-col gap-3'>
 			<UsageMeter
 				label={label}
 				segments={bars}
 				limit={100}
 				unit='%'
 				locale={locale}
+				legend={false}
 				messages={{
 					almostFull: tMeter('almostFull'),
 					byCategory: label => tMeter('byCategory', { label }),
@@ -417,30 +424,12 @@ function Meter({
 			<p className='text-xs text-muted-foreground'>
 				<ResetCountdown resetsAt={resetsAt} />
 			</p>
-			{children}
-		</section>
-	)
-}
-
-/** A per-model limit (Fable weekly) under the window it shares. Its reset only
- *  shows when it differs from that window's. */
-function ModelLimitRow({ limit, weeklyResetsAt }: { limit: ModelLimitDTO; weeklyResetsAt: string | null }) {
-	return (
-		<div className='mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm'>
-			<span>{limit.label}</span>
-			<UsageBar pct={limit.pct} className='w-24' />
-			<span className={cn('font-medium tabular-nums', overrun(limit.pct))}>{formatPct(limit.pct)}</span>
-			{!sameReset(limit.resetsAt, weeklyResetsAt) && (
-				<span className='text-xs text-muted-foreground'>
-					<ResetCountdown resetsAt={limit.resetsAt} />
-				</span>
-			)}
 		</div>
 	)
 }
 
-/** The groups with usage on this account, each against its slice. Expanding a
- *  row shows which machines are on the account and what they ran. */
+/** The groups with usage on this account, one card each against its slice.
+ *  Which machines are on the account and what they ran folds away below. */
 function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[] }) {
 	// Where a group that left this account went: the one its devices are on now.
 	const accountName = useAccountName()
@@ -452,24 +441,31 @@ function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[
 	}
 	const t = useTranslations('dash.overview')
 	return (
-		<section aria-labelledby='groups-heading' className='py-5'>
-			<h2 id='groups-heading' className='mb-2 text-sm font-medium'>
+		<section aria-labelledby='groups-heading' className='flex flex-col gap-3'>
+			<h3 id='groups-heading' className='text-sm font-medium'>
 				<abbr title={t('sliceHint')} className='no-underline'>
 					{t('groups')}
 				</abbr>
-			</h2>
-			<Accordion
-				items={dash.groups.map(g => ({
-					value: groupKey(g.groupId),
-					title: (
+			</h3>
+			<ul className='grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3'>
+				{dash.groups.map(g => (
+					<li key={groupKey(g.groupId)} className='min-w-0 rounded-(--radius-panel) border p-4'>
 						<GroupSummary
 							group={g}
 							modelLimits={dash.modelLimits}
 							movedTo={movedAway(g) ? movedTo(g) : null}
 						/>
-					),
-					content: <GroupDetails group={g} />,
-				}))}
+					</li>
+				))}
+			</ul>
+			<Accordion
+				items={[
+					{
+						value: 'details',
+						title: t('devicesAndModels'),
+						content: <ModelMix groups={dash.groups} />,
+					},
+				]}
 			/>
 		</section>
 	)
@@ -487,8 +483,8 @@ function GroupSummary({
 	const t = useTranslations('dash.overview')
 	const moved = movedAway(g)
 	return (
-		<span className='flex flex-col gap-1.5 py-1 font-normal'>
-			<span className='flex min-w-0 items-center gap-2 text-sm'>
+		<div className='flex flex-col gap-3'>
+			<div className='flex min-w-0 items-center gap-2 text-sm'>
 				<GroupDot color={g.color} />
 				<span className='truncate font-medium'>{g.name}</span>
 				{g.watchOnly && <WatchOnlyMark />}
@@ -496,8 +492,8 @@ function GroupSummary({
 					{g.slicePct !== null && `${t('slice', { pct: formatPctNumber(g.slicePct) })} · `}
 					{t('devicesCount', { count: g.devices.length })}
 				</span>
-			</span>
-			<span className={cn('grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-4', moved && 'opacity-60')}>
+			</div>
+			<div className={cn('flex flex-col gap-2', moved && 'opacity-60')}>
 				<SliceBar label='5h' pct={g.sessionBudgetPct} color={g.color} />
 				<SliceBar label={t('week')} pct={g.weeklyBudgetPct} color={g.color} />
 				{modelLimits.map(limit => (
@@ -509,9 +505,9 @@ function GroupSummary({
 						color={g.color}
 					/>
 				))}
-			</span>
+			</div>
 			{moved && (
-				<span className='text-xs text-muted-foreground'>
+				<p className='text-xs text-muted-foreground'>
 					{movedTo
 						? t.rich('movedTo', {
 								account: movedTo,
@@ -521,68 +517,109 @@ function GroupSummary({
 								),
 							})
 						: t('moved')}
-				</span>
+				</p>
 			)}
-		</span>
-	)
-}
-
-function GroupDetails({ group: g }: { group: LiveGroupUsage }) {
-	const t = useTranslations('dash.overview')
-	const groupCostUsd = g.models.reduce((sum, m) => sum + m.costUsd, 0)
-	return (
-		<div className='flex flex-col gap-3 pl-4 text-xs'>
-			{g.devices.length > 0 && (
-				<ul>
-					{g.devices.map(d => (
-						<li key={d.id} className='flex justify-between gap-3 py-0.5'>
-							<span className='truncate'>{d.name}</span>
-							<span className='shrink-0 text-muted-foreground'>
-								<RelativeTime date={d.lastSeenAt === null ? null : new Date(d.lastSeenAt)} />
-							</span>
-						</li>
-					))}
-				</ul>
-			)}
-			<div>
-				<p className='mb-1 text-muted-foreground'>{t('models')}</p>
-				<ul>
-					{g.models.map(m => (
-						<ModelRow key={m.model} model={m} groupCostUsd={groupCostUsd} />
-					))}
-				</ul>
-			</div>
 		</div>
 	)
 }
 
-function ModelRow({ model: m, groupCostUsd }: { model: ModelUsage; groupCostUsd: number }) {
+const BUCKETS = [
+	{ key: 'tokensIn', tokens: (t: TokenTotals) => t.inputTokens, fill: 'bg-foreground/90' },
+	{ key: 'tokensOut', tokens: (t: TokenTotals) => t.outputTokens, fill: 'bg-foreground/65' },
+	{ key: 'tokensCacheWrite', tokens: (t: TokenTotals) => t.cacheCreationTokens, fill: 'bg-foreground/45' },
+	{ key: 'tokensCacheRead', tokens: (t: TokenTotals) => t.cacheReadTokens, fill: 'bg-foreground/25' },
+] as const
+
+/** Each group's machines beside the models they ran, every model a bar split
+ *  into token kinds. Bar length is against the busiest model on the account,
+ *  so rows compare across groups. */
+function ModelMix({ groups }: { groups: LiveGroupUsage[] }) {
 	const t = useTranslations('dash.overview')
-	const sharePct = groupCostUsd > 0 ? Math.round((m.costUsd / groupCostUsd) * 100) : 0
-	const buckets = [
-		{ key: 'tokensIn', tokens: m.totals.inputTokens },
-		{ key: 'tokensOut', tokens: m.totals.outputTokens },
-		{ key: 'tokensCacheWrite', tokens: m.totals.cacheCreationTokens },
-		{ key: 'tokensCacheRead', tokens: m.totals.cacheReadTokens },
-	] as const
+	const maxTokens = Math.max(0, ...groups.flatMap(g => g.models.map(m => m.totals.totalTokens)))
 	return (
-		<li className='py-1.5'>
-			<div className='flex justify-between gap-3'>
-				<span className='truncate'>{m.label}</span>
-				<span className='shrink-0 tabular-nums'>
-					{formatTokens(m.billableTokens)} · {sharePct}%
-				</span>
-			</div>
-			<p className='truncate text-muted-foreground'>
-				{m.model} · {t('modelRequests', { count: m.requests })}
-			</p>
-			<p className='mt-0.5 grid grid-cols-2 gap-x-6 text-muted-foreground'>
-				{buckets.map(b => (
-					<span key={b.key} className='flex justify-between gap-2'>
-						{t(b.key)} <span className='text-foreground tabular-nums'>{formatTokens(b.tokens)}</span>
-					</span>
+		<div className='flex flex-col'>
+			<ul className='flex flex-wrap gap-x-4 gap-y-1 pb-3 text-xs text-muted-foreground'>
+				{BUCKETS.map(b => (
+					<li key={b.key} className='flex items-center gap-1.5'>
+						<span className={cn('size-2.5 rounded-[3px]', b.fill)} />
+						{t(b.key)}
+					</li>
 				))}
-			</p>
+			</ul>
+			{groups.map(g => (
+				<div
+					key={groupKey(g.groupId)}
+					className='grid gap-3 border-t py-4 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-6'
+				>
+					<div className='flex min-w-0 flex-col gap-1.5'>
+						<p className='flex min-w-0 items-center gap-2 text-sm font-medium'>
+							<GroupDot color={g.color} />
+							<span className='truncate'>{g.name}</span>
+						</p>
+						<ul className='text-xs'>
+							{g.devices.map(d => (
+								<li key={d.id} className='flex justify-between gap-3 py-0.5'>
+									<span className='truncate'>{d.name}</span>
+									<span className='shrink-0 text-muted-foreground'>
+										<RelativeTime date={d.lastSeenAt === null ? null : new Date(d.lastSeenAt)} />
+									</span>
+								</li>
+							))}
+						</ul>
+					</div>
+					<ul className='flex flex-col gap-3'>
+						{g.models.map(m => (
+							<ModelRow key={m.model} model={m} maxTokens={maxTokens} />
+						))}
+					</ul>
+				</div>
+			))}
+		</div>
+	)
+}
+
+function ModelRow({ model: m, maxTokens }: { model: ModelUsage; maxTokens: number }) {
+	const t = useTranslations('dash.overview')
+	const buckets = BUCKETS.map(b => ({ ...b, value: b.tokens(m.totals) })).filter(b => b.value > 0)
+	const readout = buckets.map(b => `${t(b.key)} ${formatTokens(b.value)}`).join(', ')
+	return (
+		<li className='grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 text-sm md:grid-cols-[9rem_minmax(0,1fr)_7rem_4.5rem]'>
+			<span className='truncate' title={m.model}>
+				{m.label}
+			</span>
+			<div className='col-span-2 row-start-2 min-w-0 md:col-span-1 md:row-start-auto'>
+				<Tooltip
+					content={
+						<span className='grid grid-cols-[auto_auto] gap-x-4 tabular-nums'>
+							{buckets.map(b => (
+								<Fragment key={b.key}>
+									<span>{t(b.key)}</span>
+									<span className='text-right'>{formatTokens(b.value)}</span>
+								</Fragment>
+							))}
+						</span>
+					}
+				>
+					<button
+						type='button'
+						aria-label={`${m.label}: ${readout}`}
+						className='flex h-2.5 min-w-1 gap-0.5 overflow-hidden rounded-[4px] outline-offset-2'
+						style={{ width: `${maxTokens > 0 ? (m.totals.totalTokens / maxTokens) * 100 : 0}%` }}
+					>
+						{buckets.map(b => (
+							<span
+								key={b.key}
+								className={cn('min-w-0.5 basis-0', b.fill)}
+								style={{ flexGrow: b.value }}
+							/>
+						))}
+					</button>
+				</Tooltip>
+			</div>
+			<span className='hidden text-right whitespace-nowrap text-muted-foreground tabular-nums md:block'>
+				{t('modelRequests', { count: m.requests })}
+			</span>
+			<span className='text-right font-medium tabular-nums'>{formatUsd(m.costUsd)}</span>
 		</li>
 	)
 }
@@ -590,7 +627,7 @@ function ModelRow({ model: m, groupCostUsd }: { model: ModelUsage; groupCostUsd:
 function SliceBar({ label, pct, color }: { label: string; pct: number; color: string }) {
 	return (
 		<div className='flex items-center gap-2 text-xs'>
-			<span className='min-w-7 shrink-0 text-muted-foreground'>{label}</span>
+			<span className='w-10 shrink-0 text-muted-foreground'>{label}</span>
 			<UsageBar pct={pct} color={color} />
 			<span className={cn('w-14 shrink-0 text-right text-sm font-medium tabular-nums', overrun(pct))}>
 				{formatPct(pct)}
@@ -599,17 +636,17 @@ function SliceBar({ label, pct, color }: { label: string; pct: number; color: st
 	)
 }
 
+/** Laid out like a meter beside it: label row, then the figure on the same baseline. */
 function Spend({ dash }: { dash: DashboardDTO }) {
 	const t = useTranslations('dash.overview')
 	return (
-		<div className='pt-5'>
-			<MetricCard
-				label={t('spendWeek')}
-				value={dash.spend.week.costUsd}
-				prefix='$'
-				decimals={2}
-				context={`${formatTokens(billableTokens(dash.spend.week.totals))} · ${formatUsd(dash.spend.month.costUsd)} ${t('month')}`}
-			/>
+		<div className='flex min-w-0 flex-col gap-4'>
+			<p className='flex min-h-7 items-center text-base font-medium'>{t('spendWeek')}</p>
+			<AnimatedCounter value={dash.spend.week.costUsd} prefix='$' decimals={2} animateOnView />
+			<p className='text-xs text-muted-foreground'>
+				{formatTokens(billableTokens(dash.spend.week.totals))} · {formatUsd(dash.spend.month.costUsd)}{' '}
+				{t('month')}
+			</p>
 		</div>
 	)
 }

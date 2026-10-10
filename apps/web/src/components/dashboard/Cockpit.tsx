@@ -8,10 +8,9 @@ import { accountKey, LiveDashboard } from '@/components/LiveDashboard'
 import type { SetupState } from '@/components/LiveDashboard'
 import type { DashboardDTO, WindowHistoryDTO } from '@/lib/data'
 
-/** The dashboard layout: the analysis scrolls in the middle while the live column
- *  for one account stays put on the right; below lg it stacks, live first. The
- *  page owns which account is shown so both columns follow the same one. Shared
- *  by the user's dashboard and the admin's view of it. */
+/** The dashboard layout: the live section for one account on top, the analysis
+ *  under it. The page owns which account is shown so both follow the same one.
+ *  Shared by the user's dashboard and the admin's view of it. */
 export function Cockpit({
 	accounts,
 	history,
@@ -58,23 +57,13 @@ export function Cockpit({
 		</>
 	)
 
-	// Nothing has reported limits yet: the setup rail needs the full width, and
-	// whatever usage already arrived stacks under it.
-	if (!accounts.some(a => a.dash.connected)) {
-		return (
-			<div className='flex flex-col gap-10'>
-				{notConnected ?? live}
-				{analysis}
-			</div>
-		)
-	}
-
+	// Nothing has reported limits yet: the setup rail takes the top, and whatever
+	// usage already arrived stacks under it.
+	const connected = accounts.some(a => a.dash.connected)
 	return (
-		<div className='grid gap-10 lg:grid-cols-[minmax(0,1fr)_21rem] lg:gap-0'>
-			<aside className='lg:sticky lg:top-18 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto lg:border-l lg:pl-6'>
-				{live}
-			</aside>
-			<div className='flex min-w-0 flex-col gap-6 lg:pr-6'>{analysis}</div>
+		<div className='flex flex-col gap-6'>
+			{connected ? live : (notConnected ?? live)}
+			{analysis}
 		</div>
 	)
 }

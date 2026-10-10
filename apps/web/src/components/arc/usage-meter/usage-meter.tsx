@@ -45,15 +45,15 @@ const styles = {
 	overTint:
 		'fill-(--danger) opacity-0 transition-opacity duration-(--duration-fast) ease-(--ease-standard) group-data-[highlight=on]/over:opacity-100 motion-reduce:transition-none',
 	limit: 'pointer-events-none absolute inset-y-0 -left-px w-0.5 rounded-[1px] bg-(--foreground)',
-	legend: '-mx-2 grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-x-3',
-	item: 'flex min-w-0 items-center justify-between gap-3 px-2 py-1 transition-opacity duration-(--duration-fast) ease-(--ease-standard) data-[highlight=off]:opacity-45 motion-reduce:transition-none',
-	itemHead: 'flex min-w-0 flex-1 items-center gap-2 text-sm leading-(--leading-body) text-(--text-secondary)',
+	legend: '-mx-2 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-0.5',
+	item: 'grid min-w-0 justify-items-start gap-0.5 p-2 transition-opacity duration-(--duration-fast) ease-(--ease-standard) data-[highlight=off]:opacity-45 motion-reduce:transition-none',
+	itemHead: 'flex max-w-full min-w-0 items-center gap-2 text-sm leading-(--leading-body) text-(--text-secondary)',
 	itemLabel: 'min-w-0 flex-1',
 	key: 'grid size-3 flex-none place-items-center',
 	swatch: `size-2.5 rounded-[3px] [grid-area:1/1] data-[index=free]:bg-[color-mix(in_oklab,var(--foreground)_7%,var(--surface))] data-[index=free]:shadow-[inset_0_0_0_1px_var(--border-strong)] ${swatch}`,
 	keyIcon: 'grid place-items-center text-(--danger) [grid-area:1/1]',
-	itemValue: 'flex flex-none items-baseline gap-0.5 text-sm leading-(--leading-body) font-medium text-(--foreground)',
-	itemUnit: 'text-xs font-normal text-(--text-secondary)',
+	itemValue: 'flex items-baseline gap-1 pl-5 text-base leading-(--leading-body) font-medium text-(--foreground)',
+	itemUnit: 'text-sm font-normal text-(--text-secondary)',
 	// A rolling number: each digit is a clipped wheel that feathers at its edges, and new columns open from zero width.
 	ticker: 'relative inline-flex items-start whitespace-nowrap tabular-nums select-none',
 	column: 'relative -my-(--feather) inline-block overflow-hidden py-(--feather) [--feather:.16em] [mask-image:linear-gradient(to_bottom,transparent,#000_calc(var(--feather)*1.5),#000_calc(100%-var(--feather)*1.5),transparent)]',
@@ -116,6 +116,8 @@ export interface UsageMeterProps {
 	warnAt?: number
 	/** BCP 47 tag for the digits, so 62.5 reads 62,5 where that is the convention. */
 	locale?: string
+	/** Lists each category under the bar. Turn it off where the page names them elsewhere; hovering the bar still reads each one out. */
+	legend?: boolean
 	/** Every visible and announced string, for translation. Pass only the ones you change. */
 	messages?: Partial<UsageMeterMessages>
 }
@@ -456,6 +458,7 @@ export function UsageMeter({
 	decimals = 1,
 	warnAt = 0.9,
 	locale = 'en-US',
+	legend = true,
 	messages: overrides,
 }: UsageMeterProps) {
 	const messages = { ...defaultMessages, ...overrides }
@@ -713,66 +716,68 @@ export function UsageMeter({
 					aria-hidden='true'
 				/>
 			</div>
-			<div className={styles.legend} role='group' aria-label={messages.byCategory(label)}>
-				{items.map((item, index) => {
-					const warning = item.id === 'free' && status === 'over'
-					return (
-						<div
-							key={item.id}
-							className={styles.item}
-							data-highlight={active ? (active === item.id ? 'on' : 'off') : undefined}
-							onPointerEnter={event => {
-								if (event.pointerType === 'mouse') {
-									setActive(item.id)
-								}
-							}}
-							onPointerLeave={event => {
-								if (event.pointerType === 'mouse') {
-									setActive(null)
-								}
-							}}
-						>
-							<span className={styles.srOnly}>{`${item.label}, ${format(item.value)}`}</span>
-							<span className={styles.itemHead} aria-hidden='true'>
-								<span className={styles.key}>
-									<AnimatePresence mode='popLayout' initial={false}>
-										{warning ? (
-											<motion.span
-												key='alert'
-												className={styles.keyIcon}
-												variants={reduced ? fade : pop}
-												initial='hidden'
-												animate='shown'
-												exit='gone'
-											>
-												<TriangleAlert size={12} strokeWidth={2} />
-											</motion.span>
-										) : (
-											<motion.span
-												key='swatch'
-												className={styles.swatch}
-												data-index={item.id === 'free' ? 'free' : index}
-												style={{ background: item.color }}
-												variants={reduced ? fade : pop}
-												initial='hidden'
-												animate='shown'
-												exit='gone'
-											/>
-										)}
-									</AnimatePresence>
+			{legend && (
+				<div className={styles.legend} role='group' aria-label={messages.byCategory(label)}>
+					{items.map((item, index) => {
+						const warning = item.id === 'free' && status === 'over'
+						return (
+							<div
+								key={item.id}
+								className={styles.item}
+								data-highlight={active ? (active === item.id ? 'on' : 'off') : undefined}
+								onPointerEnter={event => {
+									if (event.pointerType === 'mouse') {
+										setActive(item.id)
+									}
+								}}
+								onPointerLeave={event => {
+									if (event.pointerType === 'mouse') {
+										setActive(null)
+									}
+								}}
+							>
+								<span className={styles.srOnly}>{`${item.label}, ${format(item.value)}`}</span>
+								<span className={styles.itemHead} aria-hidden='true'>
+									<span className={styles.key}>
+										<AnimatePresence mode='popLayout' initial={false}>
+											{warning ? (
+												<motion.span
+													key='alert'
+													className={styles.keyIcon}
+													variants={reduced ? fade : pop}
+													initial='hidden'
+													animate='shown'
+													exit='gone'
+												>
+													<TriangleAlert size={12} strokeWidth={2} />
+												</motion.span>
+											) : (
+												<motion.span
+													key='swatch'
+													className={styles.swatch}
+													data-index={item.id === 'free' ? 'free' : index}
+													style={{ background: item.color }}
+													variants={reduced ? fade : pop}
+													initial='hidden'
+													animate='shown'
+													exit='gone'
+												/>
+											)}
+										</AnimatePresence>
+									</span>
+									<span className={styles.itemLabel}>
+										<Swap text={item.label} reduced={reduced} />
+									</span>
 								</span>
-								<span className={styles.itemLabel}>
-									<Swap text={item.label} reduced={reduced} />
+								<span className={styles.itemValue} aria-hidden='true'>
+									<Ticker value={item.value} decimals={decimals} locale={locale} reduced={reduced} />
+									{unit && <span className={styles.itemUnit}>{unit}</span>}
 								</span>
-							</span>
-							<span className={styles.itemValue} aria-hidden='true'>
-								<Ticker value={item.value} decimals={decimals} locale={locale} reduced={reduced} />
-								{unit && <span className={styles.itemUnit}>{unit}</span>}
-							</span>
-						</div>
-					)
-				})}
-			</div>
+							</div>
+						)
+					})}
+				</div>
+			)}
 			<p className={styles.srOnly} aria-live='polite' aria-atomic='true'>
 				{announced.message}
 			</p>
