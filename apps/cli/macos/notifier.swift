@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 		let args = Array(CommandLine.arguments.dropFirst())
 		guard args.count == 3 else { return }
 
+		// A freshly copied app is not in LaunchServices until after launch, and usernoted rejects it without a prompt.
+		LSRegisterURL(Bundle.main.bundleURL as CFURL, false)
 		center.requestAuthorization(options: [.alert]) { granted, _ in
 			guard granted else { exit(0) }
 			let content = UNMutableNotificationContent()
