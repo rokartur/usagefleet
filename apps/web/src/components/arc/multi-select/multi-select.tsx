@@ -325,7 +325,7 @@ export function MultiSelect({
 										key={option.value}
 										value={option.value}
 										disabled={option.disabled}
-										className='flex min-h-[38px] w-full items-center justify-between gap-3 rounded-[calc(var(--radius-panel)-5px)] px-[11px] text-left text-sm text-(--foreground) transition-colors duration-[80ms] ease-(--ease-standard) outline-none select-none data-disabled:cursor-not-allowed data-disabled:opacity-42 data-highlighted:bg-(--surface-muted) motion-reduce:transition-none'
+										className='flex min-h-9 w-full items-center justify-between gap-3 rounded-[calc(var(--radius-panel)-5px)] px-[11px] text-left text-sm text-(--foreground) transition-colors duration-[80ms] ease-(--ease-standard) outline-none select-none data-disabled:cursor-not-allowed data-disabled:opacity-42 data-highlighted:bg-(--surface-muted) motion-reduce:transition-none'
 									>
 										<SelectPrimitive.ItemText className='min-w-0 truncate'>
 											{option.label}

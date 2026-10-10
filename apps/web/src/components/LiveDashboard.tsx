@@ -605,9 +605,9 @@ function Spend({ dash }: { dash: DashboardDTO }) {
 			<Num
 				value={dash.spend.week.costUsd}
 				format={formatUsd}
-				className='mt-4 block font-heading text-4xl font-medium tracking-tight tabular-nums'
+				className='mt-2 block font-heading text-3xl font-medium tracking-tight tabular-nums'
 			/>
-			<p className='mt-3 text-sm text-muted-foreground tabular-nums'>
+			<p className='mt-1 text-sm text-muted-foreground tabular-nums'>
 				{formatTokens(billableTokens(dash.spend.week.totals))} · {formatUsd(dash.spend.month.costUsd)}{' '}
 				{t('month')}
 			</p>
