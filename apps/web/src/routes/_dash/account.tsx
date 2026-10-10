@@ -5,25 +5,14 @@ import { eq } from 'drizzle-orm'
 import { KeyRound } from 'lucide-react'
 import { useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
+import { Button } from '@/components/arc/button/button'
+import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/arc/dialog/dialog'
+import { Select } from '@/components/arc/select/select'
+import { useToast } from '@/components/arc/toast-stack/toast-stack'
 import { DevPlanPanel, PlanSection } from '@/components/billing/PlanSection'
 import { PROVIDERS, ProviderMark } from '@/components/OAuthSignIn'
 import type { ProviderId } from '@/components/OAuthSignIn'
 import { ThemeToggle } from '@/components/theme-toggle'
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-	AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
-import { Field, FieldContent, FieldDescription, FieldLabel } from '@/components/ui/field'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { toast } from '@/components/ui/toast'
 import { db } from '@/db'
 import { account } from '@/db/schema'
 import { updateCacheTtl } from '@/lib/actions'
@@ -103,34 +92,19 @@ function AccountPage() {
 
 			<Section title={t('pricing')} description={t('pricingDescription')}>
 				<ActionForm action={updateCacheTtl} loadingMessage={t('saving')} successMessage={t('saved')}>
-					<Field orientation='responsive'>
-						<FieldContent>
-							<FieldLabel htmlFor='cacheWriteTtl'>{t('cacheTtl')}</FieldLabel>
-							<FieldDescription>{t('cacheTtlDescription')}</FieldDescription>
-						</FieldContent>
-						<div className='flex items-center gap-2'>
-							<Select
-								key={settings.cacheWriteTtl}
-								name='cacheWriteTtl'
-								defaultValue={settings.cacheWriteTtl}
-								items={ttls}
-							>
-								<SelectTrigger id='cacheWriteTtl'>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{ttls.map(ttl => (
-										<SelectItem key={ttl.value} value={ttl.value}>
-											{ttl.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							<Button type='submit' variant='outline'>
-								{tActions('save')}
-							</Button>
-						</div>
-					</Field>
+					<div className='flex flex-wrap items-end gap-3'>
+						<Select
+							key={settings.cacheWriteTtl}
+							label={t('cacheTtl')}
+							description={t('cacheTtlDescription')}
+							name='cacheWriteTtl'
+							defaultValue={settings.cacheWriteTtl}
+							options={ttls}
+						/>
+						<Button type='submit' variant='secondary'>
+							{tActions('save')}
+						</Button>
+					</div>
 				</ActionForm>
 			</Section>
 
@@ -168,7 +142,10 @@ function Section({
 	children: React.ReactNode
 }) {
 	return (
-		<section id={id} className='grid gap-4 border-t pt-5 md:grid-cols-[16rem_minmax(0,1fr)] md:gap-10'>
+		<section
+			id={id}
+			className='grid gap-4 rounded-(--radius-surface) border bg-surface p-6 md:grid-cols-[16rem_minmax(0,1fr)] md:gap-10'
+		>
 			<div>
 				<h2 className='text-sm font-medium'>{title}</h2>
 				{description && <p className='mt-1 text-sm text-muted-foreground'>{description}</p>}
@@ -214,6 +191,7 @@ function SignInMethods({
 }) {
 	const t = useTranslations('dash.settings')
 	const tActions = useTranslations('dash.actions')
+	const toast = useToast()
 	const router = useRouter()
 	const [busy, setBusy] = useState<ProviderId | 'password' | null>(null)
 	const linkedCount = connected.filter(row => PROVIDER_IDS.some(id => id === row.providerId)).length
@@ -231,7 +209,7 @@ function SignInMethods({
 			toast.add({
 				title: t('updateFailed'),
 				description: error.message ?? tActions('retry'),
-				priority: 'high',
+				type: 'error',
 			})
 			return
 		}
@@ -250,11 +228,12 @@ function SignInMethods({
 				? {
 						title: t('mailFailed'),
 						description: error.message ?? tActions('retry'),
-						priority: 'high',
+						type: 'error',
 					}
 				: {
 						title: t('mailSent'),
 						description: t('mailSentHint', { email }),
+						type: 'success',
 					},
 		)
 	}
@@ -282,9 +261,10 @@ function SignInMethods({
 									{isConnected ? t('connected') : t('notConnected')}
 								</span>
 								<Button
-									variant='outline'
+									variant='secondary'
 									size='sm'
-									disabled={busy !== null || isLast}
+									loading={busy === id}
+									disabled={(busy !== null && busy !== id) || isLast}
 									// Removing the only way in would lock the account out for good.
 									title={isLast ? t('unlinkLastHint') : undefined}
 									onClick={() =>
@@ -302,7 +282,7 @@ function SignInMethods({
 										)
 									}
 								>
-									{busy === id ? tActions('working') : isConnected ? t('disconnect') : t('connect')}
+									{isConnected ? t('disconnect') : t('connect')}
 								</Button>
 							</div>
 						</div>
@@ -317,12 +297,14 @@ function SignInMethods({
 						<span className='text-sm text-muted-foreground'>{hasPassword ? t('set') : t('notSet')}</span>
 						{/* No "remove password": it is the fallback that keeps unlinking
 						    the last provider from locking the account out. */}
-						<Button variant='outline' size='sm' disabled={busy !== null} onClick={mailPasswordLink}>
-							{busy === 'password'
-								? tActions('working')
-								: hasPassword
-									? t('passwordChange')
-									: t('passwordSet')}
+						<Button
+							variant='secondary'
+							size='sm'
+							loading={busy === 'password'}
+							disabled={busy !== null && busy !== 'password'}
+							onClick={mailPasswordLink}
+						>
+							{hasPassword ? t('passwordChange') : t('passwordSet')}
 						</Button>
 					</div>
 				</div>
@@ -339,6 +321,7 @@ function SignInMethods({
 function DeleteAccount({ subscribed, planName, isAdmin }: { subscribed: boolean; planName: string; isAdmin: boolean }) {
 	const t = useTranslations('dash.settings.delete')
 	const tActions = useTranslations('dash.actions')
+	const toast = useToast()
 	const [pending, setPending] = useState(false)
 
 	return (
@@ -360,24 +343,19 @@ function DeleteAccount({ subscribed, planName, isAdmin }: { subscribed: boolean;
 					})}
 				</p>
 			) : (
-				<AlertDialog>
-					<AlertDialogTrigger render={<Button variant='destructive' disabled={pending} />}>
-						{t('title')}
-					</AlertDialogTrigger>
-					<AlertDialogContent>
-						<AlertDialogHeader>
-							<AlertDialogTitle>{t('confirmTitle')}</AlertDialogTitle>
-							<AlertDialogDescription>{t('confirmDescription')}</AlertDialogDescription>
-						</AlertDialogHeader>
-						<AlertDialogFooter>
-							<AlertDialogCancel disabled={pending}>{tActions('cancel')}</AlertDialogCancel>
-							<AlertDialogAction
-								variant='destructive'
-								disabled={pending}
-								onClick={async event => {
-									// Keep the dialog open: on failure the message belongs here,
+				<Dialog>
+					<DialogTrigger render={<Button variant='danger' disabled={pending} />}>{t('title')}</DialogTrigger>
+					<DialogContent title={t('confirmTitle')} description={t('confirmDescription')}>
+						<div className='flex justify-end gap-2'>
+							<DialogClose render={<Button variant='secondary' disabled={pending} />}>
+								{tActions('cancel')}
+							</DialogClose>
+							<Button
+								variant='danger'
+								loading={pending}
+								onClick={async () => {
+									// The dialog stays open: on failure the message belongs here,
 									// and on success the browser leaves the page anyway.
-									event.preventDefault()
 									setPending(true)
 									const { error } = await authClient.deleteUser()
 									if (error) {
@@ -387,7 +365,7 @@ function DeleteAccount({ subscribed, planName, isAdmin }: { subscribed: boolean;
 											// better-auth rejects a stale session on sensitive
 											// routes, and its message says so.
 											description: error.message ?? tActions('retry'),
-											priority: 'high',
+											type: 'error',
 										})
 										return
 									}
@@ -396,11 +374,11 @@ function DeleteAccount({ subscribed, planName, isAdmin }: { subscribed: boolean;
 									window.location.href = '/'
 								}}
 							>
-								{pending ? t('deleting') : t('title')}
-							</AlertDialogAction>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialog>
+								{t('title')}
+							</Button>
+						</div>
+					</DialogContent>
+				</Dialog>
 			)}
 		</div>
 	)

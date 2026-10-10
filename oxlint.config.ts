@@ -22,26 +22,16 @@ const houseOverrides = defineConfig({
 			},
 		},
 		{
-			// Vendored shadcn registry components: kept re-installable by the CLI,
-			// so they are not edited to satisfy rules the registry doesn't follow.
-			files: ['apps/web/src/components/ui/**'],
-			plugins: ['jsx-a11y', 'react', 'unicorn'],
+			// Arc components (uiarc.dev, rebuilt on Base UI): chart and meter geometry indexes arrays it
+			// just built, and roles like `img` on the meter track or `slider` on the chart plot are deliberate.
+			files: ['apps/web/src/components/arc/**'],
+			plugins: ['typescript', 'jsx-a11y', 'react'],
 			rules: {
-				complexity: 'off',
-				'jsx-a11y/anchor-has-content': 'off',
-				'jsx-a11y/click-events-have-key-events': 'off',
-				'jsx-a11y/label-has-associated-control': 'off',
-				'jsx-a11y/no-noninteractive-element-interactions': 'off',
+				'typescript/no-non-null-assertion': 'off',
 				'jsx-a11y/prefer-tag-over-role': 'off',
-				'no-param-reassign': 'off',
-				'no-use-before-define': 'off',
-				'react/button-has-type': 'off',
-				'react/hook-use-state': 'off',
-				'react/jsx-no-constructed-context-values': 'off',
-				'react/no-danger': 'off',
-				'react/no-object-type-as-default-prop': 'off',
-				'react/no-unstable-nested-components': 'off',
-				'unicorn/no-document-cookie': 'off',
+				'jsx-a11y/control-has-associated-label': 'off',
+				'jsx-a11y/no-noninteractive-element-interactions': 'off',
+				complexity: 'off',
 			},
 		},
 	],
@@ -95,6 +85,8 @@ export default defineConfig({
 		// analysis, not bugs in code that never compiles through it.
 		'react/todo': 'off',
 		'react/exhaustive-effect-dependencies': 'off',
+		'react/memo-dependencies': 'off',
+		'react/rule-suppression': 'off',
 		// The flagged effects initialise state from external systems on mount
 		// (matchMedia, storage-backed theme), which is the documented escape
 		// hatch this rule flags wholesale.
@@ -102,7 +94,7 @@ export default defineConfig({
 		'react/function-component-definition': 'off',
 		// `const [initial] = useState(...)` for a mount-stable value is deliberate.
 		'react/hook-use-state': 'off',
-		// Render props (recharts formatters, table cell renderers) are functions the
+		// Render props (chart formatters, table cell renderers) are functions the
 		// parent hands down, not components remounted on every render.
 		'react/no-unstable-nested-components': ['error', { allowAsProps: true }],
 		// `class ReleaseUnavailable extends Error {}` needs no constructor boilerplate.
@@ -113,7 +105,7 @@ export default defineConfig({
 		'require-unicode-regexp': 'off',
 		'sort-keys': 'off',
 		'unicorn/consistent-function-scoping': 'off',
-		// Filenames follow TanStack Router and shadcn conventions.
+		// Filenames follow TanStack Router and Arc conventions.
 		'unicorn/filename-case': 'off',
 		'unicorn/import-style': 'off',
 		'unicorn/no-array-reduce': 'off',

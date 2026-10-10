@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Ban } from 'lucide-react'
 import { useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
+import { Select } from '@/components/arc/select/select'
+import { Switch } from '@/components/arc/switch/switch'
 import { ConfirmAction } from '@/components/ConfirmAction'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { assignDeviceGroup, revokeDevice, setDeviceBlocking } from '@/lib/actions'
 
 /** Moves a device between groups on change — no separate Save button. */
@@ -22,7 +22,6 @@ export function DeviceGroupSelect({
 	const t = useTranslations('dash.devices')
 	const form = useRef<HTMLFormElement>(null)
 	const [selected, setSelected] = useState(groupId ?? '')
-	const items = groups.map(g => ({ label: g.name, value: g.id }))
 
 	// Submit once the pick has landed in the select's hidden input: during
 	// onValueChange the form still holds the previous group.
@@ -41,18 +40,16 @@ export function DeviceGroupSelect({
 			errorMessage={t('moveFailed', { name: deviceName })}
 		>
 			<input type='hidden' name='deviceId' value={deviceId} />
-			<Select name='groupId' value={selected} onValueChange={next => setSelected(next ?? '')} items={items}>
-				<SelectTrigger size='sm' aria-label={t('groupLabel', { name: deviceName })}>
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent>
-					{items.map(item => (
-						<SelectItem key={item.value} value={item.value}>
-							{item.label}
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
+			{/* The row already names the device; the label stays for screen readers. */}
+			<div className='[&_label]:sr-only'>
+				<Select
+					label={t('groupLabel', { name: deviceName })}
+					name='groupId'
+					value={selected}
+					onValueChange={setSelected}
+					options={groups.map(g => ({ label: g.name, value: g.id }))}
+				/>
+			</div>
 		</ActionForm>
 	)
 }
@@ -93,7 +90,6 @@ export function DeviceBlockingToggle({
 			<span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
 				{t('blocking')}
 				<Switch
-					size='sm'
 					checked={checked}
 					onCheckedChange={setChecked}
 					aria-label={t('blockingLabel', { name: deviceName })}

@@ -2,10 +2,10 @@ import type { FormEvent } from 'react'
 import { useState } from 'react'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { useTranslations } from 'use-intl'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
+import { Button } from '@/components/arc/button/button'
+import { Card } from '@/components/arc/card/card'
+import { Input } from '@/components/arc/input/input'
+import { PasswordField } from '@/components/arc/password-field/password-field'
 import { authClient } from '@/lib/auth-client'
 import { detectLocale } from '@/lib/i18n'
 import { SITE_NAME } from '@/lib/site'
@@ -43,12 +43,12 @@ function ResetPasswordPage() {
 	const { token, error: linkError } = Route.useSearch()
 	return (
 		<div className='flex flex-1 items-center justify-center p-6'>
-			<Card className='w-full max-w-sm [--card-spacing:--spacing(6)]'>
-				<CardHeader>
-					<CardTitle className='text-lg'>{token ? t('titleToken') : t('title')}</CardTitle>
-					<CardDescription>{token ? t('descriptionToken') : t('description')}</CardDescription>
-				</CardHeader>
-				<CardContent className='flex flex-col gap-6'>
+			<Card
+				className='w-full max-w-sm'
+				title={token ? t('titleToken') : t('title')}
+				description={token ? t('descriptionToken') : t('description')}
+			>
+				<div className='mt-6 flex flex-col gap-6'>
 					{linkError && (
 						<p role='alert' className='text-sm text-destructive'>
 							{t('linkExpired')}
@@ -61,7 +61,7 @@ function ResetPasswordPage() {
 							{t('backToSignIn')}
 						</span>
 					</Link>
-				</CardContent>
+				</div>
 			</Card>
 		</div>
 	)
@@ -91,24 +91,19 @@ function RequestLinkForm() {
 	}
 
 	return (
-		<form onSubmit={onSubmit}>
-			<FieldGroup>
-				<Field>
-					<FieldLabel htmlFor='email'>{t('email')}</FieldLabel>
-					{/* The username is no use here: only an address can be mailed. */}
-					<Input
-						id='email'
-						name='email'
-						type='email'
-						required
-						autoComplete='email'
-						placeholder={t('emailPlaceholder')}
-					/>
-				</Field>
-				<Button type='submit' size='lg' disabled={pending}>
-					{pending ? t('pending') : t('sendLink')}
-				</Button>
-			</FieldGroup>
+		<form onSubmit={onSubmit} className='grid gap-5'>
+			{/* The username is no use here: only an address can be mailed. */}
+			<Input
+				label={t('email')}
+				name='email'
+				type='email'
+				required
+				autoComplete='email'
+				placeholder={t('emailPlaceholder')}
+			/>
+			<Button type='submit' size='lg' loading={pending}>
+				{t('sendLink')}
+			</Button>
 		</form>
 	)
 }
@@ -116,6 +111,7 @@ function RequestLinkForm() {
 /** Step two, reached only from the mail link. */
 function NewPasswordForm({ token }: { token: string }) {
 	const t = useTranslations('auth.reset')
+	const tForm = useTranslations('auth.form')
 	const router = useRouter()
 	const [pending, setPending] = useState(false)
 	const [error, setError] = useState<string | null>(null)
@@ -139,25 +135,24 @@ function NewPasswordForm({ token }: { token: string }) {
 	}
 
 	return (
-		<form onSubmit={onSubmit}>
-			<FieldGroup>
-				<Field>
-					<FieldLabel htmlFor='password'>{t('newPassword')}</FieldLabel>
-					<Input
-						id='password'
-						name='password'
-						type='password'
-						required
-						minLength={8}
-						autoComplete='new-password'
-						placeholder={t('passwordPlaceholder')}
-					/>
-				</Field>
-				{error && <FieldError>{error}</FieldError>}
-				<Button type='submit' size='lg' disabled={pending}>
-					{pending ? t('pending') : t('setPassword')}
-				</Button>
-			</FieldGroup>
+		<form onSubmit={onSubmit} className='grid gap-5'>
+			<PasswordField
+				label={t('newPassword')}
+				name='password'
+				required
+				minLength={8}
+				autoComplete='new-password'
+				placeholder={t('passwordPlaceholder')}
+				messages={{ hidePassword: tForm('hidePassword'), showPassword: tForm('showPassword') }}
+			/>
+			{error && (
+				<p role='alert' className='text-sm text-destructive'>
+					{error}
+				</p>
+			)}
+			<Button type='submit' size='lg' loading={pending}>
+				{t('setPassword')}
+			</Button>
 		</form>
 	)
 }

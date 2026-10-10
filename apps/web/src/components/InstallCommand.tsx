@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { CheckIcon, CopyIcon } from 'lucide-react'
 import { useTranslations } from 'use-intl'
-import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { toast } from '@/components/ui/toast'
+import { Button } from '@/components/arc/button/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/arc/tabs/tabs'
+import { useToast } from '@/components/arc/toast-stack/toast-stack'
 import { installCommands } from '@/lib/install-command'
 
 /** The one command that turns a device token into a reporting machine, per
@@ -11,6 +11,7 @@ import { installCommands } from '@/lib/install-command'
  *  dashboard setup rail (placeholder token, since it is shown only once). */
 export function InstallCommand({ token }: { token: string }) {
 	const t = useTranslations('dash.devices')
+	const toast = useToast()
 	const commands = installCommands(token)
 	const [platform, setPlatform] = useState<string>(commands[0].id)
 	const [copied, setCopied] = useState<string | null>(null)
@@ -23,7 +24,6 @@ export function InstallCommand({ token }: { token: string }) {
 		} catch {
 			toast.add({
 				description: t('copyCommandFailedHint'),
-				priority: 'high',
 				title: t('copyCommandFailed'),
 				type: 'error',
 			})
@@ -31,7 +31,7 @@ export function InstallCommand({ token }: { token: string }) {
 	}
 
 	return (
-		<Tabs value={platform} onValueChange={next => setPlatform(String(next))}>
+		<Tabs value={platform} onValueChange={setPlatform}>
 			<TabsList>
 				{commands.map(c => (
 					<TabsTrigger key={c.id} value={c.id}>
@@ -49,12 +49,11 @@ export function InstallCommand({ token }: { token: string }) {
 							{c.command}
 						</pre>
 						<Button
-							variant='outline'
-							size='icon'
+							variant='secondary'
 							aria-label={t('copyCommand', { name: c.label })}
 							onClick={() => copy(c.command, c.id)}
 						>
-							{copied === c.id ? <CheckIcon /> : <CopyIcon />}
+							{copied === c.id ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
 						</Button>
 					</div>
 				</TabsContent>

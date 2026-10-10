@@ -3,22 +3,12 @@ import { createServerFn } from '@tanstack/react-start'
 import { desc, eq, inArray, sql } from 'drizzle-orm'
 import { useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
+import { Badge } from '@/components/arc/badge/badge'
+import { Button, buttonClassName } from '@/components/arc/button/button'
+import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/arc/dialog/dialog'
+import { Input } from '@/components/arc/input/input'
+import { SortableDataTable } from '@/components/arc/sortable-data-table/sortable-data-table'
 import { RelativeTime } from '@/components/RelativeTime'
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-	AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { db } from '@/db'
 import { devices, subscription, user, userSettings } from '@/db/schema'
 import { assertDeletable } from '@/lib/auth'
@@ -129,54 +119,74 @@ function AdminPage() {
 			<p className='text-sm text-muted-foreground'>
 				{t('lead', { count: accounts.length, fallback: FREE_DEVICES })}
 			</p>
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>{t('account')}</TableHead>
-						<TableHead>{t('joined')}</TableHead>
-						<TableHead>{t('plan')}</TableHead>
-						<TableHead className='text-right'>{t('devices')}</TableHead>
-						<TableHead className='w-52'>{t('freeAllowance')}</TableHead>
-						<TableHead />
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{accounts.map(a => (
-						<TableRow key={a.id}>
-							<TableCell>
+			<SortableDataTable
+				rows={accounts}
+				rowKey='id'
+				defaultSort={{ direction: 'desc', key: 'createdAt' }}
+				columns={[
+					{
+						key: 'email',
+						label: t('account'),
+						sortable: true,
+						render: (_, a) => (
+							<>
 								<span className='font-medium'>{a.email}</span>
 								{!a.emailVerified && (
-									<Badge variant='outline' className='ml-2 font-normal'>
+									<Badge tone='warning' size='sm' className='ml-2'>
 										{t('unverified')}
 									</Badge>
 								)}
 								{a.username && <p className='text-xs text-muted-foreground'>{a.username}</p>}
-							</TableCell>
-							<TableCell className='text-muted-foreground'>
+							</>
+						),
+					},
+					{
+						key: 'createdAt',
+						label: t('joined'),
+						sortable: true,
+						render: (_, a) => (
+							<span className='text-muted-foreground'>
 								<RelativeTime date={a.createdAt} />
-							</TableCell>
-							<TableCell>
-								<Badge variant={a.plan === 'free' ? 'outline' : 'secondary'} className='font-normal'>
-									{planLabel(a.plan)}
-								</Badge>
-							</TableCell>
-							<TableCell
-								className={`text-right tabular-nums ${a.activeDevices > a.deviceLimit ? 'text-amber-600 dark:text-amber-500' : ''}`}
-							>
+							</span>
+						),
+					},
+					{
+						key: 'plan',
+						label: t('plan'),
+						sortable: true,
+						render: (_, a) => (
+							<Badge tone={a.plan === 'free' ? 'neutral' : 'info'} size='sm'>
+								{planLabel(a.plan)}
+							</Badge>
+						),
+					},
+					{
+						key: 'activeDevices',
+						label: t('devices'),
+						numeric: true,
+						sortable: true,
+						render: (_, a) => (
+							<span className={a.activeDevices > a.deviceLimit ? 'text-warning' : undefined}>
 								{a.activeDevices} / {a.deviceLimit}
-							</TableCell>
-							<TableCell>
-								<ActionForm
-									action={setFreeDeviceLimit}
-									className='flex items-center gap-2'
-									loadingMessage={t('updating', { email: a.email })}
-									successMessage={t('updated', { email: a.email })}
-									errorMessage={t('updateFailed', { email: a.email })}
-								>
-									<input type='hidden' name='userId' value={a.id} />
+							</span>
+						),
+					},
+					{
+						key: 'freeDeviceLimit',
+						label: t('freeAllowance'),
+						render: (_, a) => (
+							<ActionForm
+								action={setFreeDeviceLimit}
+								className='flex items-center gap-2'
+								loadingMessage={t('updating', { email: a.email })}
+								successMessage={t('updated', { email: a.email })}
+								errorMessage={t('updateFailed', { email: a.email })}
+							>
+								<input type='hidden' name='userId' value={a.id} />
+								{/* The column header already names the field; the label stays for screen readers. */}
+								<div className='w-24 [&_label]:sr-only'>
 									<Input
-										aria-label={t('limitLabel', { email: a.email })}
-										className='w-20'
+										label={t('limitLabel', { email: a.email })}
 										defaultValue={a.freeDeviceLimit ?? ''}
 										inputMode='numeric'
 										max={PLANS.custom.maxDevices}
@@ -185,58 +195,58 @@ function AdminPage() {
 										placeholder={String(FREE_DEVICES)}
 										type='number'
 									/>
-									<Button type='submit' variant='outline' size='sm'>
-										{tActions('save')}
-									</Button>
-								</ActionForm>
-							</TableCell>
-							<TableCell>
-								<div className='flex gap-2'>
-									<Button
-										render={<Link to='/admin/$userId' params={{ userId: a.id }} />}
-										nativeButton={false}
-										variant='outline'
-										size='sm'
-									>
-										{t('view')}
-									</Button>
-									{a.deletable && (
-										<AlertDialog>
-											<AlertDialogTrigger render={<Button variant='destructive' size='sm' />}>
-												{t('delete')}
-											</AlertDialogTrigger>
-											<AlertDialogContent>
-												<AlertDialogHeader>
-													<AlertDialogTitle>
-														{t('deleteTitle', { email: a.email })}
-													</AlertDialogTitle>
-													<AlertDialogDescription>
-														{t('deleteDescription')}
-													</AlertDialogDescription>
-												</AlertDialogHeader>
-												<ActionForm
-													action={deleteUser}
-													loadingMessage={t('deleting', { email: a.email })}
-													successMessage={t('deleted', { email: a.email })}
-													errorMessage={t('deleteFailed', { email: a.email })}
-												>
-													<input type='hidden' name='userId' value={a.id} />
-													<AlertDialogFooter>
-														<AlertDialogCancel>{tActions('cancel')}</AlertDialogCancel>
-														<AlertDialogAction type='submit' variant='destructive'>
-															{t('delete')}
-														</AlertDialogAction>
-													</AlertDialogFooter>
-												</ActionForm>
-											</AlertDialogContent>
-										</AlertDialog>
-									)}
 								</div>
-							</TableCell>
-						</TableRow>
-					))}
-				</TableBody>
-			</Table>
+								<Button type='submit' variant='secondary' size='sm'>
+									{tActions('save')}
+								</Button>
+							</ActionForm>
+						),
+					},
+					{
+						key: 'actions',
+						label: '',
+						render: (_, a) => (
+							<div className='flex gap-2'>
+								<Link
+									to='/admin/$userId'
+									params={{ userId: a.id }}
+									className={buttonClassName({ size: 'sm', variant: 'secondary' })}
+								>
+									{t('view')}
+								</Link>
+								{a.deletable && (
+									<Dialog>
+										<DialogTrigger render={<Button variant='danger' size='sm' />}>
+											{t('delete')}
+										</DialogTrigger>
+										<DialogContent
+											title={t('deleteTitle', { email: a.email })}
+											description={t('deleteDescription')}
+										>
+											<ActionForm
+												action={deleteUser}
+												loadingMessage={t('deleting', { email: a.email })}
+												successMessage={t('deleted', { email: a.email })}
+												errorMessage={t('deleteFailed', { email: a.email })}
+											>
+												<input type='hidden' name='userId' value={a.id} />
+												<div className='flex justify-end gap-2'>
+													<DialogClose render={<Button variant='secondary' type='button' />}>
+														{tActions('cancel')}
+													</DialogClose>
+													<DialogClose render={<Button type='submit' variant='danger' />}>
+														{t('delete')}
+													</DialogClose>
+												</div>
+											</ActionForm>
+										</DialogContent>
+									</Dialog>
+								)}
+							</div>
+						),
+					},
+				]}
+			/>
 		</>
 	)
 }

@@ -47,8 +47,8 @@ one logical change.
 
 Usage math lives in `apps/web/src/lib/usage/` as pure functions with vitest
 cover; routes and components read it, never reimplement it. New math needs a
-test. `apps/web/src/components/ui/**` is vendored shadcn — kept re-installable,
-so don't hand-edit it.
+test. UI controls live in `apps/web/src/components/arc/`: Arc's designs (uiarc.dev) rebuilt
+on Base UI and Tailwind. Edit them in place; the uiarc.dev registry ships Radix versions.
 
 Schema change: edit `apps/web/src/db/schema.ts`, run `bun run db:generate`,
 commit the generated SQL under `apps/web/drizzle/`. Migrations run at container

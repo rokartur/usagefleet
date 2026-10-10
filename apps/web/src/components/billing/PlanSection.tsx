@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Minus, Plus } from 'lucide-react'
 import { useFormatter, useLocale, useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
+import { Badge } from '@/components/arc/badge/badge'
+import { Button } from '@/components/arc/button/button'
+import { Input } from '@/components/arc/input/input'
+import { NumberField } from '@/components/arc/number-field/number-field'
+import { Progress } from '@/components/arc/progress/progress'
+import { Select } from '@/components/arc/select/select'
 import { BillingPortalButton, SubscribeButton } from '@/components/billing/BillingButtons'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import type { AccountPlan } from '@/lib/billing'
 import { devSetPlan } from '@/lib/dev-actions'
 import { formatPlanPrice, FREE_DEVICES, PAID_PLANS, PLANS, planLabel, planPriceCents } from '@/lib/plans'
@@ -54,8 +56,8 @@ export function PlanSection({
 							{format.dateTime(plan.periodEnd, { dateStyle: 'medium' })}
 						</span>
 					)}
-					{plan.status === 'past_due' && <Badge variant='destructive'>{t('current.pastDue')}</Badge>}
-					{plan.cancelAtPeriodEnd && <Badge variant='secondary'>{t('current.cancels')}</Badge>}
+					{plan.status === 'past_due' && <Badge tone='danger'>{t('current.pastDue')}</Badge>}
+					{plan.cancelAtPeriodEnd && <Badge tone='warning'>{t('current.cancels')}</Badge>}
 				</div>
 				{subscribed && <BillingPortalButton />}
 			</div>
@@ -115,35 +117,21 @@ export function DevPlanPanel({ plan }: { plan: AccountPlan }) {
 				successMessage={t('planApplied')}
 				className='flex flex-wrap items-end gap-3'
 			>
-				<label className='flex flex-col gap-1.5 text-xs text-muted-foreground'>
-					{t('plan')}
-					<select
-						name='plan'
-						defaultValue={plan.plan}
-						className='h-9 rounded-md border bg-transparent px-2 text-sm text-foreground'
-					>
-						<option value='free'>free</option>
-						{PAID_PLANS.map(id => (
-							<option key={id} value={id}>
-								{id}
-							</option>
-						))}
-					</select>
-				</label>
-
-				<label htmlFor='dev-devices' className='flex flex-col gap-1.5 text-xs text-muted-foreground'>
-					{t('devices')}
-					<Input
-						id='dev-devices'
-						type='number'
-						name='devices'
-						min={0}
-						defaultValue={plan.seats ?? PLANS.custom.minDevices}
-						className='h-9 w-24 tabular-nums'
-					/>
-				</label>
-
-				<Button type='submit' size='sm' variant='outline'>
+				<Select
+					label={t('plan')}
+					name='plan'
+					defaultValue={plan.plan}
+					options={['free', ...PAID_PLANS].map(id => ({ label: id, value: id }))}
+				/>
+				<Input
+					label={t('devices')}
+					type='number'
+					name='devices'
+					min={0}
+					defaultValue={plan.seats ?? PLANS.custom.minDevices}
+					className='w-24 tabular-nums'
+				/>
+				<Button type='submit' size='sm' variant='secondary'>
 					{t('apply')}
 				</Button>
 			</ActionForm>
@@ -183,12 +171,10 @@ function CustomTier({
 	const { label, minDevices, maxDevices } = PLANS.custom
 	const locale = useLocale()
 	const t = useTranslations('billing')
+	// NumberField keeps the value inside [minDevices, maxDevices], so this is
+	// already what a click would buy.
 	const [devices, setDevices] = useState(seats ?? minDevices)
-	const clamp = (n: number) => Math.min(Math.max(n, minDevices), maxDevices)
-	// What a click would actually buy: the field holds whatever is being typed,
-	// including an empty string mid-edit, so price and checkout read the clamp.
-	const wanted = clamp(devices || minDevices)
-	const unchanged = current && wanted === seats
+	const unchanged = current && devices === seats
 
 	let actionLabel = t('change.subscribe')
 	if (current) {
@@ -204,39 +190,17 @@ function CustomTier({
 				{current && <span className='sr-only'> ({t('change.current')})</span>}
 			</span>
 			<div className='flex flex-1 flex-wrap items-center gap-x-4 gap-y-2'>
-				<div className='flex items-center gap-1.5'>
-					<Button
-						variant='outline'
-						size='icon'
-						className='size-8'
-						aria-label={t('custom.fewer')}
-						disabled={devices <= minDevices}
-						onClick={() => setDevices(clamp(devices - 1))}
-					>
-						<Minus />
-					</Button>
-					<Input
-						type='number'
+				{/* The row already names the plan; the label stays for screen readers. */}
+				<div className='[&_label]:sr-only'>
+					<NumberField
+						label={t('custom.deviceCountLabel')}
+						value={devices}
+						onValueChange={setDevices}
 						min={minDevices}
 						max={maxDevices}
-						value={devices}
-						aria-label={t('custom.deviceCountLabel')}
-						className='w-20 text-center tabular-nums'
-						onChange={e => setDevices(Number(e.target.value))}
-						// Snapping into range waits for blur instead of fighting the caret
-						// on every keystroke.
-						onBlur={() => setDevices(wanted)}
+						size='sm'
+						locale={locale}
 					/>
-					<Button
-						variant='outline'
-						size='icon'
-						className='size-8'
-						aria-label={t('custom.more')}
-						disabled={devices >= maxDevices}
-						onClick={() => setDevices(clamp(devices + 1))}
-					>
-						<Plus />
-					</Button>
 				</div>
 				<span className='text-xs text-muted-foreground'>
 					{t('custom.lead', {
@@ -247,15 +211,15 @@ function CustomTier({
 				</span>
 			</div>
 			<span className='text-sm tabular-nums'>
-				{formatPlanPrice(planPriceCents('custom', wanted, prices), prices, locale)}
+				{formatPlanPrice(planPriceCents('custom', devices, prices), prices, locale)}
 				<span className='text-muted-foreground'>{t('current.perMonth')}</span>
 			</span>
 			<div className='flex w-28 justify-end'>
 				<SubscribeButton
 					plan='custom'
-					seats={wanted}
+					seats={devices}
 					label={actionLabel}
-					variant={subscribed ? 'outline' : 'default'}
+					variant={subscribed ? 'secondary' : 'primary'}
 					size='sm'
 					disabled={unchanged}
 				/>
@@ -286,18 +250,14 @@ function TierAction({
 		<SubscribeButton
 			plan={tier.id}
 			label={subscribed ? t('switch') : t('subscribe')}
-			variant={subscribed ? 'outline' : 'default'}
+			variant={subscribed ? 'secondary' : 'primary'}
 			size='sm'
 		/>
 	)
 }
 
-/** Past this many slots the segments are thinner than their own gap, so the
- *  meter switches to a plain proportional bar. Custom plans go to 200. */
-const MAX_METER_SEGMENTS = 12
-
-/** One segment per device the plan allows. Downgrading does not revoke devices,
- *  so `used` can legitimately exceed `limit` and the meter has to say so. */
+/** Downgrading does not revoke devices, so `used` can legitimately exceed
+ *  `limit` and the meter has to say so. */
 function DeviceMeter({ used, limit }: { used: number; limit: number }) {
 	const t = useTranslations('billing.meter')
 	const free = limit - used
@@ -312,32 +272,11 @@ function DeviceMeter({ used, limit }: { used: number; limit: number }) {
 
 	return (
 		<div className='max-w-md'>
-			<div className='mb-1.5 flex items-baseline justify-between text-sm'>
-				<span className='text-muted-foreground'>{t('active')}</span>
+			<Progress label={t('active')} value={used} max={limit} />
+			<p className='mt-2 flex justify-between gap-3 text-xs'>
+				<span className={overCap ? 'text-destructive' : 'text-muted-foreground'}>{note}</span>
 				<span className='tabular-nums'>{t('usedOf', { used, limit })}</span>
-			</div>
-			{limit <= MAX_METER_SEGMENTS ? (
-				<div className='flex gap-1' aria-hidden>
-					{Array.from({ length: limit }, (_, slot) => (
-						<div
-							key={slot}
-							className={cn(
-								'h-2 flex-1 rounded-sm',
-								slot >= used && 'bg-muted',
-								slot < used && (overCap ? 'bg-destructive' : 'bg-primary'),
-							)}
-						/>
-					))}
-				</div>
-			) : (
-				<div className='h-2 overflow-hidden rounded-sm bg-muted' aria-hidden>
-					<div
-						className={cn('h-full rounded-sm', overCap ? 'bg-destructive' : 'bg-primary')}
-						style={{ width: `${Math.min(used / limit, 1) * 100}%` }}
-					/>
-				</div>
-			)}
-			<p className='mt-2 text-xs text-muted-foreground'>{note}</p>
+			</p>
 		</div>
 	)
 }

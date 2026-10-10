@@ -2,10 +2,10 @@ import type { FormEvent } from 'react'
 import { useState } from 'react'
 import { Link, useRouter } from '@tanstack/react-router'
 import { useTranslations } from 'use-intl'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/arc/badge/badge'
+import { Button } from '@/components/arc/button/button'
+import { Input } from '@/components/arc/input/input'
+import { PasswordField } from '@/components/arc/password-field/password-field'
 import { signIn, signUp } from '@/lib/auth-client'
 import { signInRedirects } from '@/lib/oauth-redirects'
 import type { PaidPlan } from '@/lib/plans'
@@ -97,92 +97,77 @@ export function AuthForm({
 		return <output className='text-sm text-muted-foreground'>{t('verifySent')}</output>
 	}
 
-	const submitLabel = isSignup ? t('createAccount') : t('signInWithPassword')
-
 	return (
-		<form onSubmit={onSubmit}>
-			<FieldGroup>
-				{isSignup ? (
-					<>
-						<Field>
-							<FieldLabel htmlFor='name'>{t('name')}</FieldLabel>
-							<Input id='name' name='name' autoComplete='name' placeholder={t('namePlaceholder')} />
-						</Field>
-						<Field>
-							<FieldLabel htmlFor='username'>{t('username')}</FieldLabel>
-							{/* Mirrors the server's validator so a typo is caught before the
-							    round trip; the server stays the one that decides. */}
-							<Input
-								id='username'
-								name='username'
-								required
-								minLength={3}
-								maxLength={30}
-								pattern='[a-zA-Z0-9_.]+'
-								title={t('usernameTitle')}
-								autoComplete='username'
-								placeholder={t('usernamePlaceholder')}
-							/>
-						</Field>
-						<Field>
-							<FieldLabel htmlFor='email'>{t('email')}</FieldLabel>
-							<Input
-								id='email'
-								name='email'
-								type='email'
-								required
-								autoComplete='email'
-								placeholder={t('emailPlaceholder')}
-							/>
-						</Field>
-					</>
-				) : (
-					<Field>
-						<FieldLabel htmlFor='identifier'>{t('identifier')}</FieldLabel>
-						<Input
-							id='identifier'
-							name='identifier'
-							required
-							autoComplete='username'
-							placeholder={t('emailPlaceholder')}
-						/>
-					</Field>
-				)}
-				<Field>
-					<div className='flex items-center justify-between'>
-						<FieldLabel htmlFor='password'>{t('password')}</FieldLabel>
-						{!isSignup && (
-							<Link
-								to='/reset-password'
-								className='text-sm text-muted-foreground underline underline-offset-4'
-							>
-								{t('forgot')}
-							</Link>
-						)}
-					</div>
+		<form onSubmit={onSubmit} className='grid gap-5'>
+			{isSignup ? (
+				<>
+					<Input label={t('name')} name='name' autoComplete='name' placeholder={t('namePlaceholder')} />
+					{/* Mirrors the server's validator so a typo is caught before the
+					    round trip; the server stays the one that decides. */}
 					<Input
-						id='password'
-						name='password'
-						type='password'
+						label={t('username')}
+						name='username'
 						required
-						minLength={8}
-						autoComplete={isSignup ? 'new-password' : 'current-password'}
-						placeholder={t('passwordPlaceholder')}
+						minLength={3}
+						maxLength={30}
+						pattern='[a-zA-Z0-9_.]+'
+						title={t('usernameTitle')}
+						autoComplete='username'
+						placeholder={t('usernamePlaceholder')}
 					/>
-				</Field>
-				{error && <FieldError>{error}</FieldError>}
-				<Button type='submit' size='lg' disabled={pending} className='relative'>
-					{pending ? t('pending') : submitLabel}
-					{lastUsed && !isSignup && (
-						<Badge
-							variant='secondary'
-							className='absolute -top-2 right-2 h-4.5 px-1.5 text-[10px] font-normal'
-						>
-							{t('lastUsed')}
-						</Badge>
-					)}
+					<Input
+						label={t('email')}
+						name='email'
+						type='email'
+						required
+						autoComplete='email'
+						placeholder={t('emailPlaceholder')}
+					/>
+				</>
+			) : (
+				<Input
+					label={t('identifier')}
+					name='identifier'
+					required
+					autoComplete='username'
+					placeholder={t('emailPlaceholder')}
+				/>
+			)}
+			<div className='grid gap-2'>
+				<PasswordField
+					label={t('password')}
+					name='password'
+					required
+					minLength={8}
+					autoComplete={isSignup ? 'new-password' : 'current-password'}
+					placeholder={t('passwordPlaceholder')}
+					messages={{ hidePassword: t('hidePassword'), showPassword: t('showPassword') }}
+				/>
+				{!isSignup && (
+					<Link
+						to='/reset-password'
+						className='justify-self-end text-sm text-muted-foreground underline underline-offset-4'
+					>
+						{t('forgot')}
+					</Link>
+				)}
+			</div>
+			{error && (
+				<p role='alert' className='text-sm text-destructive'>
+					{error}
+				</p>
+			)}
+			{/* The badge sits outside the button: Arc's label slot would anchor it instead. */}
+			<div className='relative'>
+				<Button type='submit' size='lg' loading={pending} className='w-full'>
+					{isSignup ? t('createAccount') : t('signInWithPassword')}
 				</Button>
-			</FieldGroup>
+				{lastUsed && !isSignup && (
+					<Badge size='sm' className='pointer-events-none absolute -top-2 right-2'>
+						{t('lastUsed')}
+					</Badge>
+				)}
+			</div>
 		</form>
 	)
 }

@@ -1,7 +1,7 @@
 import { useTransition } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { useTranslations } from 'use-intl'
-import { toast } from '@/components/ui/toast'
+import { useToast } from '@/components/arc/toast-stack/toast-stack'
 
 /** Structural shape of a `createServerFn` fetcher that takes a FormData. Kept
  *  structural (not the generated fetcher type) so the forms don't have to name
@@ -30,6 +30,7 @@ export function ActionForm({
 	const [pending, startTransition] = useTransition()
 	const router = useRouter()
 	const t = useTranslations('dash.actions')
+	const toast = useToast()
 
 	return (
 		<form
@@ -43,7 +44,7 @@ export function ActionForm({
 						await toast.promise(
 							action({ data: formData }).then(() => router.invalidate()),
 							{
-								error: { priority: 'high', title: errorMessage ?? t('failed') },
+								error: { title: errorMessage ?? t('failed') },
 								loading: { title: loadingMessage },
 								success: { title: successMessage },
 							},

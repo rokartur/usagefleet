@@ -4,14 +4,14 @@ import { createServerFn } from '@tanstack/react-start'
 import { MonitorSmartphoneIcon, Trash2 } from 'lucide-react'
 import { useTranslations } from 'use-intl'
 import { AddDeviceForm } from '@/components/AddDeviceForm'
+import { Badge } from '@/components/arc/badge/badge'
+import { Button } from '@/components/arc/button/button'
+import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import { AutoRefresh } from '@/components/AutoRefresh'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { DeviceBlockingToggle, DeviceGroupSelect, RevokeDeviceButton } from '@/components/devices/DeviceActions'
 import { GroupFormDialog } from '@/components/groups/GroupFormDialog'
 import { RelativeTime } from '@/components/RelativeTime'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { deleteGroup } from '@/lib/actions'
 import { accountPlan } from '@/lib/billing'
 import { backfillUngroupedDevices, listDevices, listGroups, slottedGroups } from '@/lib/data'
@@ -82,19 +82,17 @@ function FleetPage() {
 
 	if (devices.length === 0 && groups.length === 0) {
 		return (
-			<Empty className='py-16'>
-				<EmptyHeader>
-					<EmptyMedia variant='icon'>
-						<MonitorSmartphoneIcon />
-					</EmptyMedia>
-					<EmptyTitle>{t('emptyTitle')}</EmptyTitle>
-					<EmptyDescription>{t('emptyDescription')}</EmptyDescription>
-				</EmptyHeader>
-				<EmptyContent>
-					<AddDeviceForm groups={groupOptions} atCap={atCap} />
-					<p className='text-xs text-muted-foreground'>{t('emptyHint')}</p>
-				</EmptyContent>
-			</Empty>
+			<EmptyState
+				icon={<MonitorSmartphoneIcon />}
+				title={t('emptyTitle')}
+				description={t('emptyDescription')}
+				action={
+					<div className='flex flex-col items-center gap-3'>
+						<AddDeviceForm groups={groupOptions} atCap={atCap} />
+						<p className='text-xs text-muted-foreground'>{t('emptyHint')}</p>
+					</div>
+				}
+			/>
 		)
 	}
 
@@ -110,7 +108,7 @@ function FleetPage() {
 					<span className='tabular-nums'>{groups.length}</span>{' '}
 					{sliceShare === null ? tGroups('slotsPerAccount') : tGroups('slots', { share: sliceShare })}
 					{atCap && (
-						<span className='text-amber-600 dark:text-amber-500'>
+						<span className='text-warning'>
 							{t.rich('atCap', {
 								upgrade: chunks => (
 									<Link to='/account' className='underline underline-offset-2'>
@@ -120,9 +118,7 @@ function FleetPage() {
 							})}
 						</span>
 					)}
-					{groupsAtCap && !atCap && (
-						<span className='text-amber-600 dark:text-amber-500'>{tGroups('atCap')}</span>
-					)}
+					{groupsAtCap && !atCap && <span className='text-warning'>{tGroups('atCap')}</span>}
 				</p>
 				<div className='flex items-center gap-2'>
 					{devices.length > active && (
@@ -136,7 +132,7 @@ function FleetPage() {
 			</div>
 
 			{sections.map(({ group: g, items, key }) => (
-				<section key={key}>
+				<section key={key} className='rounded-(--radius-surface) border bg-surface p-6'>
 					<div className='flex flex-wrap items-center gap-x-3 gap-y-1'>
 						<h2 className='flex items-center gap-2 text-sm font-medium'>
 							<span
@@ -197,23 +193,25 @@ function FleetPage() {
 						)}
 					</div>
 					{items.length === 0 ? (
-						<p className='mt-2 border-t border-b py-3.5 text-sm text-muted-foreground'>
-							{t('noneInGroup')}
-						</p>
+						<p className='mt-3 text-sm text-muted-foreground'>{t('noneInGroup')}</p>
 					) : (
-						<ul className='mt-2 [&>li:last-child]:border-b'>
+						<ul className='mt-3'>
 							{items.map(d => (
-								<li key={d.id} className='flex items-center gap-4 border-t py-3.5'>
+								<li key={d.id} className='flex items-center gap-4 border-t py-3.5 last:pb-0'>
 									<div className='min-w-0 flex-1'>
 										<div className='flex flex-wrap items-center gap-2'>
 											<span className='text-sm font-medium'>{d.name}</span>
-											{d.os && (
-												<Badge variant='outline' className='font-normal'>
-													{OS_LABEL[d.os] ?? d.os}
+											{d.os && <Badge size='sm'>{OS_LABEL[d.os] ?? d.os}</Badge>}
+											{d.revoked && (
+												<Badge tone='danger' size='sm'>
+													{t('revoked')}
 												</Badge>
 											)}
-											{d.revoked && <Badge variant='destructive'>{t('revoked')}</Badge>}
-											{parked.has(d.id) && <Badge variant='destructive'>{t('overLimit')}</Badge>}
+											{parked.has(d.id) && (
+												<Badge tone='danger' size='sm'>
+													{t('overLimit')}
+												</Badge>
+											)}
 										</div>
 										<p className='mt-0.5 text-xs text-muted-foreground'>
 											{d.hostname ? `${d.hostname} · ` : ''}
@@ -230,9 +228,7 @@ function FleetPage() {
                       machine — worth spotting from across the list. */}
 									<span
 										className={
-											d.lastSeenAt
-												? 'text-sm text-muted-foreground'
-												: 'text-sm text-amber-600 dark:text-amber-500'
+											d.lastSeenAt ? 'text-sm text-muted-foreground' : 'text-sm text-warning'
 										}
 									>
 										<RelativeTime date={d.lastSeenAt} />

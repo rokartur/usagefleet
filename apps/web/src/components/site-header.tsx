@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useTranslations } from 'use-intl'
-import { buttonVariants } from '@/components/ui/button'
+import { buttonClassName } from '@/components/arc/button/button'
 import { UsageFleetMark } from '@/components/usage-fleet-mark'
 
 /** Header for the public pages that aren't the landing page: wordmark and one
@@ -19,7 +19,7 @@ export function SiteHeader() {
 					<UsageFleetMark className='size-5' />
 					UsageFleet
 				</Link>
-				<Link to='/' className={buttonVariants({ variant: 'outline' })}>
+				<Link to='/' className={buttonClassName({ variant: 'secondary' })}>
 					{t('backToSite')}
 				</Link>
 			</div>

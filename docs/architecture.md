@@ -28,7 +28,7 @@ counts against whichever one it is signed into.
 
 ## Web app (`apps/web`)
 
-TanStack Start (SSR + server functions), React 19, Tailwind v4, shadcn, Drizzle
+TanStack Start (SSR + server functions), React 19, Tailwind v4, Arc UI, Drizzle
 + Postgres, better-auth (email/password, Google, GitHub) with its Stripe plugin.
 
 Routing is file-based under `src/routes`:

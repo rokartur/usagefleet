@@ -1,8 +1,8 @@
 import type { ComponentProps } from 'react'
 import { useState } from 'react'
 import { useTranslations } from 'use-intl'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/arc/badge/badge'
+import { Button } from '@/components/arc/button/button'
 import { signIn } from '@/lib/auth-client'
 import { signInRedirects } from '@/lib/oauth-redirects'
 import type { PaidPlan } from '@/lib/plans'
@@ -43,7 +43,7 @@ export function OAuthSignIn({
 	plan,
 	lastUsed,
 	...buttonProps
-}: Omit<ComponentProps<typeof Button>, 'onClick' | 'children' | 'asChild'> & {
+}: Omit<ComponentProps<typeof Button>, 'onClick' | 'children' | 'loading'> & {
 	provider: ProviderId
 	/** Plan chosen on the landing page, carried across sign-in so a pricing CTA
 	 *  still lands on billing, and survives a failed attempt so a retry works. */
@@ -57,34 +57,37 @@ export function OAuthSignIn({
 	const { callbackURL, errorCallbackURL } = signInRedirects(plan)
 
 	return (
-		<Button
-			{...buttonProps}
-			className={cn('relative', buttonProps.className)}
-			disabled={pending || buttonProps.disabled}
-			onClick={async () => {
-				setPending(true)
-				const { error } = await signIn.social({
-					callbackURL,
-					errorCallbackURL,
-					provider,
-				})
-				// Only reached when the request never left the browser; a success or a
-				// provider-side rejection both navigate away instead.
-				if (error) {
-					setPending(false)
-					// errorCallbackURL never carries an `error` key, so appending one here
-					// cannot produce the duplicate that better-auth's own redirect would.
-					window.location.href = `${errorCallbackURL}${errorCallbackURL.includes('?') ? '&' : '?'}error=request_failed`
-				}
-			}}
-		>
-			<ProviderMark provider={provider} />
-			{t('continueWith', { provider: name })}
+		// The badge sits outside the button: Arc's label slot would anchor it instead.
+		<div className='relative'>
+			<Button
+				{...buttonProps}
+				className={cn('w-full', buttonProps.className)}
+				loading={pending}
+				onClick={async () => {
+					setPending(true)
+					const { error } = await signIn.social({
+						callbackURL,
+						errorCallbackURL,
+						provider,
+					})
+					// Only reached when the request never left the browser; a success or a
+					// provider-side rejection both navigate away instead.
+					if (error) {
+						setPending(false)
+						// errorCallbackURL never carries an `error` key, so appending one here
+						// cannot produce the duplicate that better-auth's own redirect would.
+						window.location.href = `${errorCallbackURL}${errorCallbackURL.includes('?') ? '&' : '?'}error=request_failed`
+					}
+				}}
+			>
+				<ProviderMark provider={provider} />
+				{t('continueWith', { provider: name })}
+			</Button>
 			{lastUsed && (
-				<Badge variant='secondary' className='absolute -top-2 right-2 h-4.5 px-1.5 text-[10px] font-normal'>
+				<Badge size='sm' className='pointer-events-none absolute -top-2 right-2'>
 					{t('lastUsed')}
 				</Badge>
 			)}
-		</Button>
+		</div>
 	)
 }

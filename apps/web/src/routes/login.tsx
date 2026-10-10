@@ -2,10 +2,9 @@ import { useEffect, useState } from 'react'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useTranslations } from 'use-intl'
+import { Card } from '@/components/arc/card/card'
 import { AuthForm } from '@/components/AuthForm'
 import { OAuthSignIn } from '@/components/OAuthSignIn'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { authClient } from '@/lib/auth-client'
 import { signupEnabled } from '@/lib/flags'
 import { detectLocale } from '@/lib/i18n'
@@ -85,26 +84,26 @@ function LoginPage() {
 	const errorMessage = t(ERROR_KEYS[error ?? ''] ?? 'failed')
 	return (
 		<div className='flex flex-1 items-center justify-center p-6'>
-			<Card className='w-full max-w-sm [--card-spacing:--spacing(6)]'>
-				<CardHeader>
-					<CardTitle className='text-lg'>{isSignup ? t('titleSignup') : t('title')}</CardTitle>
-					<CardDescription>{t('description')}</CardDescription>
-				</CardHeader>
-				<CardContent className='flex flex-col gap-6'>
+			<Card
+				className='w-full max-w-sm'
+				title={isSignup ? t('titleSignup') : t('title')}
+				description={t('description')}
+			>
+				<div className='mt-6 flex flex-col gap-6'>
 					<div className='flex flex-col gap-2'>
 						<OAuthSignIn provider='github' size='lg' plan={plan} lastUsed={lastMethod === 'github'} />
 						<OAuthSignIn
 							provider='google'
 							size='lg'
-							variant='outline'
+							variant='secondary'
 							plan={plan}
 							lastUsed={lastMethod === 'google'}
 						/>
 					</div>
 					<div className='flex items-center gap-3 text-xs text-muted-foreground'>
-						<Separator className='flex-1' />
+						<hr className='flex-1' />
 						{t('or')}
-						<Separator className='flex-1' />
+						<hr className='flex-1' />
 					</div>
 					<AuthForm mode={mode} plan={plan} lastUsed={lastMethod === 'email'} />
 					{error && (
@@ -126,7 +125,7 @@ function LoginPage() {
 					) : (
 						!error && <p className='text-center text-sm text-muted-foreground'>{t('signupsOff')}</p>
 					)}
-				</CardContent>
+				</div>
 			</Card>
 		</div>
 	)

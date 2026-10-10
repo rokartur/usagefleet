@@ -5,8 +5,8 @@ import interLatin from '@fontsource-variable/inter/files/inter-latin-wght-normal
 import { createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
 import { ThemeProvider } from 'next-themes'
 import { IntlProvider } from 'use-intl'
-import { Toaster } from '@/components/ui/toast'
-import { TooltipProvider } from '@/components/ui/tooltip'
+import { ToastStack, ToastStackProvider } from '@/components/arc/toast-stack/toast-stack'
+import { TooltipProvider } from '@/components/arc/tooltip/tooltip'
 // Self-hosted replacement for next/font/google; sets the --font-inter var that
 // styles/globals.css feeds into --font-sans.
 import '@fontsource-variable/inter'
@@ -18,8 +18,8 @@ import '@/styles/globals.css'
 /** Applies the stored theme before the first paint. next-themes injects the
  *  same logic, but at the top of <body>, which is late enough that a refresh
  *  flashes the light palette. Mirrors the ThemeProvider props below: storage
- *  key "theme", class attribute, dark default. */
-const THEME_SCRIPT = `try{var t=localStorage.getItem("theme")||"dark";var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);var e=document.documentElement;e.classList.toggle("dark",d);e.style.colorScheme=d?"dark":"light"}catch(_){}`
+ *  key "theme", data-theme attribute, dark default. */
+const THEME_SCRIPT = `try{var t=localStorage.getItem("theme")||"dark";var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);var e=document.documentElement;e.dataset.theme=d?"dark":"light";e.style.colorScheme=d?"dark":"light"}catch(_){}`
 
 export const Route = createRootRoute({
 	head: () => ({
@@ -75,7 +75,7 @@ export const Route = createRootRoute({
 function RootDocument({ children }: { children: React.ReactNode }) {
 	const locale = detectLocale()
 	return (
-		// suppressHydrationWarning: next-themes writes the theme class on <html>
+		// suppressHydrationWarning: next-themes writes data-theme on <html>
 		// before hydration, so the server markup intentionally differs.
 		<html lang={locale} suppressHydrationWarning className='h-full antialiased'>
 			<head>
@@ -83,9 +83,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			</head>
 			<body className='flex min-h-full flex-col bg-background font-sans text-foreground'>
 				<IntlProvider locale={locale} messages={MESSAGES[locale]} timeZone='UTC'>
-					<ThemeProvider attribute='class' defaultTheme='dark' enableSystem>
-						<TooltipProvider>{children}</TooltipProvider>
-						<Toaster />
+					<ThemeProvider attribute='data-theme' defaultTheme='dark' enableSystem>
+						<ToastStackProvider>
+							<TooltipProvider>{children}</TooltipProvider>
+							<ToastStack />
+						</ToastStackProvider>
 					</ThemeProvider>
 				</IntlProvider>
 				<Scripts />

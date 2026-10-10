@@ -1,14 +1,9 @@
-import { useEffect, useState } from 'react'
-import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useTranslations } from 'use-intl'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import SegmentedControl from '@/components/arc/segmented-control/segmented-control'
+import { useMounted } from '@/hooks/use-mounted'
 
-const THEMES = [
-	{ icon: MonitorIcon, value: 'system' },
-	{ icon: SunIcon, value: 'light' },
-	{ icon: MoonIcon, value: 'dark' },
-] as const
+const THEMES = ['system', 'light', 'dark'] as const
 
 /** System/light/dark segmented control. Nothing is selected until after mount:
  *  the stored choice lives in localStorage, so the server has nothing to render
@@ -16,26 +11,14 @@ const THEMES = [
 export function ThemeToggle() {
 	const t = useTranslations('common.theme')
 	const { theme, setTheme } = useTheme()
-	const [mounted, setMounted] = useState(false)
-	// oxlint-disable-next-line react/react-compiler -- the mount flag is the point
-	useEffect(() => setMounted(true), [])
+	const mounted = useMounted()
 
 	return (
-		<ToggleGroup
-			variant='outline'
-			size='sm'
-			spacing={0}
-			aria-label={t('label')}
-			value={mounted && theme ? [theme] : []}
-			// Clicking the active segment clears the selection; keep the current theme.
-			onValueChange={([next]) => next && setTheme(next)}
-		>
-			{THEMES.map(({ value, icon: Icon }) => (
-				<ToggleGroupItem key={value} value={value}>
-					<Icon />
-					{t(value)}
-				</ToggleGroupItem>
-			))}
-		</ToggleGroup>
+		<SegmentedControl
+			label={t('label')}
+			value={mounted && theme ? theme : ''}
+			onValueChange={setTheme}
+			options={THEMES.map(value => ({ label: t(value), value }))}
+		/>
 	)
 }

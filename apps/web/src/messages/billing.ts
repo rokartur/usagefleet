@@ -28,9 +28,7 @@ const en = {
 	custom: {
 		deviceCountLabel: 'Devices',
 		devices: 'devices',
-		fewer: 'One device fewer',
 		lead: '{price} per device, from {min}. Pick any number up to {max} and the price follows.',
-		more: 'One device more',
 		updateDevices: 'Update devices',
 	},
 	dev: {
@@ -82,9 +80,7 @@ const pl: typeof en = {
 	custom: {
 		deviceCountLabel: 'Urządzenia',
 		devices: 'urządzeń',
-		fewer: 'Jedno urządzenie mniej',
 		lead: '{price} za urządzenie, od {min}. Wybierz dowolną liczbę do {max}, a cena za nią pójdzie.',
-		more: 'Jedno urządzenie więcej',
 		updateDevices: 'Zmień liczbę urządzeń',
 	},
 	dev: {

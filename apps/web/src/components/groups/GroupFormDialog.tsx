@@ -1,30 +1,13 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { PencilIcon, PlusIcon } from 'lucide-react'
-import { useTranslations } from 'use-intl'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import {
-	Dialog,
-	DialogClose,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-	DialogTrigger,
-} from '@/components/ui/dialog'
-import {
-	Field,
-	FieldContent,
-	FieldDescription,
-	FieldGroup,
-	FieldLabel,
-	FieldLegend,
-	FieldSet,
-} from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
-import { toast } from '@/components/ui/toast'
+import { useLocale, useTranslations } from 'use-intl'
+import { Button } from '@/components/arc/button/button'
+import { Checkbox } from '@/components/arc/checkbox/checkbox'
+import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/arc/dialog/dialog'
+import { Input } from '@/components/arc/input/input'
+import { NumberField } from '@/components/arc/number-field/number-field'
+import { useToast } from '@/components/arc/toast-stack/toast-stack'
 import { createGroup, updateGroup } from '@/lib/actions'
 import { GROUP_COLORS, randomGroupColor } from '@/lib/group-colors'
 import { cn } from '@/lib/utils'
@@ -44,10 +27,8 @@ function ColorField({ selected }: { selected?: string }) {
 	]
 
 	return (
-		<FieldSet>
-			<FieldLegend variant='label' className='mb-2'>
-				{t('color')}
-			</FieldLegend>
+		<fieldset className='grid gap-2'>
+			<legend className='mb-2 text-sm font-medium'>{t('color')}</legend>
 			<div className='flex flex-wrap gap-2'>
 				{swatches.map(c => (
 					<label key={c.hex} className='cursor-pointer'>
@@ -70,32 +51,9 @@ function ColorField({ selected }: { selected?: string }) {
 					</label>
 				))}
 			</div>
-			<FieldDescription>{t('colorDescription')}</FieldDescription>
-		</FieldSet>
+			<p className='text-sm text-muted-foreground'>{t('colorDescription')}</p>
+		</fieldset>
 	)
-}
-
-/** One group switch, off by default. A blocking switch only ever blocks the
- *  group itself, and only once its owner turns it on. */
-function CheckField({ name, label, description, defaultChecked }: CheckFieldProps) {
-	return (
-		<Field orientation='horizontal'>
-			<Checkbox id={name} name={name} defaultChecked={defaultChecked} />
-			<FieldContent>
-				<FieldLabel htmlFor={name} className='font-normal'>
-					{label}
-				</FieldLabel>
-				<FieldDescription>{description}</FieldDescription>
-			</FieldContent>
-		</Field>
-	)
-}
-
-interface CheckFieldProps {
-	name: 'blockOnSessionLimit' | 'blockOnWeeklyLimit' | 'watchOnly'
-	label: string
-	description: string
-	defaultChecked?: boolean
 }
 
 /** Create (no `group`) or edit (with `group`) — one dialog, since the fields
@@ -117,22 +75,31 @@ export function GroupFormDialog({
 }) {
 	const t = useTranslations('dash.groups')
 	const tActions = useTranslations('dash.actions')
+	const locale = useLocale()
+	const toast = useToast()
 	const [open, setOpen] = useState(false)
 	const router = useRouter()
 	const [pending, startTransition] = useTransition()
+	const [sliceWeight, setSliceWeight] = useState(group?.sliceWeight ?? 1)
 	const editing = group != null
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger
-				render={editing ? <Button variant='ghost' size='sm' /> : <Button variant='outline' disabled={atCap} />}
+				render={
+					<Button
+						variant={editing ? 'ghost' : 'secondary'}
+						size={editing ? 'sm' : 'md'}
+						disabled={!editing && atCap}
+					/>
+				}
 			>
-				{editing ? <PencilIcon /> : <PlusIcon />}
+				{editing ? <PencilIcon size={16} /> : <PlusIcon size={16} />}
 				{t(editing ? 'edit' : 'newTitle')}
 			</DialogTrigger>
-			<DialogContent>
+			<DialogContent title={t(editing ? 'editTitle' : 'newTitle')} description={t('dialogDescription')}>
 				<form
-					className='grid gap-4'
+					className='grid gap-5'
 					onSubmit={event => {
 						event.preventDefault()
 						const formData = new FormData(event.currentTarget)
@@ -144,7 +111,6 @@ export function GroupFormDialog({
 									{
 										error: {
 											description: tActions('retry'),
-											priority: 'high',
 											title: t(editing ? 'updateFailed' : 'createFailed'),
 										},
 										loading: {
@@ -163,71 +129,57 @@ export function GroupFormDialog({
 					}}
 				>
 					{editing && <input type='hidden' name='id' value={group.id} />}
-					<DialogHeader>
-						<DialogTitle>{t(editing ? 'editTitle' : 'newTitle')}</DialogTitle>
-						<DialogDescription>{t('dialogDescription')}</DialogDescription>
-					</DialogHeader>
-					<FieldGroup>
-						<Field>
-							<FieldLabel htmlFor='group-name'>{t('name')}</FieldLabel>
-							<Input
-								id='group-name'
-								name='name'
-								required
-								maxLength={60}
-								defaultValue={group?.name}
-								placeholder={t('namePlaceholder')}
-							/>
-						</Field>
-						<ColorField selected={group?.color} />
-						<Field>
-							<FieldLabel htmlFor='group-slice-weight'>{t('sliceWeight')}</FieldLabel>
-							<Input
-								id='group-slice-weight'
-								name='sliceWeight'
-								type='number'
-								required
-								min={1}
-								max={100}
-								step={1}
-								defaultValue={group?.sliceWeight ?? 1}
-								className='w-24 tabular-nums'
-							/>
-							<FieldDescription>{t('sliceWeightDescription')}</FieldDescription>
-						</Field>
-						<CheckField
-							name='watchOnly'
-							label={t('watchOnly')}
-							description={t('watchOnlyDescription')}
-							defaultChecked={group?.watchOnly}
+					<Input
+						label={t('name')}
+						name='name'
+						required
+						maxLength={60}
+						defaultValue={group?.name}
+						placeholder={t('namePlaceholder')}
+					/>
+					<ColorField selected={group?.color} />
+					<div>
+						<NumberField
+							label={t('sliceWeight')}
+							description={t('sliceWeightDescription')}
+							value={sliceWeight}
+							onValueChange={setSliceWeight}
+							min={1}
+							max={100}
+							locale={locale}
 						/>
-						<FieldSet>
-							<FieldLegend variant='label' className='mb-2'>
-								{t('blocking')}
-							</FieldLegend>
-							<CheckField
-								name='blockOnSessionLimit'
-								label={t('blockSession')}
-								description={t('blockSessionDescription')}
-								defaultChecked={group?.blockOnSessionLimit}
-							/>
-							<CheckField
-								name='blockOnWeeklyLimit'
-								label={t('blockWeekly')}
-								description={t('blockWeeklyDescription')}
-								defaultChecked={group?.blockOnWeeklyLimit}
-							/>
-							<FieldDescription>
-								{t.rich('blockingHint', { cmd: chunks => <code>{chunks}</code> })}
-							</FieldDescription>
-						</FieldSet>
-					</FieldGroup>
-					<DialogFooter>
-						<DialogClose render={<Button variant='outline' type='button' />}>{t('cancel')}</DialogClose>
-						<Button type='submit' disabled={pending}>
-							{pending ? t('saving') : t(editing ? 'save' : 'create')}
+						<input type='hidden' name='sliceWeight' value={sliceWeight} />
+					</div>
+					<Checkbox
+						name='watchOnly'
+						label={t('watchOnly')}
+						description={t('watchOnlyDescription')}
+						defaultChecked={group?.watchOnly}
+					/>
+					<fieldset className='grid gap-3'>
+						<legend className='mb-2 text-sm font-medium'>{t('blocking')}</legend>
+						<Checkbox
+							name='blockOnSessionLimit'
+							label={t('blockSession')}
+							description={t('blockSessionDescription')}
+							defaultChecked={group?.blockOnSessionLimit}
+						/>
+						<Checkbox
+							name='blockOnWeeklyLimit'
+							label={t('blockWeekly')}
+							description={t('blockWeeklyDescription')}
+							defaultChecked={group?.blockOnWeeklyLimit}
+						/>
+						<p className='text-sm text-muted-foreground'>
+							{t.rich('blockingHint', { cmd: chunks => <code>{chunks}</code> })}
+						</p>
+					</fieldset>
+					<div className='flex justify-end gap-2'>
+						<DialogClose render={<Button variant='secondary' type='button' />}>{t('cancel')}</DialogClose>
+						<Button type='submit' loading={pending}>
+							{t(editing ? 'save' : 'create')}
 						</Button>
-					</DialogFooter>
+					</div>
 				</form>
 			</DialogContent>
 		</Dialog>

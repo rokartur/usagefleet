@@ -1,19 +1,15 @@
 import { useEffect, useState } from 'react'
-import { IconArrowsSplit2, IconDots, IconEye, IconEyeOff } from '@tabler/icons-react'
+import { IconArrowsSplit2, IconEye, IconEyeOff } from '@tabler/icons-react'
 import { type } from 'arktype'
 import { useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
+import { Button } from '@/components/arc/button/button'
+import { Checkbox } from '@/components/arc/checkbox/checkbox'
+import { DropdownMenu } from '@/components/arc/dropdown-menu/dropdown-menu'
+import { Input } from '@/components/arc/input/input'
+import SegmentedControl from '@/components/arc/segmented-control/segmented-control'
+import { SortableDataTable } from '@/components/arc/sortable-data-table/sortable-data-table'
 import { RelativeTime } from '@/components/RelativeTime'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import {
-	DropdownMenu,
-	DropdownMenuCheckboxItem,
-	DropdownMenuContent,
-	DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Num, Section } from '@/components/usage-ui'
 import { mergeProjects, unmergeProject } from '@/lib/actions'
 import type { ProjectUsage } from '@/lib/data'
@@ -38,7 +34,7 @@ const ROWS = 12
 const STRIP = 5
 
 // Keyboard users get row buttons on focus; a mouse only needs them on the row it is over.
-const REVEAL = 'text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100'
+const REVEAL = 'opacity-0 [tr:hover_&]:opacity-100 focus-visible:opacity-100'
 
 const SORTS = {
 	cost: (a: Row, b: Row) => b.costUsd - a.costUsd,
@@ -202,6 +198,7 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 	const striped = matched.slice(0, STRIP)
 	const restCost = matched.slice(STRIP).reduce((sum, r) => sum + r.costUsd, 0)
 	const rowKey = (r: Row) => keysOf(r).join(' ')
+	const rowLabel = (r: Row) => r.mergedAs ?? (r.path ? splitPath(r.path).name : t('noProject'))
 	const hoveredRest = hovered !== null && !striped.some(r => rowKey(r) === hovered)
 	const share = (n: number) => formatPct(costUsd > 0 ? (n / costUsd) * 100 : 0)
 
@@ -210,55 +207,52 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 			title={t('title', { days: PROJECT_DAYS })}
 			actions={
 				<div className='flex flex-wrap items-center gap-x-4 gap-y-2'>
-					<Input
-						value={query}
-						onChange={e => setQuery(e.target.value)}
-						placeholder={t('filterPlaceholder')}
-						aria-label={t('filterLabel')}
-						className='h-8 w-56'
+					{/* The placeholder says what it filters; the label stays for screen readers. */}
+					<div className='w-56 [&_label]:sr-only'>
+						<Input
+							label={t('filterLabel')}
+							value={query}
+							onChange={e => setQuery(e.target.value)}
+							placeholder={t('filterPlaceholder')}
+						/>
+					</div>
+					<SegmentedControl
+						label={t('sortLabel')}
+						value={sort}
+						onValueChange={setSort}
+						options={(['cost', 'change', 'recent'] as const).map(s => ({
+							label: t(`sortBy.${s}`),
+							value: s,
+						}))}
 					/>
-					<fieldset aria-label={t('sortLabel')} className='flex items-center gap-3'>
-						{(['cost', 'change', 'recent'] as const).map(s => (
-							<TextToggle key={s} pressed={sort === s} onClick={() => setSort(s)}>
-								{t(`sortBy.${s}`)}
-							</TextToggle>
-						))}
-					</fieldset>
 					{/* Rarely touched, so they sit behind one button instead of three. */}
-					<DropdownMenu>
-						<DropdownMenuTrigger
-							render={<Button variant='ghost' size='icon-sm' aria-label={t('options')} />}
-						>
-							<IconDots />
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align='end' className='w-52'>
-							<DropdownMenuCheckboxItem
-								checked={merge}
-								onCheckedChange={() => persist({ merge: !merge })}
-							>
-								{t('mergeByName')}
-							</DropdownMenuCheckboxItem>
-							{!readOnly && (
-								<DropdownMenuCheckboxItem
-									checked={picking}
-									onCheckedChange={() => {
-										setPicking(!picking)
-										setSelected([])
-									}}
-								>
-									{t('mergeByHand')}
-								</DropdownMenuCheckboxItem>
-							)}
-							{hidden.length > 0 && (
-								<DropdownMenuCheckboxItem
-									checked={hiddenView}
-									onCheckedChange={() => setShowHidden(!hiddenView)}
-								>
-									{t('hidden', { count: hidden.length })}
-								</DropdownMenuCheckboxItem>
-							)}
-						</DropdownMenuContent>
-					</DropdownMenu>
+					<DropdownMenu
+						label={t('options')}
+						items={[
+							{ checked: merge, label: t('mergeByName'), onSelect: () => persist({ merge: !merge }) },
+							...(readOnly
+								? []
+								: [
+										{
+											checked: picking,
+											label: t('mergeByHand'),
+											onSelect: () => {
+												setPicking(!picking)
+												setSelected([])
+											},
+										},
+									]),
+							...(hidden.length > 0
+								? [
+										{
+											checked: hiddenView,
+											label: t('hidden', { count: hidden.length }),
+											onSelect: () => setShowHidden(!hiddenView),
+										},
+									]
+								: []),
+						]}
+					/>
 				</div>
 			}
 		>
@@ -305,7 +299,7 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 									className='size-2 rounded-xs bg-foreground'
 									style={{ opacity: stripShade(i) }}
 								/>
-								{r.mergedAs ?? (r.path ? splitPath(r.path).name : t('noProject'))}
+								{rowLabel(r)}
 								<span className='text-muted-foreground'>{share(r.costUsd)}</span>
 							</li>
 						))}
@@ -324,21 +318,27 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 			)}
 			{/* Doubles as the legend for the split bars, which carry no names. */}
 			{groupOptions.length > 1 && (
-				<fieldset aria-label={t('group')} className='mt-4 flex flex-wrap items-center gap-x-3 gap-y-1'>
-					<TextToggle pressed={group === null} onClick={() => setGroup(null)}>
-						{t('allGroups')}
-					</TextToggle>
-					{groupOptions.map(name => (
-						<TextToggle key={name} pressed={group === name} onClick={() => setGroup(name)}>
-							<span
-								aria-hidden
-								className='mr-1.5 inline-block size-2 rounded-full'
-								style={{ backgroundColor: groupColors.get(name) }}
-							/>
-							{name}
-						</TextToggle>
-					))}
-				</fieldset>
+				<SegmentedControl
+					className='mt-4'
+					label={t('group')}
+					// Group names are never empty, so '' is free to mean every group.
+					value={group ?? ''}
+					onValueChange={next => setGroup(next || null)}
+					options={[
+						{ label: t('allGroups'), value: '' },
+						...groupOptions.map(name => ({
+							accessory: (
+								<span
+									aria-hidden
+									className='ml-1.5 inline-block size-2 rounded-full'
+									style={{ backgroundColor: groupColors.get(name) }}
+								/>
+							),
+							label: name,
+							value: name,
+						})),
+					]}
+				/>
 			)}
 			{!readOnly && selectedRows.length > 0 && (
 				<ActionForm
@@ -354,14 +354,15 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 					{selectedRows.flatMap(keysOf).map(k => (
 						<input key={k} type='hidden' name='path' value={k} />
 					))}
-					<Input
-						name='name'
-						required
-						maxLength={64}
-						placeholder={t('mergeName')}
-						aria-label={t('mergeName')}
-						className='h-8 w-56'
-					/>
+					<div className='w-56 [&_label]:sr-only'>
+						<Input
+							label={t('mergeName')}
+							name='name'
+							required
+							maxLength={64}
+							placeholder={t('mergeName')}
+						/>
+					</div>
 					<Button type='submit' size='sm' disabled={selectedRows.length < 2}>
 						{t('merge')}
 					</Button>
@@ -370,87 +371,118 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 					</Button>
 				</ActionForm>
 			)}
-			<Table className='mt-3'>
-				<TableHeader>
-					<TableRow>
-						{picking && (
-							<TableHead className='w-8'>
-								<span className='sr-only'>{t('merge')}</span>
-							</TableHead>
-						)}
-						<TableHead>{t('project')}</TableHead>
-						<TableHead>{t('daily')}</TableHead>
-						<TableHead>{t('group')}</TableHead>
-						<TableHead className='text-right'>{t('cost')}</TableHead>
-						<TableHead className='text-right' title={t('changeHint', { days: PROJECT_DAYS })}>
-							{t('change')}
-						</TableHead>
-						<TableHead className='text-right'>{t('lastUsed')}</TableHead>
-						<TableHead>
-							<span className='sr-only'>{t('actions')}</span>
-						</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{shown.map(p => {
-						const { name, parent } = splitPath(p.path)
-						const label = p.mergedAs ?? (p.path ? name : t('noProject'))
-						const keys = keysOf(p)
-						return (
-							<TableRow
-								key={rowKey(p)}
-								className='group/row'
-								onPointerEnter={() => setHovered(rowKey(p))}
-								onPointerLeave={() => setHovered(null)}
-							>
-								{picking && (
-									<TableCell>
-										<Checkbox
-											checked={isSelected(p)}
-											onCheckedChange={checked =>
-												setSelected(
-													checked
-														? [...selected, ...keys]
-														: selected.filter(k => !keys.includes(k)),
-												)
-											}
-											aria-label={t('select', { name: label })}
-										/>
-									</TableCell>
-								)}
-								<TableCell className='max-w-80 truncate' title={p.paths.join(', ')}>
-									<span className='font-medium'>{label}</span>
+			{/* Arc's table takes no row handlers. No column sorts, so a row's index in the body is its index in `shown`. */}
+			<div
+				className='mt-3'
+				onPointerOver={event => {
+					const tr = event.target instanceof Element ? event.target.closest('tbody tr') : null
+					const row = tr instanceof HTMLTableRowElement ? shown[tr.sectionRowIndex] : undefined
+					setHovered(row ? rowKey(row) : null)
+				}}
+				onPointerLeave={() => setHovered(null)}
+			>
+				<SortableDataTable
+					caption={t('title', { days: PROJECT_DAYS })}
+					emptyMessage={q ? t('noMatchQuery', { query: query.trim() }) : t('noMatch')}
+					rows={shown.map(p => ({ key: rowKey(p), project: p }))}
+					rowKey='key'
+					columns={[
+						...(picking
+							? [
+									{
+										key: 'pick',
+										label: t('merge'),
+										render: (_: unknown, { project: p }: { project: Row }) => (
+											<Checkbox
+												checked={isSelected(p)}
+												onCheckedChange={checked =>
+													setSelected(
+														checked === true
+															? [...selected, ...keysOf(p)]
+															: selected.filter(k => !keysOf(p).includes(k)),
+													)
+												}
+												aria-label={t('select', { name: rowLabel(p) })}
+											/>
+										),
+										sortable: false,
+									},
+								]
+							: []),
+						{
+							key: 'project',
+							label: t('project'),
+							render: (_, { project: p }) => (
+								<span className='block max-w-80 truncate' title={p.paths.join(', ')}>
+									<span className='font-medium'>{rowLabel(p)}</span>
 									{/* Merged rows span several paths, so the count replaces the parent. */}
 									<span className='ml-2 text-muted-foreground'>
 										{p.paths.length > 1
 											? t('pathCount', { count: p.paths.length })
 											: p.path
-												? parent
+												? splitPath(p.path).parent
 												: t('noProjectHint')}
 									</span>
-								</TableCell>
-								<TableCell>
-									<Sparkline daily={p.daily} />
-								</TableCell>
-								<TableCell>
-									<GroupSplit groups={p.groups} />
-								</TableCell>
-								<TableCell
-									className='text-right'
+								</span>
+							),
+							sortable: false,
+						},
+						{
+							key: 'daily',
+							label: t('daily'),
+							render: (_, { project: p }) => <Sparkline daily={p.daily} />,
+							sortable: false,
+						},
+						{
+							key: 'groups',
+							label: t('group'),
+							render: (_, { project: p }) => <GroupSplit groups={p.groups} />,
+							sortable: false,
+						},
+						{
+							key: 'cost',
+							label: t('cost'),
+							numeric: true,
+							render: (_, { project: p }) => (
+								<span
 									title={t('tokens', {
 										billable: formatTokens(p.billableTokens),
 										total: formatTokens(p.totalTokens),
 									})}
 								>
 									<Num value={p.costUsd} format={formatUsd} />
-								</TableCell>
-								<TableCell className='text-right'>
+								</span>
+							),
+							sortable: false,
+						},
+						{
+							key: 'change',
+							label: t('change'),
+							numeric: true,
+							render: (_, { project: p }) => (
+								<span title={t('changeHint', { days: PROJECT_DAYS })}>
 									<Change now={p.costUsd} prev={p.prevCostUsd} />
-								</TableCell>
-								<TableCell className='text-right whitespace-nowrap text-muted-foreground'>
+								</span>
+							),
+							sortable: false,
+						},
+						{
+							key: 'lastActive',
+							label: t('lastUsed'),
+							numeric: true,
+							render: (_, { project: p }) => (
+								<span className='whitespace-nowrap text-muted-foreground'>
 									<RelativeTime date={p.lastActive} />
-								</TableCell>
-								<TableCell className='py-0 text-right whitespace-nowrap'>
+								</span>
+							),
+							sortable: false,
+						},
+						{
+							key: 'actions',
+							label: t('actions'),
+							numeric: true,
+							render: (_, { project: p }) => (
+								<span className='inline-flex whitespace-nowrap'>
 									{!readOnly && p.mergedAs !== null && (
 										<ActionForm
 											action={unmergeProject}
@@ -462,42 +494,36 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 											<Button
 												type='submit'
 												variant='ghost'
-												size='icon-sm'
+												size='sm'
 												className={REVEAL}
-												aria-label={t('unmerge', { name: label })}
+												aria-label={t('unmerge', { name: rowLabel(p) })}
 											>
-												<IconArrowsSplit2 />
+												<IconArrowsSplit2 size={16} />
 											</Button>
 										</ActionForm>
 									)}
 									<Button
 										variant='ghost'
-										size='icon-sm'
+										size='sm'
 										className={REVEAL}
-										aria-label={t(hiddenView ? 'unhide' : 'hide', { name: label })}
+										aria-label={t(hiddenView ? 'unhide' : 'hide', { name: rowLabel(p) })}
 										onClick={() =>
 											persist({
 												hidden: hiddenView
-													? hidden.filter(k => !keys.includes(k))
-													: [...hidden, ...keys],
+													? hidden.filter(k => !keysOf(p).includes(k))
+													: [...hidden, ...keysOf(p)],
 											})
 										}
 									>
-										{hiddenView ? <IconEye /> : <IconEyeOff />}
+										{hiddenView ? <IconEye size={16} /> : <IconEyeOff size={16} />}
 									</Button>
-								</TableCell>
-							</TableRow>
-						)
-					})}
-					{shown.length === 0 && (
-						<TableRow>
-							<TableCell colSpan={picking ? 8 : 7} className='text-muted-foreground'>
-								{q ? t('noMatchQuery', { query: query.trim() }) : t('noMatch')}
-							</TableCell>
-						</TableRow>
-					)}
-				</TableBody>
-			</Table>
+								</span>
+							),
+							sortable: false,
+						},
+					]}
+				/>
+			</div>
 		</Section>
 	)
 }
@@ -506,32 +532,6 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
  *  without spending colours that already mean groups. */
 function stripShade(rank: number): number {
 	return [0.9, 0.68, 0.5, 0.36, 0.26][rank] ?? 0.14
-}
-
-function TextToggle({
-	pressed,
-	onClick,
-	children,
-}: {
-	pressed: boolean
-	onClick: () => void
-	children: React.ReactNode
-}) {
-	return (
-		<button
-			type='button'
-			aria-pressed={pressed}
-			onClick={onClick}
-			className={cn(
-				'inline-flex items-center rounded-sm text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring',
-				pressed
-					? 'text-foreground underline underline-offset-4'
-					: 'text-muted-foreground hover:text-foreground',
-			)}
-		>
-			{children}
-		</button>
-	)
 }
 
 /** Daily cost as bars, scaled to the row's own peak: the shape is the point,

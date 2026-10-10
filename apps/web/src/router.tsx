@@ -2,12 +2,11 @@ import { useEffect } from 'react'
 import { createRouter, Link, useRouterState } from '@tanstack/react-router'
 import { TriangleAlertIcon } from 'lucide-react'
 import { useTranslations } from 'use-intl'
+import { Button, buttonClassName } from '@/components/arc/button/button'
+import { EmptyState } from '@/components/arc/empty-state/empty-state'
+import { Skeleton } from '@/components/arc/skeleton/skeleton'
 import { SiteFooter } from '@/components/site-footer'
 import { SiteHeader } from '@/components/site-header'
-import { Button, buttonVariants } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
-import { Skeleton } from '@/components/ui/skeleton'
 import { routeTree } from './routeTree.gen'
 
 export function getRouter() {
@@ -52,20 +51,12 @@ function RouteError({ error, reset }: { error: Error; reset: () => void }) {
 	}, [transient, reset])
 
 	return (
-		<Card className='py-8'>
-			<Empty>
-				<EmptyHeader>
-					<EmptyMedia variant='icon'>
-						<TriangleAlertIcon />
-					</EmptyMedia>
-					<EmptyTitle>{t('title')}</EmptyTitle>
-					<EmptyDescription>{t('description')}</EmptyDescription>
-				</EmptyHeader>
-				<EmptyContent>
-					<Button onClick={reset}>{t('retry')}</Button>
-				</EmptyContent>
-			</Empty>
-		</Card>
+		<EmptyState
+			icon={<TriangleAlertIcon />}
+			title={t('title')}
+			description={t('description')}
+			action={<Button onClick={reset}>{t('retry')}</Button>}
+		/>
 	)
 }
 
@@ -105,10 +96,10 @@ function RouteNotFound() {
 						<h1 className='mt-7 text-2xl font-semibold tracking-[-0.035em]'>{t('title')}</h1>
 						<p className='mt-2.5 text-sm leading-relaxed text-muted-foreground'>{t('lead')}</p>
 						<div className='mt-6 flex flex-wrap gap-3'>
-							<Link to='/dashboard' className={buttonVariants()}>
+							<Link to='/dashboard' className={buttonClassName()}>
 								{t('goToDashboard')}
 							</Link>
-							<Link to='/' className={buttonVariants({ variant: 'ghost' })}>
+							<Link to='/' className={buttonClassName({ variant: 'ghost' })}>
 								{t('home')}
 							</Link>
 						</div>
@@ -120,20 +111,9 @@ function RouteNotFound() {
 	)
 }
 
-/** Shown once a loader outruns defaultPendingMs. Mirrors the dashboard shape
- *  (status line → KPI pair → table card) so the swap doesn't jump. */
+/** Shown once a loader outruns defaultPendingMs. */
 function RoutePending() {
 	const t = useTranslations('common')
 
-	return (
-		<div className='flex flex-1 flex-col gap-6' aria-busy='true' aria-label={t('loading')}>
-			<Skeleton className='h-5 w-64' />
-			<div className='grid gap-4 sm:grid-cols-2'>
-				<Skeleton className='h-28 rounded-xl' />
-				<Skeleton className='h-28 rounded-xl' />
-			</div>
-			<Skeleton className='h-64 rounded-xl' />
-			<Skeleton className='h-80 rounded-xl' />
-		</div>
-	)
+	return <Skeleton label={t('loading')} lines={6} />
 }

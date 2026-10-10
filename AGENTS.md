@@ -88,9 +88,10 @@ Break one of these and the product silently reports wrong numbers or leaks acces
 - Data loading: `createServerFn` in the route file (dashboard-style) or
   `lib/actions.ts` for mutations; both go through `requireUser()`/`requireAdmin()`.
   Query bodies live in `lib/data.ts`.
-- `apps/web/src/components/ui/**` is vendored shadcn, kept re-installable — don't
-  hand-edit it, and don't chase lint rules there (already relaxed in
-  `oxlint.config.ts`).
+- Every UI control lives under `apps/web/src/components/arc/**`: Arc's designs (uiarc.dev)
+  rebuilt on Base UI and Tailwind, with tokens in `arc/foundation.css` and shared keyframes in
+  `styles/globals.css`. They are our code now, linted and formatted like the rest. Don't
+  `shadcn add @uiarc/...`: the registry ships Radix and CSS modules. Port a new one by hand.
 - Style is enforced, not debated: tabs, single quotes, no semicolons, 120 cols,
   layered import groups. Run `bun run format` and `bun run lint`.
 - Schema change: edit `apps/web/src/db/schema.ts` → `bun run db:generate` → commit

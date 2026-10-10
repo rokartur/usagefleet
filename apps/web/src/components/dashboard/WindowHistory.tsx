@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useLocale, useTranslations } from 'use-intl'
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { EmptyState } from '@/components/arc/empty-state/empty-state'
+import SegmentedControl from '@/components/arc/segmented-control/segmented-control'
+import { SortableDataTable } from '@/components/arc/sortable-data-table/sortable-data-table'
+import { Tooltip } from '@/components/arc/tooltip/tooltip'
 import { overrun, Section, UsageBar } from '@/components/usage-ui'
 import type { PastWindow, WindowHistoryDTO } from '@/lib/data'
 import { formatPct, formatTokens } from '@/lib/format'
@@ -12,7 +13,7 @@ const KINDS = ['sessions', 'weeks'] as const
 type Kind = (typeof KINDS)[number]
 
 /** Chart columns on offer; the largest must not exceed `PAST_WINDOWS` in lib/data.ts. */
-const WINDOW_COUNTS = [4, 8, 16] as const
+const WINDOW_COUNTS = ['4', '8', '16'] as const
 type WindowCount = (typeof WINDOW_COUNTS)[number]
 
 /** "Feb 12, 10:00–15:00" for a session, "Feb 5 – Feb 12" for a week.
@@ -77,8 +78,8 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 	const t = useTranslations('dash.overview')
 	const windowLabel = useWindowLabel()
 	const [kind, setKind] = useState<Kind>('sessions')
-	const [count, setCount] = useState<WindowCount>(8)
-	const windows = history[kind].slice(0, count)
+	const [count, setCount] = useState<WindowCount>('8')
+	const windows = history[kind].slice(0, Number(count))
 	const columns = columnsOf(windows)
 	const kindLabel = { sessions: t('windowsSessions'), weeks: t('windowsWeeks') }
 
@@ -87,127 +88,107 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 			title={account ? t('pastWindowsFor', { account }) : t('pastWindows')}
 			actions={
 				<div className='flex flex-wrap items-center gap-3'>
-					<Tooltip>
-						<TooltipTrigger className='text-xs text-muted-foreground underline decoration-dotted underline-offset-4'>
+					<Tooltip content={t('betaHint')}>
+						<button
+							type='button'
+							className='text-xs text-muted-foreground underline decoration-dotted underline-offset-4'
+						>
 							{t('beta')}
-						</TooltipTrigger>
-						<TooltipContent>{t('betaHint')}</TooltipContent>
+						</button>
 					</Tooltip>
-					<fieldset className='inline-flex gap-0.5 rounded-lg border p-0.5'>
-						<legend className='sr-only'>{t('window')}</legend>
-						{KINDS.map(k => (
-							<button
-								key={k}
-								type='button'
-								aria-pressed={kind === k}
-								onClick={() => setKind(k)}
-								className='rounded-md px-2.5 py-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:bg-muted aria-pressed:text-foreground'
-							>
-								{kindLabel[k]}
-							</button>
-						))}
-					</fieldset>
-					<fieldset className='inline-flex gap-0.5 rounded-lg border p-0.5'>
-						<legend className='sr-only'>{t('windowCount')}</legend>
-						{WINDOW_COUNTS.map(n => (
-							<button
-								key={n}
-								type='button'
-								aria-pressed={count === n}
-								onClick={() => setCount(n)}
-								className='rounded-md px-2.5 py-1 text-xs text-muted-foreground tabular-nums outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:bg-muted aria-pressed:text-foreground'
-							>
-								{n}
-							</button>
-						))}
-					</fieldset>
+					<SegmentedControl
+						label={t('window')}
+						value={kind}
+						onValueChange={setKind}
+						options={KINDS.map(k => ({ label: kindLabel[k], value: k }))}
+					/>
+					<SegmentedControl
+						label={t('windowCount')}
+						value={count}
+						onValueChange={setCount}
+						options={WINDOW_COUNTS.map(n => ({ label: n, value: n }))}
+					/>
 				</div>
 			}
 		>
 			{windows.length === 0 ? (
-				<Empty className='border'>
-					<EmptyHeader>
-						<EmptyTitle>{t('historyEmptyTitle')}</EmptyTitle>
-						<EmptyDescription>
-							{t('historyEmptyDescription', {
-								window: kind === 'sessions' ? t('fiveHour') : t('weekly'),
-							})}
-						</EmptyDescription>
-					</EmptyHeader>
-				</Empty>
+				<EmptyState
+					title={t('historyEmptyTitle')}
+					description={t('historyEmptyDescription', {
+						window: kind === 'sessions' ? t('fiveHour') : t('weekly'),
+					})}
+				/>
 			) : (
 				<>
-					<WindowChart windows={windows} kind={kind} columns={count} />
+					<WindowChart windows={windows} kind={kind} columns={Number(count)} />
 					<details className='mt-4 text-sm'>
 						<summary className='w-max cursor-pointer text-muted-foreground hover:text-foreground'>
 							{t('table')}
 						</summary>
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>{t('windowUtc')}</TableHead>
-									<TableHead>{t('accountLimit')}</TableHead>
-									<TableHead className='text-right'>{t('tokens')}</TableHead>
-									{columns.map(c => (
-										<TableHead key={c.key} className='text-right'>
-											<span className='inline-flex items-center gap-2'>
+						<SortableDataTable
+							caption={t('table')}
+							rows={windows.map(w => ({
+								accountPct: w.accountPct,
+								start: w.start,
+								tokens: w.tokens,
+								window: w,
+							}))}
+							rowKey='start'
+							columns={[
+								{
+									key: 'start',
+									label: t('windowUtc'),
+									render: (_, row) => (
+										<span className='font-medium whitespace-nowrap'>
+											{windowLabel(row.window, kind)}
+										</span>
+									),
+									sortable: true,
+								},
+								{
+									key: 'accountPct',
+									label: t('accountLimit'),
+									render: (_, row) =>
+										row.accountPct === null ? (
+											<span className='text-muted-foreground'>{t('noLimitSample')}</span>
+										) : (
+											<span className='flex min-w-36 items-center gap-3'>
+												<UsageBar pct={row.accountPct} className='w-24 shrink-0' />
 												<span
-													className='size-2.5 shrink-0 rounded-full'
-													style={{ backgroundColor: c.color }}
-													aria-hidden
-												/>
-												{c.name}
-											</span>
-										</TableHead>
-									))}
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{windows.map(w => (
-									<TableRow key={w.start}>
-										<TableCell className='font-medium whitespace-nowrap'>
-											{windowLabel(w, kind)}
-										</TableCell>
-										<TableCell>
-											{w.accountPct === null ? (
-												<span className='text-muted-foreground'>{t('noLimitSample')}</span>
-											) : (
-												<span className='flex min-w-36 items-center gap-3'>
-													<UsageBar pct={w.accountPct} className='w-24 shrink-0' />
-													<span
-														className={cn(
-															'font-medium tabular-nums',
-															overrun(w.accountPct),
-														)}
-													>
-														{formatPct(w.accountPct)}
-													</span>
+													className={cn('font-medium tabular-nums', overrun(row.accountPct))}
+												>
+													{formatPct(row.accountPct)}
 												</span>
-											)}
-										</TableCell>
-										<TableCell className='text-right tabular-nums'>
-											{formatTokens(w.tokens)}
-										</TableCell>
-										{columns.map(c => {
-											const g = w.groups.find(x => columnKey(x.groupId) === c.key)
-											return (
-												<TableCell key={c.key} className='text-right tabular-nums'>
-													{g && g.accountPct !== null ? (
-														<span className={cn('font-medium', overrun(g.accountPct))}>
-															{formatPct(g.accountPct)}
-														</span>
-													) : (
-														<span className='text-muted-foreground'>
-															{g ? formatTokens(g.tokens) : '—'}
-														</span>
-													)}
-												</TableCell>
-											)
-										})}
-									</TableRow>
-								))}
-							</TableBody>
-						</Table>
+											</span>
+										),
+									sortable: true,
+								},
+								{
+									key: 'tokens',
+									label: t('tokens'),
+									numeric: true,
+									render: (_, row) => formatTokens(row.tokens),
+									sortable: true,
+								},
+								...columns.map(c => ({
+									key: c.key,
+									label: c.name,
+									numeric: true,
+									render: (_: unknown, row: { window: PastWindow }) => {
+										const g = row.window.groups.find(x => columnKey(x.groupId) === c.key)
+										return g && g.accountPct !== null ? (
+											<span className={cn('font-medium', overrun(g.accountPct))}>
+												{formatPct(g.accountPct)}
+											</span>
+										) : (
+											<span className='text-muted-foreground'>
+												{g ? formatTokens(g.tokens) : '—'}
+											</span>
+										)
+									},
+								})),
+							]}
+						/>
 					</details>
 				</>
 			)}

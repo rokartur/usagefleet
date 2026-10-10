@@ -1,15 +1,11 @@
 import { useState } from 'react'
-import { IconPlus, IconX } from '@tabler/icons-react'
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { useTranslations } from 'use-intl'
-import { Button } from '@/components/ui/button'
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import type { ChartConfig } from '@/components/ui/chart'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { EmptyState } from '@/components/arc/empty-state/empty-state'
+import { Input } from '@/components/arc/input/input'
+import { LineChart } from '@/components/arc/line-chart/line-chart'
+import { MultiSelect } from '@/components/arc/multi-select/multi-select'
+import SegmentedControl from '@/components/arc/segmented-control/segmented-control'
+import { Select } from '@/components/arc/select/select'
 import { Section } from '@/components/usage-ui'
 import type { HistoryDTO, HistoryRow } from '@/lib/data'
 import { formatTokens, formatUsd } from '@/lib/format'
@@ -60,7 +56,7 @@ const METRIC_KEY = {
 
 /** Series colors for dimensions that carry no color of their own (model /
  *  device / source); groups use their configured color. */
-const PALETTE = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)']
+const PALETTE = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)']
 const SOURCE_LABEL: Record<string, string> = {
 	cli: 'Claude Code',
 	desktop: 'Claude Desktop',
@@ -158,7 +154,6 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 		model: [],
 		source: [],
 	})
-	const [picking, setPicking] = useState(false)
 
 	const groupName = new Map(history.groups.map(g => [g.id, g.name]))
 	// Revoked machines still own their history, and a name gets reused when one is
@@ -200,20 +195,9 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 	// the palette.
 	const pickable = DIMENSIONS.filter(d => dimValues[d].length > 1)
 
-	const toggleFilter = (d: Dim, key: string) =>
-		setFilters(f => {
-			const next = f[d].includes(key) ? f[d].filter(k => k !== key) : [...f[d], key]
-			// Picking every value is the same as picking none.
-			return { ...f, [d]: next.length === dimValues[d].length ? [] : next }
-		})
-
-	/** What an active filter's chip reads: the values themselves while they still
-	 *  fit, a count once they don't. */
-	const chipLabel = (d: Dim) =>
-		filters[d].length > 2
-			? t('filterChip', { count: filters[d].length, total: dimValues[d].length })
-			: filters[d].map(k => label(d, k)).join(', ')
-
+	const setFilter = (d: Dim, next: string[]) =>
+		// Picking every value is the same as picking none.
+		setFilters(f => ({ ...f, [d]: next.length === dimValues[d].length ? [] : next }))
 	const view = (() => {
 		const [lo, hi] = periodBounds(period, from, to)
 		const rows = history.rows.filter(
@@ -258,19 +242,20 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 				// keeps its color when you change the metric or period.
 				color:
 					dim === 'group'
-						? (history.groups.find(g => g.id === key)?.color ?? 'var(--chart-1)')
+						? (history.groups.find(g => g.id === key)?.color ?? 'var(--series-1)')
 						: PALETTE[Math.max(0, dimValues[dim].indexOf(key)) % PALETTE.length],
 				...t,
 			}))
 
-		// One row per column, series values flattened onto it — recharts' shape.
 		const data = bucketKeys(start, end, monthly).map(key => {
 			const p = parts.get(key) ?? new Map<string, number>()
-			const row: Record<string, string | number> = { bucket: bucketLabel(key) }
-			for (const s of series) {
-				row[s.key] = p.get(s.key) ?? 0
+			const label = bucketLabel(key)
+			return {
+				axisLabel: label,
+				key,
+				label,
+				values: Object.fromEntries(series.map(s => [s.key, p.get(s.key) ?? 0])),
 			}
-			return row
 		})
 
 		const sum = series.reduce(
@@ -282,202 +267,90 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 			}),
 			{ billable: 0, cost: 0, metric: 0, total: 0 },
 		)
-		const config: ChartConfig = Object.fromEntries(series.map(s => [s.key, { color: s.color, label: s.label }]))
-		return { config, data, monthly, series, sum }
+		return { data, series, sum }
 	})()
 
 	return (
 		<Section
 			title={t('title')}
 			actions={
-				<div className='flex flex-wrap items-center gap-2'>
-					<fieldset className='inline-flex flex-wrap gap-0.5 rounded-lg border p-0.5'>
-						<legend className='sr-only'>{t('period')}</legend>
-						{PERIODS.map(p => (
-							<button
-								key={p}
-								type='button'
-								aria-pressed={period === p}
-								aria-label={t(PERIOD_KEY[p])}
-								onClick={() => setPeriod(p)}
-								className='rounded-md px-2.5 py-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:bg-muted aria-pressed:text-foreground'
-							>
-								{/* The rolling windows read fine as "30d"; the rest keep their words. */}
-								{p === '7d' || p === '30d' || p === '90d' ? p : t(PERIOD_KEY[p])}
-							</button>
-						))}
-					</fieldset>
+				<div className='flex flex-wrap items-center gap-2 [&_label]:sr-only'>
+					<SegmentedControl
+						label={t('period')}
+						value={period}
+						onValueChange={setPeriod}
+						options={PERIODS.map(p => ({
+							ariaLabel: t(PERIOD_KEY[p]),
+							// The rolling windows read fine as "30d"; the rest keep their words.
+							label: p === '7d' || p === '30d' || p === '90d' ? p : t(PERIOD_KEY[p]),
+							value: p,
+						}))}
+					/>
 					<Select
+						label={t('metric')}
 						value={metric}
-						onValueChange={v => {
-							if (v) {
-								setMetric(v)
-							}
-						}}
-						items={METRICS.map(m => ({ label: t(METRIC_KEY[m]), value: m }))}
-					>
-						<SelectTrigger size='sm' aria-label={t('metric')}>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{METRICS.map(m => (
-								<SelectItem key={m} value={m}>
-									{t(METRIC_KEY[m])}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
+						onValueChange={setMetric}
+						options={METRICS.map(m => ({ label: t(METRIC_KEY[m]), value: m }))}
+					/>
 					<Select
+						label={t('splitBy')}
 						value={dim}
-						onValueChange={v => {
-							if (v) {
-								setDim(v)
-							}
-						}}
-						items={DIMENSIONS.map(d => ({
+						onValueChange={setDim}
+						options={DIMENSIONS.map(d => ({
 							label: t('splitByDim', { dim: t(DIM_KEY[d]).toLowerCase() }),
 							value: d,
 						}))}
-					>
-						<SelectTrigger size='sm' aria-label={t('splitBy')}>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{DIMENSIONS.map(d => (
-								<SelectItem key={d} value={d}>
-									{t('splitByDim', { dim: t(DIM_KEY[d]).toLowerCase() })}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					{pickable.map(
-						d =>
-							filters[d].length > 0 && (
-								<Button
-									key={d}
-									variant='outline'
-									size='sm'
-									onClick={() => setFilters(f => ({ ...f, [d]: [] }))}
-								>
-									{t(DIM_KEY[d])}: {chipLabel(d)}
-									<IconX className='text-muted-foreground' aria-label={t('clear')} />
-								</Button>
-							),
-					)}
-					{pickable.length > 0 && (
-						<Popover open={picking} onOpenChange={setPicking}>
-							<PopoverTrigger
-								render={
-									<Button variant='ghost' size='sm' className='text-muted-foreground'>
-										<IconPlus />
-										{t('filter')}
-									</Button>
-								}
-							/>
-							<PopoverContent align='end' className='w-64 p-0'>
-								<Command>
-									<CommandInput placeholder={t('filterPlaceholder')} />
-									<CommandList>
-										<CommandEmpty>{t('nothingMatches')}</CommandEmpty>
-										{pickable.map(d => (
-											<CommandGroup key={d} heading={t(DIM_KEY[d])}>
-												{dimValues[d].map(key => (
-													<CommandItem
-														key={key}
-														// Prefixed so the two namespaces can't collide
-														// and so "model opus" narrows the list.
-														value={`${t(DIM_KEY[d])} ${label(d, key)}`}
-														data-checked={filters[d].includes(key)}
-														onSelect={() => toggleFilter(d, key)}
-													>
-														{label(d, key)}
-													</CommandItem>
-												))}
-											</CommandGroup>
-										))}
-									</CommandList>
-								</Command>
-							</PopoverContent>
-						</Popover>
-					)}
+					/>
 				</div>
 			}
 		>
 			<div className='flex flex-col gap-4'>
-				{period === 'custom' && (
-					<div className='flex flex-wrap items-center gap-2'>
-						<Input
-							type='date'
-							value={from}
-							onChange={e => setFrom(e.target.value)}
-							aria-label={t('from')}
-							className='w-40'
-						/>
-						<span className='text-muted-foreground'>–</span>
-						<Input
-							type='date'
-							value={to}
-							onChange={e => setTo(e.target.value)}
-							aria-label={t('to')}
-							className='w-40'
-						/>
+				{(pickable.length > 0 || period === 'custom') && (
+					<div className='flex flex-wrap items-end gap-3'>
+						{pickable.map(d => (
+							<MultiSelect
+								key={d}
+								className='w-52'
+								label={t(DIM_KEY[d])}
+								placeholder={t('allValues')}
+								value={filters[d]}
+								onValueChange={next => setFilter(d, next)}
+								options={dimValues[d].map(key => ({ label: label(d, key), value: key }))}
+							/>
+						))}
+						{period === 'custom' && (
+							<>
+								<Input
+									label={t('from')}
+									type='date'
+									value={from}
+									onChange={e => setFrom(e.target.value)}
+									className='w-40'
+								/>
+								<Input
+									label={t('to')}
+									type='date'
+									value={to}
+									onChange={e => setTo(e.target.value)}
+									className='w-40'
+								/>
+							</>
+						)}
 					</div>
 				)}
 
 				{view ? (
 					<>
-						<ChartContainer config={view.config} className='aspect-auto h-56 w-full'>
-							<BarChart data={view.data} margin={{ left: 4, right: 4, top: 8 }}>
-								<CartesianGrid vertical={false} />
-								<XAxis
-									dataKey='bucket'
-									tickLine={false}
-									axisLine={false}
-									tickMargin={8}
-									minTickGap={24}
-									interval='preserveStartEnd'
-								/>
-								<YAxis
-									tickLine={false}
-									axisLine={false}
-									width={44}
-									tickFormatter={(v: number) => formatMetric(v, metric)}
-								/>
-								<ChartTooltip
-									cursor={{ fill: 'var(--muted)', opacity: 0.5 }}
-									content={
-										<ChartTooltipContent
-											formatter={(value, name) => (
-												<>
-													<span
-														className='size-2.5 shrink-0 rounded-[2px]'
-														style={{
-															backgroundColor: view.config[String(name)]?.color,
-														}}
-														aria-hidden
-													/>
-													<span className='flex-1 text-muted-foreground'>
-														{view.config[String(name)]?.label ?? name}
-													</span>
-													<span className='font-mono font-medium tabular-nums'>
-														{formatMetric(Number(value), metric)}
-													</span>
-												</>
-											)}
-										/>
-									}
-								/>
-								{view.series.map((s, i) => (
-									<Bar
-										key={s.key}
-										dataKey={s.key}
-										stackId='usage'
-										fill={s.color}
-										radius={i === view.series.length - 1 ? [2, 2, 0, 0] : undefined}
-									/>
-								))}
-							</BarChart>
-						</ChartContainer>
+						<LineChart
+							label={t('title')}
+							categoryLabel={t('period')}
+							data={view.data}
+							series={view.series.map(s => ({ color: s.color, key: s.key, label: s.label }))}
+							formatValue={v => formatMetric(v, metric)}
+							formatTick={v => formatMetric(v, metric)}
+							// A smooth curve overshoots below zero between a busy day and an idle one.
+							curve='linear'
+						/>
 
 						{/* Legend with the period's sums. Cost trails each figure unless the
                 chart already plots cost. */}
@@ -514,12 +387,7 @@ export function UsageExplorer({ history }: { history: HistoryDTO }) {
 						</ul>
 					</>
 				) : (
-					<Empty className='border'>
-						<EmptyHeader>
-							<EmptyTitle>{t('emptyTitle')}</EmptyTitle>
-							<EmptyDescription>{t('emptyDescription')}</EmptyDescription>
-						</EmptyHeader>
-					</Empty>
+					<EmptyState title={t('emptyTitle')} description={t('emptyDescription')} />
 				)}
 			</div>
 		</Section>

@@ -6,9 +6,9 @@ import { ArrowRight, Check, Copy } from 'lucide-react'
 import type { Variants } from 'motion/react'
 import { motion, MotionConfig, useScroll, useTransform } from 'motion/react'
 import { createTranslator, useLocale, useTranslations } from 'use-intl'
+import { buttonClassName } from '@/components/arc/button/button'
 import { OrbitMark } from '@/components/orbit-mark'
 import { SiteFooter } from '@/components/site-footer'
-import { buttonVariants } from '@/components/ui/button'
 import { UsageFleetMark } from '@/components/usage-fleet-mark'
 import { detectLocale, LOCALE_CURRENCY } from '@/lib/i18n'
 import type { Locale } from '@/lib/i18n'
@@ -335,7 +335,7 @@ function Landing() {
 								{t('nav.faq')}
 							</a>
 						</nav>
-						<Link to={appHref} className={buttonVariants()}>
+						<Link to={appHref} className={buttonClassName()}>
 							{signedIn ? t('nav.app') : t('nav.signIn')}
 						</Link>
 					</div>
@@ -545,8 +545,8 @@ function Landing() {
 										<Link
 											to={signedIn ? '/account' : '/login'}
 											search={tier.id ? { plan: tier.id } : {}}
-											className={buttonVariants({
-												variant: tier.highlight ? 'default' : 'outline',
+											className={buttonClassName({
+												variant: tier.highlight ? 'primary' : 'secondary',
 												className: 'mt-auto w-full justify-center',
 											})}
 										>
@@ -710,7 +710,7 @@ function PrimaryCta({ to, label }: { to: '/dashboard' | '/login'; label: string 
 			whileTap={{ scale: 0.98 }}
 			// px-4 fits the label alone; the hover state adds an arrow and a gap on
 			// top of it, and overflow-hidden would shave it off.
-			className={buttonVariants({ size: 'lg', className: 'relative overflow-hidden px-6' })}
+			className={buttonClassName({ size: 'lg', className: 'relative overflow-hidden px-6' })}
 		>
 			<motion.span
 				animate={{ opacity: hover ? 0 : 1, x: hover ? -14 : 0, filter: hover ? 'blur(6px)' : 'blur(0px)' }}
@@ -949,7 +949,7 @@ function DashboardMockup() {
 	return (
 		<div className='overflow-hidden rounded-xl border border-border'>
 			<div className='flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-5 py-3 text-xs text-muted-foreground'>
-				<span className='size-1.5 rounded-full bg-emerald-500' aria-hidden />
+				<span className='size-1.5 rounded-full bg-success' aria-hidden />
 				<span className='text-foreground'>{t('live')}</span>
 				{t('status')}
 				<span className='ml-auto'>{t('account')}</span>

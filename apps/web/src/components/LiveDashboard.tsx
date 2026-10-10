@@ -2,14 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { CheckIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'use-intl'
+import { Badge } from '@/components/arc/badge/badge'
+import { buttonClassName } from '@/components/arc/button/button'
+import SegmentedControl from '@/components/arc/segmented-control/segmented-control'
+import type { UsageMeterSegment } from '@/components/arc/usage-meter/usage-meter'
+import { UsageMeter } from '@/components/arc/usage-meter/usage-meter'
 import { InstallCommand } from '@/components/InstallCommand'
 import { RelativeTime } from '@/components/RelativeTime'
 import { ResetCountdown } from '@/components/ResetCountdown'
-import { Button } from '@/components/ui/button'
 import { Num, overrun, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
 import { useMounted } from '@/hooks/use-mounted'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO } from '@/lib/data'
-import { formatPct, formatPctNumber, formatRelative, formatTokens, formatUsd } from '@/lib/format'
+import { formatPct, formatPctNumber, formatRelative, formatTokens, formatUsd, roundTenth } from '@/lib/format'
 import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
 import type { ModelUsage } from '@/lib/usage'
 import { billableTokens, LIMITS_STALE_MS, sameReset } from '@/lib/usage'
@@ -54,9 +58,13 @@ function StatusLine({ dash, now, pollDown }: { dash: DashboardDTO; now: number; 
 	const source = dash.source === 'sub' ? t('sourceSub') : dash.source === 'api' ? t('sourceApi') : t('sourceNone')
 	return (
 		<p className='flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground'>
-			<span className={cn('size-1.5 rounded-full', stale ? 'bg-amber-500' : 'bg-emerald-500')} aria-hidden />
-			<span className={stale ? 'text-amber-500' : 'text-foreground'}>{label}</span>· {source}
-			{now && dash.reportedAt ? t('updated', { age: formatRelative(dash.reportedAt, locale) }) : ''}
+			<Badge tone={stale ? 'warning' : 'success'} size='sm'>
+				{label}
+			</Badge>
+			<span>
+				{source}
+				{now && dash.reportedAt ? t('updated', { age: formatRelative(dash.reportedAt, locale) }) : ''}
+			</span>
 		</p>
 	)
 }
@@ -92,7 +100,7 @@ function Step({
 				)}
 				aria-hidden
 			>
-				{state === 'done' ? <CheckIcon className='size-4 text-emerald-500' /> : n}
+				{state === 'done' ? <CheckIcon className='size-4 text-success' /> : n}
 			</span>
 			<div className='flex min-w-0 flex-1 flex-col gap-3'>
 				<p className={cn('text-sm', state === 'waiting' && 'text-muted-foreground')}>{title}</p>
@@ -125,9 +133,9 @@ function SetupRail({ setup }: { setup: SetupState | null }) {
 				>
 					{!device && (
 						<div className='flex flex-col gap-2'>
-							<Button render={<Link to='/devices' />} className='w-fit'>
+							<Link to='/devices' className={buttonClassName({ className: 'w-fit' })}>
 								{t('addDevice')}
-							</Button>
+							</Link>
 							<p className='text-xs text-muted-foreground'>{t('setupDeviceHint')}</p>
 						</div>
 					)}
@@ -286,24 +294,32 @@ export function LiveDashboard({
 				<AccountSwitcher dashes={dashes} selected={accountKey(dash)} onSelect={onSelect} now={now} />
 			)}
 			<StatusLine dash={dash} now={now} pollDown={pollDown} />
-			<div className='flex flex-col divide-y border-y'>
-				<Meter
-					label={t('fiveHourSession')}
-					pct={dash.fiveHourPct}
-					resetsAt={dash.fiveHourResetsAt}
-					segments={dash.groups.map(g => ({ color: g.color, name: g.name, points: g.sessionAccountPct }))}
-				/>
-				<Meter
-					label={tUsage('weekly')}
-					pct={dash.sevenDayPct}
-					resetsAt={dash.sevenDayResetsAt}
-					segments={dash.groups.map(g => ({ color: g.color, name: g.name, points: g.weeklyAccountPct }))}
-				>
-					{dash.modelLimits.map(limit => (
-						<ModelLimitRow key={limit.model} limit={limit} weeklyResetsAt={dash.sevenDayResetsAt} />
-					))}
-				</Meter>
-			</div>
+			<Meter
+				label={t('fiveHourSession')}
+				pct={dash.fiveHourPct}
+				resetsAt={dash.fiveHourResetsAt}
+				segments={dash.groups.map(g => ({
+					color: g.color,
+					id: groupKey(g.groupId),
+					label: g.name,
+					value: g.sessionAccountPct,
+				}))}
+			/>
+			<Meter
+				label={tUsage('weekly')}
+				pct={dash.sevenDayPct}
+				resetsAt={dash.sevenDayResetsAt}
+				segments={dash.groups.map(g => ({
+					color: g.color,
+					id: groupKey(g.groupId),
+					label: g.name,
+					value: g.weeklyAccountPct,
+				}))}
+			>
+				{dash.modelLimits.map(limit => (
+					<ModelLimitRow key={limit.model} limit={limit} weeklyResetsAt={dash.sevenDayResetsAt} />
+				))}
+			</Meter>
 			<GroupList dash={dash} dashes={dashes} />
 			<Spend dash={dash} />
 		</div>
@@ -323,63 +339,32 @@ function AccountSwitcher({
 	const t = useTranslations('dash.overview')
 	const accountName = useAccountName()
 	return (
-		<fieldset className='flex min-w-0 flex-col rounded-lg border [&>button+button]:border-t'>
-			<legend className='sr-only'>{t('accountSwitcher')}</legend>
-			<legend className='sr-only'>{t('accountSwitcher')}</legend>
-			{dashes.map(d => {
-				const key = accountKey(d)
+		<SegmentedControl
+			label={t('accountSwitcher')}
+			value={selected}
+			onValueChange={onSelect}
+			options={dashes.map(d => {
 				const stale = now > 0 && d.reportedAt !== null && now - Date.parse(d.reportedAt) > LIMITS_STALE_MS
 				const moved = d.groups.filter(movedAway).length
-				return (
-					<button
-						key={key}
-						type='button'
-						aria-pressed={key === selected}
-						onClick={() => onSelect(key)}
-						className='flex flex-col gap-0.5 px-3 py-2 text-left outline-none first-of-type:rounded-t-lg last-of-type:rounded-b-lg hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:bg-muted'
-					>
-						<span className='flex min-w-0 items-center gap-2 text-sm'>
-							<span
-								className={cn(
-									'size-1.5 shrink-0 rounded-full',
-									stale ? 'bg-amber-500' : 'bg-emerald-500',
-								)}
-								aria-hidden
-							/>
-							<span className='truncate font-medium'>{accountName(d)}</span>
+				return {
+					accessory: (
+						<span className='ml-2 inline-flex items-center gap-2 text-xs font-normal text-muted-foreground tabular-nums'>
+							<span className={overrun(d.fiveHourPct)}>{formatPct(d.fiveHourPct)}</span>
+							{moved > 0 && <span>{t('movedBadge', { count: moved })}</span>}
+							{stale && <span className='size-1.5 rounded-full bg-warning' aria-hidden />}
 						</span>
-						<span className='flex gap-3 pl-3.5 text-xs text-muted-foreground tabular-nums'>
-							<span>
-								5h{' '}
-								<span className={cn('text-foreground', overrun(d.fiveHourPct))}>
-									{formatPct(d.fiveHourPct)}
-								</span>
-							</span>
-							<span>
-								{t('week')}{' '}
-								<span className={cn('text-foreground', overrun(d.sevenDayPct))}>
-									{formatPct(d.sevenDayPct)}
-								</span>
-							</span>
-							{moved > 0 && <span className='text-foreground'>{t('movedBadge', { count: moved })}</span>}
-						</span>
-					</button>
-				)
+					),
+					label: accountName(d),
+					value: accountKey(d),
+				}
 			})}
-		</fieldset>
+		/>
 	)
 }
 
-interface Segment {
-	name: string
-	color: string
-	/** Points of the account figure this group accounts for. */
-	points: number
-}
-
-/** One limit window: the account's own figure, and a bar cut into the groups'
- *  contributions. What they leave of that figure no collector's events explain:
- *  usage from outside the fleet (claude.ai, phone, a machine without the collector). */
+/** One limit window: Anthropic's figure, cut into the groups' contributions.
+ *  What they leave of it no collector's events explain: usage from outside the
+ *  fleet (claude.ai, phone, a machine without the collector). */
 function Meter({
 	label,
 	pct,
@@ -390,54 +375,46 @@ function Meter({
 	label: string
 	pct: number
 	resetsAt: string | null
-	segments: Segment[]
+	segments: UsageMeterSegment[]
 	children?: React.ReactNode
 }) {
 	const t = useTranslations('dash.usage')
-	const outside = pct - segments.reduce((sum, s) => sum + s.points, 0)
-	const showOutside = outside >= 1
-	const bars = showOutside
-		? [...segments, { color: 'var(--muted-foreground)', name: t('outside'), points: outside }]
-		: segments
+	const tMeter = useTranslations('dash.usage.meter')
+	const locale = useLocale()
+	const outside = pct - segments.reduce((sum, s) => sum + s.value, 0)
+	// The meter's headline is the segments' sum, which must stay Anthropic's
+	// number: any outside share that survives rounding to a tenth is drawn.
+	const bars =
+		roundTenth(outside) > 0
+			? [...segments, { color: 'var(--text-muted)', id: 'outside', label: t('outside'), value: outside }]
+			: segments
 	return (
-		<div className='py-4'>
-			<div className='flex flex-wrap items-baseline justify-between gap-x-3 text-sm'>
-				<span>{label}</span>
-				<span className='text-xs text-muted-foreground'>
-					<ResetCountdown resetsAt={resetsAt} />
-				</span>
-			</div>
-			<Num
-				value={pct}
-				format={formatPct}
-				className={cn('mt-2 mb-3 block font-heading text-3xl font-medium tabular-nums', overrun(pct))}
+		<section className='flex flex-col gap-3 rounded-(--radius-surface) border bg-surface p-6'>
+			<UsageMeter
+				label={label}
+				segments={bars}
+				limit={100}
+				unit='%'
+				locale={locale}
+				messages={{
+					almostFull: tMeter('almostFull'),
+					byCategory: label => tMeter('byCategory', { label }),
+					caption: () => tMeter('caption'),
+					free: tMeter('free'),
+					freeAmount: amount => tMeter('freeAmount', { amount }),
+					freeCaption: tMeter('freeCaption'),
+					over: tMeter('over'),
+					overAmount: amount => tMeter('overAmount', { amount }),
+					overCaption: tMeter('overCaption'),
+					segmentCaption: label => tMeter('segmentCaption', { label }),
+					usedOf: used => tMeter('usedOf', { used }),
+				}}
 			/>
-			<p className='sr-only'>
-				{[
-					t('barLabel', { pct: formatPctNumber(pct) }),
-					...bars.map(s => `${s.name} ${formatPctNumber(s.points)}`),
-				].join(', ')}
+			<p className='text-xs text-muted-foreground'>
+				<ResetCountdown resetsAt={resetsAt} />
 			</p>
-			<div aria-hidden className='flex h-2 overflow-hidden rounded-full bg-muted'>
-				{bars.map(s => (
-					<div
-						key={s.name}
-						title={`${s.name}: ${formatPctNumber(s.points)}`}
-						className='h-full not-first:border-l not-first:border-background'
-						style={{ backgroundColor: s.color, width: `${Math.min(100, s.points)}%` }}
-					/>
-				))}
-			</div>
-			{showOutside && (
-				<p aria-hidden className='mt-3 flex items-center gap-x-3 text-sm'>
-					<abbr title={t('outsideHint')} className='no-underline'>
-						{t('outside')}
-					</abbr>
-					<span className='font-medium tabular-nums'>{formatPct(outside)}</span>
-				</p>
-			)}
 			{children}
-		</div>
+		</section>
 	)
 }
 
@@ -471,13 +448,13 @@ function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[
 	}
 	const t = useTranslations('dash.overview')
 	return (
-		<section aria-labelledby='groups-heading'>
+		<section aria-labelledby='groups-heading' className='rounded-(--radius-surface) border bg-surface p-6'>
 			<h2 id='groups-heading' className='mb-2 text-sm font-medium'>
 				<abbr title={t('sliceHint')} className='no-underline'>
 					{t('groups')}
 				</abbr>
 			</h2>
-			<ul className='border-t'>
+			<ul>
 				{dash.groups.map(g => (
 					<GroupItem
 						key={groupKey(g.groupId)}
@@ -504,9 +481,9 @@ function GroupItem({
 	const moved = movedAway(g)
 	const groupCostUsd = g.models.reduce((sum, m) => sum + m.costUsd, 0)
 	return (
-		<li className='border-b'>
+		<li className='border-b last:border-b-0'>
 			<details className='group/row'>
-				<summary className='flex cursor-pointer list-none flex-col gap-1.5 py-2.5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden'>
+				<summary className='flex cursor-pointer list-none flex-col gap-1.5 py-3 [&::-webkit-details-marker]:hidden'>
 					<span className='flex min-w-0 items-center gap-2 text-sm'>
 						<GroupDot color={g.color} />
 						<span className='truncate font-medium'>{g.name}</span>
@@ -516,7 +493,7 @@ function GroupItem({
 							{t('devicesCount', { count: g.devices.length })}
 						</span>
 					</span>
-					<span
+					<div
 						className={cn(
 							'grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-4',
 							moved && 'opacity-60',
@@ -533,7 +510,7 @@ function GroupItem({
 								color={g.color}
 							/>
 						))}
-					</span>
+					</div>
 					{moved && (
 						<span className='text-xs text-muted-foreground'>
 							{movedTo
@@ -610,26 +587,30 @@ function ModelRow({ model: m, groupCostUsd }: { model: ModelUsage; groupCostUsd:
 
 function SliceBar({ label, pct, color }: { label: string; pct: number; color: string }) {
 	return (
-		<span className='flex items-center gap-2 text-xs'>
+		<div className='flex items-center gap-2 text-xs'>
 			<span className='min-w-7 shrink-0 text-muted-foreground'>{label}</span>
 			<UsageBar pct={pct} color={color} />
 			<span className={cn('w-14 shrink-0 text-right text-sm font-medium tabular-nums', overrun(pct))}>
 				{formatPct(pct)}
 			</span>
-		</span>
+		</div>
 	)
 }
 
 function Spend({ dash }: { dash: DashboardDTO }) {
 	const t = useTranslations('dash.overview')
 	return (
-		<div className='flex flex-wrap items-baseline gap-x-2 gap-y-1'>
-			<span className='text-xs text-muted-foreground'>{t('spendWeek')}</span>
-			<Num value={dash.spend.week.costUsd} format={formatUsd} className='text-lg font-medium tabular-nums' />
-			<span className='text-xs text-muted-foreground tabular-nums'>
+		<section className='rounded-(--radius-surface) border bg-surface p-6'>
+			<h2 className='text-sm text-muted-foreground'>{t('spendWeek')}</h2>
+			<Num
+				value={dash.spend.week.costUsd}
+				format={formatUsd}
+				className='mt-4 block font-heading text-4xl font-medium tracking-tight tabular-nums'
+			/>
+			<p className='mt-3 text-sm text-muted-foreground tabular-nums'>
 				{formatTokens(billableTokens(dash.spend.week.totals))} · {formatUsd(dash.spend.month.costUsd)}{' '}
 				{t('month')}
-			</span>
-		</div>
+			</p>
+		</section>
 	)
 }
