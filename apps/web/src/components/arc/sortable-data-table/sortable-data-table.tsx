@@ -302,7 +302,7 @@ export function SortableDataTable<T extends Record<string, unknown>>({
 										}
 										className={cn(
 											cell,
-											'h-9 border-b px-3 text-sm font-medium whitespace-nowrap text-(--text-muted) data-sorted:text-(--foreground)',
+											'h-11 border-b px-4 text-sm font-medium whitespace-nowrap text-(--text-muted) data-sorted:text-(--foreground)',
 											sortable && 'p-0',
 											`max-[620px]:block max-[620px]:h-auto max-[620px]:flex-none max-[620px]:border-0 max-[620px]:bg-transparent max-[620px]:p-0`,
 										)}
@@ -313,7 +313,7 @@ export function SortableDataTable<T extends Record<string, unknown>>({
 												onClick={() => sortBy(column)}
 												aria-label={`Sort by ${column.label}${active ? `, currently ${sort.direction === 'asc' ? 'ascending' : 'descending'}` : ''}`}
 												className={cn(
-													'group/sort flex h-9 w-full items-center px-3 [-webkit-tap-highlight-color:transparent]',
+													'group/sort flex h-11 w-full items-center px-4 [-webkit-tap-highlight-color:transparent]',
 													isNumeric ? 'justify-end' : 'justify-start',
 													`max-[620px]:h-8 max-[620px]:w-auto max-[620px]:rounded-(--radius-control) max-[620px]:px-2.5 max-[620px]:transition-colors max-[620px]:duration-(--duration-standard)`,
 													active && `max-[620px]:bg-(--surface-muted)`,
@@ -367,7 +367,7 @@ export function SortableDataTable<T extends Record<string, unknown>>({
 													data-numeric={isNumeric || undefined}
 													className={cn(
 														cell,
-														'h-10 border-b border-(--border-subtle) px-3 align-middle font-normal [overflow-wrap:anywhere] text-(--foreground) group-last/row:border-b-0 group-hover/row:[--cell-fill:color-mix(in_oklab,var(--foreground)_3%,var(--cell-base))]',
+														'h-13 border-b border-(--border-subtle) px-4 align-middle font-normal [overflow-wrap:anywhere] text-(--foreground) group-last/row:border-b-0 group-hover/row:[--cell-fill:color-mix(in_oklab,var(--foreground)_3%,var(--cell-base))]',
 														`max-[620px]:order-2 max-[620px]:block max-[620px]:h-auto max-[620px]:min-w-0 max-[620px]:border-0 max-[620px]:bg-transparent max-[620px]:p-0 max-[620px]:text-left max-[620px]:text-xs max-[620px]:text-(--text-secondary)`,
 														// The sorted value lifts to full contrast, echoing the tinted column on wider screens.
 														sorted && `max-[620px]:text-(--foreground)`,

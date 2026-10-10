@@ -22,8 +22,6 @@
 	--color-success: var(--success);
 	--color-primary: var(--accent);
 	--color-ring: var(--accent-strong);
-	/* Dense UI: every p-*, gap-*, h-* step is 0.2rem instead of 0.25rem. */
-	--spacing: 0.2rem;
 }
 
 :root {
