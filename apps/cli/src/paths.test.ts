@@ -1,7 +1,8 @@
-import { homedir } from 'node:os'
+import { mkdirSync, mkdtempSync, symlinkSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { claudeCredentialsPath, claudeSettingsPath, claudeStatePath } from './paths.js'
+import { claudeCredentialsPath, claudeSettingsPath, claudeStatePath, defaultPiSessionsDirs } from './paths.js'
 
 const realEnv = { ...process.env }
 afterEach(() => {
@@ -24,5 +25,23 @@ describe('claude config dir', () => {
 		expect(claudeSettingsPath()).toBe(join(homedir(), '.claude', 'settings.json'))
 		expect(claudeCredentialsPath()).toBe(join(homedir(), '.claude', '.credentials.json'))
 		expect(claudeStatePath()).toBe(join(homedir(), '.claude.json'))
+	})
+})
+
+// pi exports its agent dir resolved, so with ~/.pi -> .dotfiles/.pi a run from a pi shell
+// scanned every session twice and stored each offset under both paths.
+describe(defaultPiSessionsDirs, () => {
+	it('lists a sessions dir reached through a symlink once, under the first path', () => {
+		const root = mkdtempSync(join(tmpdir(), 'uf-pi-'))
+		const real = join(root, 'dotfiles', '.pi')
+		mkdirSync(join(real, 'agent', 'sessions'), { recursive: true })
+		symlinkSync(real, join(root, '.pi'))
+		process.env.PI_CODING_AGENT_SESSION_DIR = join(root, '.pi', 'agent', 'sessions')
+		process.env.PI_CODING_AGENT_DIR = join(real, 'agent')
+
+		expect(defaultPiSessionsDirs()).toStrictEqual([
+			join(homedir(), '.pi', 'agent', 'sessions'),
+			join(root, '.pi', 'agent', 'sessions'),
+		])
 	})
 })

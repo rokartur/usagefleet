@@ -33,6 +33,9 @@ Every `USAGEFLEET_INTERVAL` seconds (default 15) `runOnce()`:
    Claude Desktop's Electron userData sessions, and any Pi session dirs. Only
    files inside a `.../.claude/projects/...` subtree count as usage logs; the
    desktop root also holds `audit.jsonl`, a full duplicate of the same uuids.
+   `watch` re-reads only folders whose mtime moved since the last cycle (a new
+   log moves it, an append does not); a folder changed in the last 10 s is
+   always re-read, since a coarse mtime clock can hide a second change.
 2. `tailer.ts` reads each file from its stored byte offset (≤16 MB per file per
    cycle), `parser.ts` turns lines into `UsageRecord`s.
 3. `uploader.ts` posts them in batches of ≤1000 (the server's `BatchSchema` cap)
@@ -129,9 +132,19 @@ account has to be run by hand.
 
 `notifier.ts` compares each window's utilization against ascending thresholds
 (`USAGEFLEET_NOTIFY_THRESHOLDS`, default 80/95) and fires one desktop
-notification per threshold per window via `notify.ts` (osascript / notify-send /
+notification per threshold per window via `notify.ts` (UsageFleet.app / notify-send /
 PowerShell toast). The per-window marks live in the store, so a new window
-re-arms them.
+re-arms them. A reset time that moves by under a minute is the same window:
+oauth/usage jitters `resets_at` by milliseconds between requests.
+
+On macOS the npm package carries `dist/UsageFleet.app`, a small Swift app
+(`apps/cli/macos/`, built in `release.yml`) that posts through
+UserNotifications under its own name and opens the dashboard on click. The CLI
+copies it to `~/Library/Application Support/usagefleet/` (`uninstall` removes it) and runs it from that
+one path; macOS keys the notification permission to its bundle id
+(`dev.usagefleet.notifier`), so updates keep it. Ad-hoc signed: npm sets no
+quarantine flag, so Gatekeeper never assesses it. Without the app (dev runs)
+the CLI falls back to `osascript`.
 
 ## Prompt guard
 
@@ -165,7 +178,11 @@ One file: `~/.config/usagefleet/config.json` (`XDG_CONFIG_HOME` honoured,
 `USAGEFLEET_CONFIG` overrides the path) holding settings, tail offsets and
 notification marks. Every write goes through `atomic-write.ts` — tmp file →
 fsync → rename → fsync dir, with a per-pid tmp name so a manual `run` alongside
-the installed service can't publish a corrupt half-write.
+the installed service can't publish a corrupt half-write. The offsets make the
+file large (about 0.5 MB for 2,000 logs), so `updateStore` skips a save that
+changes nothing. That is why an idle minute writes nothing: notification marks
+keep a window's first `resetsAt` through the jitter, and the cached limits
+reading refreshes its `at` only every 10 minutes while the numbers hold.
 
 Every knob is a top-level file key (`interval`, `limitsInterval`, `batch`,
 `notifications`, `notifyThresholds`, `hook`, `update`, `updateInterval`, plus

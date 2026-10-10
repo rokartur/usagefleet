@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { writeFileAtomic } from './atomic-write.js'
@@ -116,7 +116,13 @@ export function readStore(path: string = storePath()): Store {
  */
 export function updateStore(path: string, mutate: (store: Store) => void): void {
 	const store = readStore(path)
+	const before = JSON.stringify(store)
 	mutate(store)
+	// The offsets make the store ~0.5 MB, so an unchanged one is not rewritten. A missing
+	// file always is: it pins the deviceId normalize() just generated and folds the legacy files.
+	if (existsSync(path) && JSON.stringify(store) === before) {
+		return
+	}
 	mkdirSync(dirname(path), { recursive: true })
 	// 0600: the file holds the device token.
 	writeFileAtomic(path, `${JSON.stringify(store, null, 2)}\n`, 0o600)

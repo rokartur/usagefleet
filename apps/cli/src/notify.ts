@@ -1,4 +1,11 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { cpSync, existsSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { ENDPOINT } from './config.js'
+import { notifierAppPath } from './service.js'
+
+const NOTIFIER_EXE = join('Contents', 'MacOS', 'usagefleet-notifier')
 
 export type Urgency = 'low' | 'normal' | 'critical'
 
@@ -31,6 +38,38 @@ function spawnQuiet(cmd: string, args: string[], onError?: (err: Error) => void)
 }
 
 function notifyMac(title: string, message: string): void {
+	// macos/build.sh puts the app next to this file in the npm release; dev runs have none.
+	const bundled = fileURLToPath(new URL('UsageFleet.app', import.meta.url))
+	if (!existsSync(bundled)) {
+		notifyOsascript(title, message)
+		return
+	}
+	const app = notifierAppPath()
+	installNotifierApp(bundled, app)
+	const child = spawn(join(app, NOTIFIER_EXE), [oneLine(title), oneLine(message), `${ENDPOINT}/dashboard`], {
+		// Own process group: launchd kills the collector's group when it restarts, and the
+		// first-run permission prompt keeps the app alive until the user answers it.
+		detached: true,
+		stdio: 'ignore',
+	})
+	child.on('error', () => notifyOsascript(title, message))
+	child.unref()
+}
+
+/** Copies the app to one fixed path, so macOS sees a single UsageFleet app whatever
+ *  Node install runs the CLI. Replaces it only when the build changed. */
+export function installNotifierApp(from: string, to: string): void {
+	const exe = join(to, NOTIFIER_EXE)
+	if (existsSync(exe) && readFileSync(exe).equals(readFileSync(join(from, NOTIFIER_EXE)))) {
+		return
+	}
+	const tmp = `${to}.${process.pid}.tmp`
+	cpSync(from, tmp, { recursive: true })
+	rmSync(to, { recursive: true, force: true })
+	renameSync(tmp, to)
+}
+
+function notifyOsascript(title: string, message: string): void {
 	// execFile (no shell) — the only interpolation surface is the AppleScript
 	// string, which osaEscape neutralizes.
 	const script = `display notification "${osaEscape(message)}" with title "${osaEscape(title)}"`
@@ -76,7 +115,7 @@ function notifyWindows(title: string, message: string): void {
 /**
  * Show a desktop notification. Best-effort and non-blocking: it never throws and
  * never blocks the caller. Supported platforms:
- *   - macOS: `osascript` -> Notification Center.
+ *   - macOS: the bundled UsageFleet.app, or `osascript` when it is missing.
  *   - Linux: `notify-send` (KDE Plasma + other freedesktop daemons), falling
  *     back to `kdialog --passivepopup` on KDE.
  *   - Windows: WinRT toast via `powershell.exe` -> Action Center.

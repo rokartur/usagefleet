@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -46,7 +47,25 @@ export function defaultPiSessionsDirs(): string[] {
 	if (agent) {
 		dirs.push(join(agent, 'sessions'))
 	}
-	return [...new Set(dirs)]
+	// pi exports its dir resolved (~/.pi -> .dotfiles/.pi gives the .dotfiles path), so one
+	// root can arrive twice. The first path wins: it is the one the service, without pi's env, scans.
+	const unique = new Map<string, string>()
+	for (const dir of dirs) {
+		const real = realDir(dir)
+		if (!unique.has(real)) {
+			unique.set(real, dir)
+		}
+	}
+	return [...unique.values()]
+}
+
+function realDir(dir: string): string {
+	try {
+		return realpathSync(dir)
+	} catch {
+		// Missing roots are normal (pi never ran here) and scan to nothing.
+		return dir
+	}
 }
 
 /** pi's agent dir, the root for its sessions and extensions.

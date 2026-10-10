@@ -10,10 +10,11 @@ import { maybeNotify } from './notifier.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
 import { listJsonlFiles } from './scanner.js'
+import type { DirCache } from './scanner.js'
 import { readStore, updateStore } from './store.js'
 import { tailFile } from './tailer.js'
 import type { AccountSegment } from './tailer.js'
-import type { Config, UsageRecord, UsageSource } from './types.js'
+import type { Config, FileState, UsageRecord, UsageSource } from './types.js'
 import type { Log } from './ui.js'
 import { tilde } from './ui.js'
 import { fetchGroupLimits, postLimits, uploadBatch } from './uploader.js'
@@ -24,6 +25,9 @@ import type { UploadFailure } from './uploader.js'
  *  uuids) and other JSONL — restricting to this subtree mirrors Claude Code and
  *  avoids re-uploading every desktop record twice. */
 const PROJECTS_SUBPATH = `${sep}.claude${sep}projects${sep}`
+
+/** `status` shows the cached reading's age, so it stays within this of the last check. */
+const LIMITS_CACHE_REFRESH_MS = 10 * 60_000
 
 export interface CycleResult {
 	files: number
@@ -46,6 +50,7 @@ export async function runOnce(
 	log: Log = () => {
 		/* empty */
 	},
+	dirCache: DirCache = new Map(),
 ): Promise<CycleResult> {
 	const { state } = readStore(cfg.storePath)
 
@@ -63,7 +68,7 @@ export async function runOnce(
 	}
 	const files: { fp: string; source: UsageSource }[] = []
 	for (const root of roots) {
-		for (const fp of listJsonlFiles(root.dir)) {
+		for (const fp of listJsonlFiles(root.dir, dirCache)) {
 			if (root.onlyProjects && !fp.includes(PROJECTS_SUBPATH)) {
 				continue
 			}
@@ -250,14 +255,17 @@ function chunks(segments: AccountSegment[], step: number): AccountSegment[] {
  * Drop offsets for logs that no longer exist on disk, so a long-lived install
  * does not grow its state file by one entry per Claude session forever. Only
  * paths absent from this cycle's scan are stat'd, and only a real ENOENT prunes
- * — a root that is merely unconfigured right now keeps its offsets.
+ * — a root that is merely unconfigured right now keeps its offsets. A path that
+ * still exists goes too when its inode is one this scan reached under another
+ * path: a root now read through a symlink (~/.pi -> .dotfiles/.pi).
  * Returns whether anything was removed.
  */
-function pruneMissingFiles(state: { files: Record<string, unknown> }, scanned: { fp: string }[]): boolean {
+function pruneMissingFiles(state: { files: Record<string, FileState> }, scanned: { fp: string }[]): boolean {
 	const seen = new Set(scanned.map(f => f.fp))
+	const seenInodes = new Set(scanned.map(f => state.files[f.fp]?.inode))
 	let removed = false
-	for (const fp of Object.keys(state.files)) {
-		if (seen.has(fp) || existsSync(fp)) {
+	for (const [fp, file] of Object.entries(state.files)) {
+		if (seen.has(fp) || (existsSync(fp) && !seenInodes.has(file.inode))) {
 			continue
 		}
 		// oxlint-disable-next-line typescript/no-dynamic-delete -- state.files is a JSON blob keyed by path
@@ -339,8 +347,17 @@ export async function reportLimitsOnce(
 		log('warn', 'limits upload failed · retrying next cycle')
 	}
 	// Cache the reading so `status` can show current usage without spending
-	// another billable API call.
+	// another billable API call. An unchanged reading refreshes its timestamp only
+	// every LIMITS_CACHE_REFRESH_MS: each save rewrites the whole store.
 	updateStore(cfg.storePath, store => {
+		const cached = store.limits
+		const unchanged =
+			cached?.fiveHourPct === report.fiveHourPct &&
+			cached.sevenDayPct === report.sevenDayPct &&
+			cached.source === report.source
+		if (unchanged && Date.now() - Date.parse(cached.at) < LIMITS_CACHE_REFRESH_MS) {
+			return
+		}
 		store.limits = {
 			at: new Date().toISOString(),
 			fiveHourPct: report.fiveHourPct,

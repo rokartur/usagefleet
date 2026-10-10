@@ -1,7 +1,8 @@
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { updateStore } from './store.js'
 import type { Config, Store } from './types.js'
 
 // runOnce's offset handling is the one place in the collector that can destroy
@@ -61,6 +62,7 @@ afterEach(() => {
 	postLimits.mockReset()
 	vi.unstubAllEnvs()
 	vi.unstubAllGlobals()
+	vi.useRealTimers()
 })
 
 describe('runOnce offset commitment', () => {
@@ -137,6 +139,25 @@ describe('runOnce offset commitment', () => {
 		// The offset is kept, so the records probed on the way down get retried.
 		expect(r.dropped).toBe(0)
 		expect(savedOffset(cfg, logPath)).toBeUndefined()
+	})
+})
+
+// 2026-10-10: ~/.pi became a symlink to .dotfiles/.pi. The 2198 offsets kept under the old
+// path never pruned (that path still exists) and doubled a 1 MB store rewritten every cycle.
+describe('runOnce state pruning', () => {
+	it('drops the offset of a file that is now scanned through another path', async () => {
+		const { cfg, logPath } = fixture(1)
+		const oldPath = join(dirname(dirname(logPath)), 'alias', 'session.jsonl')
+		symlinkSync(dirname(logPath), dirname(oldPath))
+		updateStore(cfg.storePath, store => {
+			store.state.files[oldPath] = { inode: Number(statSync(logPath).ino), offset: 1 }
+		})
+		uploadBatch.mockResolvedValue({ accepted: 1, duplicates: 0, ok: true })
+
+		await runOnce(cfg)
+
+		expect(savedOffset(cfg, oldPath)).toBeUndefined()
+		expect(savedOffset(cfg, logPath)).toBeGreaterThan(0)
 	})
 })
 
@@ -218,5 +239,21 @@ describe('reportLimitsOnce account check', () => {
 	it('skips a reading whose token belongs to another account', async () => {
 		await reportLimitsOnce(signedInAs('acc-a', 'acc-b'))
 		expect(postLimits).not.toHaveBeenCalled()
+	})
+
+	// Each save rewrites the whole store, ~0.5 MB of offsets, and this runs every minute.
+	it('rewrites the store for an unchanged reading only to refresh its age', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] })
+		const cfg = signedInAs('acc-a', 'acc-a')
+		await reportLimitsOnce(cfg)
+		const written = statSync(cfg.storePath).ino
+
+		vi.advanceTimersByTime(60_000)
+		await reportLimitsOnce(cfg)
+		expect(statSync(cfg.storePath).ino).toBe(written)
+
+		vi.advanceTimersByTime(10 * 60_000)
+		await reportLimitsOnce(cfg)
+		expect(statSync(cfg.storePath).ino).not.toBe(written)
 	})
 })

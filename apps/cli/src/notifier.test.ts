@@ -61,6 +61,14 @@ describe(evaluateWindow, () => {
 		expect(r.next.lastBucket).toBe(80)
 	})
 
+	it('treats millisecond jitter in resetsAt as the same window', () => {
+		// oauth/usage answers 12:00:00.030Z, then 12:00:00.020Z for one window.
+		const prev = { lastBucket: 80, resetsAt: '2026-10-12T12:00:00.030Z' }
+		const r = evaluateWindow(prev, 89.7, '2026-10-12T12:00:00.020Z', TH)
+		expect(r.fire).toBeNull()
+		expect(r.next).toStrictEqual(prev)
+	})
+
 	it('escalates to a higher threshold once crossed', () => {
 		const prev = { lastBucket: 80, resetsAt: reset }
 		const r = evaluateWindow(prev, 96, reset, TH)

@@ -36,7 +36,7 @@ export function loadNotifyConfig(
  * Decide whether a window crosses a not-yet-notified threshold. Pure — no IO.
  * Returns the threshold to fire (or null) and the next persisted state.
  *
- * A window rollover (resetsAt change) resets the high-water mark first, so the
+ * A window rollover (resetsAt moves) resets the high-water mark first, so the
  * first crossing in a new window always re-notifies. If utilization later drops
  * below the mark within the SAME window (e.g. a server correction), the mark is
  * lowered so a subsequent re-cross notifies again.
@@ -47,12 +47,14 @@ export function evaluateWindow(
 	resetsAt: string | null,
 	thresholds: number[],
 ): { fire: number | null; next: WindowNotifyState } {
-	const rolledOver = !prev || prev.resetsAt !== resetsAt
+	const rolledOver = !prev || !sameWindow(prev.resetsAt, resetsAt)
 	const lastBucket = rolledOver ? 0 : prev.lastBucket
+	// Within a window the first resetsAt stays, so the jitter alone never rewrites the store.
+	const windowResetsAt = rolledOver ? resetsAt : prev.resetsAt
 
 	if (pct == null) {
 		// No reading this cycle — keep the mark, just track the (possibly new) window.
-		return { fire: null, next: { lastBucket, resetsAt } }
+		return { fire: null, next: { lastBucket, resetsAt: windowResetsAt } }
 	}
 
 	// Highest threshold the current pct has reached (thresholds are ascending).
@@ -64,10 +66,18 @@ export function evaluateWindow(
 	}
 
 	if (top > lastBucket) {
-		return { fire: top, next: { lastBucket: top, resetsAt } }
+		return { fire: top, next: { lastBucket: top, resetsAt: windowResetsAt } }
 	}
 	// top <= lastBucket: the mark follows pct down (or holds); nothing fires.
-	return { fire: null, next: { lastBucket: top, resetsAt } }
+	return { fire: null, next: { lastBucket: top, resetsAt: windowResetsAt } }
+}
+
+// oauth/usage jitters resets_at by milliseconds per request; a real rollover moves it by hours.
+function sameWindow(a: string | null, b: string | null): boolean {
+	if (a === null || b === null) {
+		return a === b
+	}
+	return Math.abs(Date.parse(a) - Date.parse(b)) < 60_000
 }
 
 /** Relative "resets in 12m" / "resets in 2h" suffix, or "" if unknown/past. */

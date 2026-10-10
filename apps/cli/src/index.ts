@@ -10,6 +10,7 @@ import { loadNotifyConfig } from './notifier.js'
 import { sendNotification } from './notify.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
+import type { DirCache } from './scanner.js'
 import { serviceStatus } from './service.js'
 import { readStore, storePath, updateStore } from './store.js'
 import {
@@ -132,13 +133,14 @@ async function cmdWatch(): Promise<void> {
 	let stopping = false
 	let timer: ReturnType<typeof setTimeout> | null = null
 	let running = false
+	const dirCache: DirCache = new Map()
 	const tick = async () => {
 		if (stopping) {
 			return
 		}
 		running = true
 		try {
-			const r = await runOnce(cfg, stream)
+			const r = await runOnce(cfg, stream, dirCache)
 			// Dropped records are real data loss, so they must show up even in a
 			// cycle that uploaded nothing.
 			if (r.sent > 0 || r.dropped > 0) {

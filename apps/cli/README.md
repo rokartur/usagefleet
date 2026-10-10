@@ -97,7 +97,8 @@ directory, git branch. Prompts, responses and file contents are never read.
 
 The first time a window crosses a threshold (default `80` and `95`) you get a
 desktop notification — once per threshold per window, re-armed when the window
-resets. macOS uses `osascript`, Linux `notify-send` (falling back to
+resets. macOS shows it from a small bundled UsageFleet app (allow it once when
+macOS asks; a click opens the dashboard), Linux uses `notify-send` (falling back to
 `kdialog --passivepopup`; install `libnotify-bin` if neither exists), Windows a
 WinRT toast via `powershell.exe`.
 

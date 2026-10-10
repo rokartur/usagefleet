@@ -19,7 +19,7 @@ const TASK = 'usagefleet'
 const EXTRA_PASSTHROUGH_ENV = new Set(['ANTHROPIC_API_KEY', 'CLAUDE_CONFIG_DIR'])
 
 /** Per-user dir for the collector's own runtime files: the Windows launcher and
- *  its log, plus the binary copy that pre-npm releases left there. */
+ *  its log, the macOS notifier app, plus the binary copy that pre-npm releases left there. */
 function stableBinDir(): string {
 	if (process.platform === 'darwin') {
 		return join(homedir(), 'Library', 'Application Support', 'usagefleet')
@@ -45,6 +45,11 @@ function macLogDir(): string {
 
 function windowsVbsPath(): string {
 	return join(stableBinDir(), 'usagefleet-watch.vbs')
+}
+
+/** One fixed path for the macOS notifier, whatever Node install runs the CLI. */
+export function notifierAppPath(): string {
+	return join(stableBinDir(), 'UsageFleet.app')
 }
 
 /** Where releases before the npm switch parked their copy of the binary. Only
@@ -593,7 +598,8 @@ export function uninstall(): void {
 			}
 		}
 		removeStableBin()
-		console.log(step('removed', 'launchd agent'))
+		rmSync(notifierAppPath(), { force: true, recursive: true })
+		console.log(step('removed', 'launchd agent · notification app'))
 		console.log(row('leftover', `${tilde(path)} · delete to fully clean up`))
 		return
 	}
