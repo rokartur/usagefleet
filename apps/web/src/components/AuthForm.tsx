@@ -2,6 +2,7 @@ import type { FormEvent } from 'react'
 import { useState } from 'react'
 import { Link, useRouter } from '@tanstack/react-router'
 import { useTranslations } from 'use-intl'
+import { Alert } from '@/components/arc/alert/alert'
 import { Badge } from '@/components/arc/badge/badge'
 import { Button } from '@/components/arc/button/button'
 import { Input } from '@/components/arc/input/input'
@@ -152,11 +153,7 @@ export function AuthForm({
 					</Link>
 				)}
 			</div>
-			{error && (
-				<p role='alert' className='text-sm text-destructive'>
-					{error}
-				</p>
-			)}
+			{error && <Alert tone='danger' title={error} />}
 			{/* The badge sits outside the button: Arc's label slot would anchor it instead. */}
 			<div className='relative'>
 				<Button type='submit' size='lg' loading={pending} className='w-full'>

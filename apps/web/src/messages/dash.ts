@@ -49,12 +49,7 @@ const en = {
 		canBeBlocked: '{name} can be blocked',
 		// {name} is the shell the tab is showing, e.g. "macOS / Linux".
 		copyCommand: 'Copy {name} install command',
-		copyCommandFailed: "Couldn't copy",
-		copyCommandFailedHint: 'Select the command and copy it manually.',
 		copyToken: 'Copy token',
-		copyTokenFailed: "Couldn't copy token",
-		copyTokenFailedHint: 'Select the token and copy it manually.',
-		commandCopied: 'Command copied',
 		count: '{active} / {limit}',
 		createFailed: 'Failed to create device',
 		createFailedRetry: 'Failed to create device. Please try again.',
@@ -100,7 +95,6 @@ const en = {
 		slots: '{count, plural, one {active device on {plan}} other {active devices on {plan}}}',
 		signedInto: 'Claude: {account}',
 		token: 'token {prefix}…',
-		tokenCopied: 'Token copied to clipboard',
 		tokenRaw: 'Raw token, for manual setup',
 		tokenStep1: '1. Install and start the collector on {name}',
 		tokenStep1Hint:
@@ -452,12 +446,7 @@ const pl: typeof en = {
 		canBeBlocked: '{name} może być blokowane',
 		// {name} is the shell the tab is showing, e.g. "macOS / Linux".
 		copyCommand: 'Kopiuj komendę instalacji dla {name}',
-		copyCommandFailed: 'Nie udało się skopiować',
-		copyCommandFailedHint: 'Zaznacz komendę i skopiuj ją ręcznie.',
 		copyToken: 'Kopiuj token',
-		copyTokenFailed: 'Nie udało się skopiować tokenu',
-		copyTokenFailedHint: 'Zaznacz token i skopiuj go ręcznie.',
-		commandCopied: 'Skopiowano komendę',
 		count: '{active} / {limit}',
 		createFailed: 'Nie udało się utworzyć urządzenia',
 		createFailedRetry: 'Nie udało się utworzyć urządzenia. Spróbuj ponownie.',
@@ -505,7 +494,6 @@ const pl: typeof en = {
 		slots: '{count, plural, one {aktywne urządzenie w planie {plan}} few {aktywne urządzenia w planie {plan}} many {aktywnych urządzeń w planie {plan}} other {aktywnych urządzeń w planie {plan}}}',
 		signedInto: 'Claude: {account}',
 		token: 'token {prefix}…',
-		tokenCopied: 'Skopiowano token do schowka',
 		tokenRaw: 'Surowy token, do ręcznej konfiguracji',
 		tokenStep1: '1. Zainstaluj i uruchom kolektor na {name}',
 		tokenStep1Hint:

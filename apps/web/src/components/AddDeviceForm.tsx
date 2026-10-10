@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useRouter } from '@tanstack/react-router'
-import { CheckIcon, CopyIcon, PlusIcon } from 'lucide-react'
+import { PlusIcon } from 'lucide-react'
 import { useTranslations } from 'use-intl'
+import { Accordion } from '@/components/arc/accordion/accordion'
 import { Button } from '@/components/arc/button/button'
+import { CopyButton } from '@/components/arc/copy-button/copy-button'
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/arc/dialog/dialog'
 import { Input } from '@/components/arc/input/input'
 import { Select } from '@/components/arc/select/select'
@@ -15,8 +17,7 @@ import { createDevice } from '@/lib/actions'
  *  the raw token stays available underneath for manual setups. */
 function TokenReveal({ token, deviceName }: { token: string; deviceName: string }) {
 	const t = useTranslations('dash.devices')
-	const toast = useToast()
-	const [copied, setCopied] = useState(false)
+	const tCommon = useTranslations('common')
 	return (
 		<div className='flex flex-col gap-5'>
 			<div className='flex flex-col gap-2'>
@@ -33,31 +34,26 @@ function TokenReveal({ token, deviceName }: { token: string; deviceName: string 
 
 			<p className='text-muted-foreground'>{t('tokenMultiAccount')}</p>
 
-			<details className='flex flex-col gap-2'>
-				<summary className='cursor-pointer text-muted-foreground'>{t('tokenRaw')}</summary>
-				<div className='mt-2 flex items-start gap-2'>
-					<code className='min-w-0 flex-1 rounded-lg bg-muted p-3 font-mono text-xs break-all'>{token}</code>
-					<Button
-						variant='secondary'
-						aria-label={t('copyToken')}
-						onClick={async () => {
-							try {
-								await navigator.clipboard.writeText(token)
-								setCopied(true)
-								toast.add({ title: t('tokenCopied'), type: 'success' })
-							} catch {
-								toast.add({
-									description: t('copyTokenFailedHint'),
-									title: t('copyTokenFailed'),
-									type: 'error',
-								})
-							}
-						}}
-					>
-						{copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
-					</Button>
-				</div>
-			</details>
+			<Accordion
+				items={[
+					{
+						value: 'token',
+						title: t('tokenRaw'),
+						content: (
+							<div className='flex items-start gap-2'>
+								<code className='min-w-0 flex-1 rounded-lg bg-muted p-3 font-mono text-xs break-all'>
+									{token}
+								</code>
+								<CopyButton
+									value={token}
+									label={t('copyToken')}
+									messages={{ copied: tCommon('copied'), failed: tCommon('copyFailed') }}
+								/>
+							</div>
+						),
+					},
+				]}
+			/>
 		</div>
 	)
 }

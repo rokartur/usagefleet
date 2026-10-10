@@ -1,9 +1,7 @@
 import { useState } from 'react'
-import { CheckIcon, CopyIcon } from 'lucide-react'
 import { useTranslations } from 'use-intl'
-import { Button } from '@/components/arc/button/button'
+import { CopyButton } from '@/components/arc/copy-button/copy-button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/arc/tabs/tabs'
-import { useToast } from '@/components/arc/toast-stack/toast-stack'
 import { installCommands } from '@/lib/install-command'
 
 /** The one command that turns a device token into a reporting machine, per
@@ -11,24 +9,9 @@ import { installCommands } from '@/lib/install-command'
  *  dashboard setup rail (placeholder token, since it is shown only once). */
 export function InstallCommand({ token }: { token: string }) {
 	const t = useTranslations('dash.devices')
-	const toast = useToast()
+	const tCommon = useTranslations('common')
 	const commands = installCommands(token)
 	const [platform, setPlatform] = useState<string>(commands[0].id)
-	const [copied, setCopied] = useState<string | null>(null)
-
-	async function copy(command: string, id: string) {
-		try {
-			await navigator.clipboard.writeText(command)
-			setCopied(id)
-			toast.add({ title: t('commandCopied'), type: 'success' })
-		} catch {
-			toast.add({
-				description: t('copyCommandFailedHint'),
-				title: t('copyCommandFailed'),
-				type: 'error',
-			})
-		}
-	}
 
 	return (
 		<Tabs value={platform} onValueChange={setPlatform}>
@@ -48,13 +31,11 @@ export function InstallCommand({ token }: { token: string }) {
 						<pre className='min-w-0 flex-1 rounded-lg bg-muted p-3 font-mono text-xs wrap-anywhere whitespace-pre-wrap'>
 							{c.command}
 						</pre>
-						<Button
-							variant='secondary'
-							aria-label={t('copyCommand', { name: c.label })}
-							onClick={() => copy(c.command, c.id)}
-						>
-							{copied === c.id ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
-						</Button>
+						<CopyButton
+							value={c.command}
+							label={t('copyCommand', { name: c.label })}
+							messages={{ copied: tCommon('copied'), failed: tCommon('copyFailed') }}
+						/>
 					</div>
 				</TabsContent>
 			))}

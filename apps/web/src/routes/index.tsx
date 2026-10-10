@@ -1,12 +1,15 @@
 import type { ReactNode } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { ArrowRight, Check, Copy } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import type { Variants } from 'motion/react'
 import { motion, MotionConfig, useScroll, useTransform } from 'motion/react'
 import { createTranslator, useLocale, useTranslations } from 'use-intl'
+import { Accordion } from '@/components/arc/accordion/accordion'
 import { buttonClassName } from '@/components/arc/button/button'
+import { CopyButton } from '@/components/arc/copy-button/copy-button'
+import SegmentedControl from '@/components/arc/segmented-control/segmented-control'
 import { OrbitMark } from '@/components/orbit-mark'
 import { SiteFooter } from '@/components/site-footer'
 import { UsageFleetMark } from '@/components/usage-fleet-mark'
@@ -572,31 +575,16 @@ function Landing() {
 
 					<section id='faq' className='scroll-mt-20 border-t border-border py-20'>
 						<SectionHead title={t('faq.title')} />
-						<Stagger>
-							{FAQ.map(key => (
-								// <details> rather than an accordion component: it opens without
-								// scripting and needs no state.
-								<motion.details
-									key={key}
-									data-reveal
-									variants={RISE_ITEM}
-									className='group border-t border-border last:border-b'
-								>
-									<summary className='flex cursor-pointer list-none items-center justify-between gap-5 py-4.5 transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden'>
-										{t(`faq.${key}Q`)}
-										<span className='font-mono text-lg text-muted-foreground/70 group-open:hidden'>
-											+
-										</span>
-										<span className='hidden font-mono text-lg text-muted-foreground/70 group-open:inline'>
-											−
-										</span>
-									</summary>
-									<p className='max-w-[68ch] pb-5 text-sm leading-relaxed text-muted-foreground'>
-										{t(`faq.${key}A`)}
-									</p>
-								</motion.details>
-							))}
-						</Stagger>
+						<Reveal>
+							<Accordion
+								size='lg'
+								items={FAQ.map(key => ({
+									value: key,
+									title: t(`faq.${key}Q`),
+									content: t(`faq.${key}A`),
+								}))}
+							/>
+						</Reveal>
 					</section>
 
 					<section className='border-t border-border py-20'>
@@ -734,68 +722,19 @@ function PrimaryCta({ to, label }: { to: '/dashboard' | '/login'; label: string 
  *  which is also the answer for anyone who never touches the tabs. */
 function InstallPicker() {
 	const t = useTranslations('landing.hero')
+	const tCommon = useTranslations('common')
 	const [manager, setManager] = useState<PackageManager>('npm')
-	const [copied, setCopied] = useState(false)
 	const command = INSTALL_COMMANDS[manager]
 
-	// One timer, replaced on every copy and cleared on unmount, so an impatient
-	// double click can't leave the tick stuck on.
-	useEffect(() => {
-		if (!copied) {
-			return
-		}
-		const timer = setTimeout(() => setCopied(false), 1600)
-		return () => clearTimeout(timer)
-	}, [copied])
-
-	const copy = async () => {
-		try {
-			await navigator.clipboard.writeText(command)
-			setCopied(true)
-		} catch {
-			// Clipboard denied or insecure origin: the command stays selectable text.
-		}
-	}
-
 	return (
-		<div
-			className={`flex h-9 w-full items-center rounded-md border font-mono text-[13px] transition-colors sm:w-auto ${
-				copied ? 'border-foreground' : 'border-border'
-			}`}
-		>
-			<div className='flex h-full shrink-0 items-center gap-0.5 border-r border-border px-1'>
-				{MANAGERS.map(name => (
-					<button
-						key={name}
-						type='button'
-						aria-pressed={manager === name}
-						onClick={() => setManager(name)}
-						className={`relative rounded-sm px-2 py-1 text-[11.5px] transition-colors duration-200 ${
-							manager === name ? 'text-background' : 'text-muted-foreground hover:text-foreground'
-						}`}
-					>
-						{/* One shared pill that slides between the tabs, rather than three
-						    backgrounds fading in and out. Solid, so the active manager reads
-						    from across the page instead of being a faint grey wash. */}
-						{manager === name && (
-							<motion.span
-								layoutId='install-picker-active'
-								className='absolute inset-0 rounded-sm bg-foreground'
-								transition={{ type: 'spring', stiffness: 520, damping: 38 }}
-							/>
-						)}
-						<span className='relative'>{name}</span>
-					</button>
-				))}
-			</div>
-			{/* The command is the copy button: a 13px icon is a poor target, and
-			    clicking the thing you want is the obvious gesture. */}
-			<button
-				type='button'
-				onClick={copy}
-				aria-label={t('copy', { command })}
-				className='group flex h-full min-w-0 flex-1 items-center gap-2.5 px-3 text-left sm:flex-none'
-			>
+		<div className='flex w-full flex-col gap-2 font-mono text-[13px] sm:w-auto sm:flex-row sm:items-center'>
+			<SegmentedControl
+				label={t('manager')}
+				options={MANAGERS.map(name => ({ value: name, label: name }))}
+				value={manager}
+				onValueChange={setManager}
+			/>
+			<div className='flex h-9 min-w-0 items-center gap-2 rounded-(--radius-control) border pr-1 pl-3'>
 				{/* Widest command reserves the width, so switching manager never
 				    reflows the row the CTA sits in. Phones get a scroll instead. */}
 				<span className='min-w-0 flex-1 overflow-x-auto whitespace-nowrap sm:w-[29ch] sm:flex-none'>
@@ -809,25 +748,13 @@ function InstallPicker() {
 						<RollIn key={manager} text={command} stagger={0.012} />
 					</code>
 				</span>
-				<span
-					className={`relative size-3.5 shrink-0 transition-colors ${
-						copied ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
-					}`}
-				>
-					<motion.span
-						key={copied ? 'copied' : 'idle'}
-						className='absolute inset-0'
-						initial={{ opacity: 0, scale: 0.5 }}
-						animate={{ opacity: 1, scale: 1 }}
-						transition={{ type: 'spring', stiffness: 700, damping: 26 }}
-					>
-						{copied ? <Check className='size-3.5' /> : <Copy className='size-3.5' />}
-					</motion.span>
-				</span>
-			</button>
-			<span aria-live='polite' className='sr-only'>
-				{copied ? t('copied') : ''}
-			</span>
+				<CopyButton
+					variant='plain'
+					value={command}
+					label={t('copy', { command })}
+					messages={{ copied: tCommon('copied'), failed: tCommon('copyFailed') }}
+				/>
+			</div>
 		</div>
 	)
 }

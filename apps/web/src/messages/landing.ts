@@ -22,7 +22,7 @@ const en = {
 	hero: {
 		badges: { prompts: 'Counters, never prompts', setup: 'Setup under a minute' },
 		copy: 'Copy {command}',
-		copied: 'Copied',
+		manager: 'Package manager',
 		headline: { many: 'many', machines: 'machines.', one: 'One', subscription: 'subscription,' },
 		lead: "Anthropic reports one usage number. UsageFleet splits it per machine, live, from Claude's own headers.",
 	},
@@ -127,7 +127,7 @@ const pl: typeof en = {
 	hero: {
 		badges: { prompts: 'Liczniki, nigdy prompty', setup: 'Konfiguracja poniżej minuty' },
 		copy: 'Skopiuj {command}',
-		copied: 'Skopiowano',
+		manager: 'Menedżer pakietów',
 		headline: { many: 'wiele', machines: 'maszyn.', one: 'Jedna', subscription: 'subskrypcja,' },
 		lead: 'Anthropic podaje jedną liczbę zużycia. UsageFleet dzieli ją na maszyny, na żywo, z nagłówków samego Claude.',
 	},

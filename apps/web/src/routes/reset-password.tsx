@@ -2,6 +2,7 @@ import type { FormEvent } from 'react'
 import { useState } from 'react'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { useTranslations } from 'use-intl'
+import { Alert } from '@/components/arc/alert/alert'
 import { Button } from '@/components/arc/button/button'
 import { Card } from '@/components/arc/card/card'
 import { Input } from '@/components/arc/input/input'
@@ -49,11 +50,7 @@ function ResetPasswordPage() {
 				description={token ? t('descriptionToken') : t('description')}
 			>
 				<div className='mt-6 flex flex-col gap-6'>
-					{linkError && (
-						<p role='alert' className='text-sm text-destructive'>
-							{t('linkExpired')}
-						</p>
-					)}
+					{linkError && <Alert tone='danger' title={t('linkExpired')} />}
 					{token && !linkError ? <NewPasswordForm token={token} /> : <RequestLinkForm />}
 					<Link to='/login' className='text-center text-sm text-muted-foreground'>
 						{t('backTo')}
@@ -145,11 +142,7 @@ function NewPasswordForm({ token }: { token: string }) {
 				placeholder={t('passwordPlaceholder')}
 				messages={{ hidePassword: tForm('hidePassword'), showPassword: tForm('showPassword') }}
 			/>
-			{error && (
-				<p role='alert' className='text-sm text-destructive'>
-					{error}
-				</p>
-			)}
+			{error && <Alert tone='danger' title={error} />}
 			<Button type='submit' size='lg' loading={pending}>
 				{t('setPassword')}
 			</Button>

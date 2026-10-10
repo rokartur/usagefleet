@@ -9,6 +9,7 @@ import { DropdownMenu } from '@/components/arc/dropdown-menu/dropdown-menu'
 import { Input } from '@/components/arc/input/input'
 import SegmentedControl from '@/components/arc/segmented-control/segmented-control'
 import { SortableDataTable } from '@/components/arc/sortable-data-table/sortable-data-table'
+import { Sparkline } from '@/components/arc/sparkline/sparkline'
 import { RelativeTime } from '@/components/RelativeTime'
 import { Num, Section } from '@/components/usage-ui'
 import { mergeProjects, unmergeProject } from '@/lib/actions'
@@ -430,7 +431,7 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
 						{
 							key: 'daily',
 							label: t('daily'),
-							render: (_, { project: p }) => <Sparkline daily={p.daily} />,
+							render: (_, { project: p }) => <Sparkline data={p.daily} />,
 							sortable: false,
 						},
 						{
@@ -532,23 +533,6 @@ export function ProjectTable({ projects, readOnly = false }: { projects: Project
  *  without spending colours that already mean groups. */
 function stripShade(rank: number): number {
 	return [0.9, 0.68, 0.5, 0.36, 0.26][rank] ?? 0.14
-}
-
-/** Daily cost as bars, scaled to the row's own peak: the shape is the point,
- *  the size is in the cost column. */
-function Sparkline({ daily }: { daily: number[] }) {
-	const peak = Math.max(...daily)
-	let d = ''
-	for (const [i, cost] of daily.entries()) {
-		if (cost > 0) {
-			d += `M${i * 3} 16v${-Math.max(1, (cost / peak) * 16)}h2V16z`
-		}
-	}
-	return (
-		<svg aria-hidden viewBox={`0 0 ${daily.length * 3} 16`} className='h-4 w-[90px] fill-foreground/55'>
-			<path d={d} />
-		</svg>
-	)
 }
 
 function GroupSplit({ groups }: { groups: ProjectUsage['groups'] }) {

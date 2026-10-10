@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { CheckIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'use-intl'
+import { Accordion } from '@/components/arc/accordion/accordion'
 import { Badge } from '@/components/arc/badge/badge'
 import { buttonClassName } from '@/components/arc/button/button'
 import { MetricCard } from '@/components/arc/metric-card/metric-card'
@@ -457,21 +458,24 @@ function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[
 					{t('groups')}
 				</abbr>
 			</h2>
-			<ul>
-				{dash.groups.map(g => (
-					<GroupItem
-						key={groupKey(g.groupId)}
-						group={g}
-						modelLimits={dash.modelLimits}
-						movedTo={movedAway(g) ? movedTo(g) : null}
-					/>
-				))}
-			</ul>
+			<Accordion
+				items={dash.groups.map(g => ({
+					value: groupKey(g.groupId),
+					title: (
+						<GroupSummary
+							group={g}
+							modelLimits={dash.modelLimits}
+							movedTo={movedAway(g) ? movedTo(g) : null}
+						/>
+					),
+					content: <GroupDetails group={g} />,
+				}))}
+			/>
 		</section>
 	)
 }
 
-function GroupItem({
+function GroupSummary({
 	group: g,
 	modelLimits,
 	movedTo,
@@ -482,78 +486,73 @@ function GroupItem({
 }) {
 	const t = useTranslations('dash.overview')
 	const moved = movedAway(g)
+	return (
+		<span className='flex flex-col gap-1.5 py-1 font-normal'>
+			<span className='flex min-w-0 items-center gap-2 text-sm'>
+				<GroupDot color={g.color} />
+				<span className='truncate font-medium'>{g.name}</span>
+				{g.watchOnly && <WatchOnlyMark />}
+				<span className='ml-auto shrink-0 text-xs text-muted-foreground'>
+					{g.slicePct !== null && `${t('slice', { pct: formatPctNumber(g.slicePct) })} · `}
+					{t('devicesCount', { count: g.devices.length })}
+				</span>
+			</span>
+			<span className={cn('grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-4', moved && 'opacity-60')}>
+				<SliceBar label='5h' pct={g.sessionBudgetPct} color={g.color} />
+				<SliceBar label={t('week')} pct={g.weeklyBudgetPct} color={g.color} />
+				{modelLimits.map(limit => (
+					<SliceBar
+						key={limit.model}
+						label={limit.label}
+						// Absent from the split means no events of this model in its window.
+						pct={limit.groups.find(x => x.groupId === g.groupId)?.budgetPct ?? 0}
+						color={g.color}
+					/>
+				))}
+			</span>
+			{moved && (
+				<span className='text-xs text-muted-foreground'>
+					{movedTo
+						? t.rich('movedTo', {
+								account: movedTo,
+								mark: chunks => <span className='text-foreground'>{chunks}</span>,
+								time: () => (
+									<RelativeTime date={g.lastUsedAt === null ? null : new Date(g.lastUsedAt)} />
+								),
+							})
+						: t('moved')}
+				</span>
+			)}
+		</span>
+	)
+}
+
+function GroupDetails({ group: g }: { group: LiveGroupUsage }) {
+	const t = useTranslations('dash.overview')
 	const groupCostUsd = g.models.reduce((sum, m) => sum + m.costUsd, 0)
 	return (
-		<li className='border-b last:border-b-0'>
-			<details className='group/row'>
-				<summary className='flex cursor-pointer list-none flex-col gap-1.5 py-3 [&::-webkit-details-marker]:hidden'>
-					<span className='flex min-w-0 items-center gap-2 text-sm'>
-						<GroupDot color={g.color} />
-						<span className='truncate font-medium'>{g.name}</span>
-						{g.watchOnly && <WatchOnlyMark />}
-						<span className='ml-auto shrink-0 text-xs text-muted-foreground'>
-							{g.slicePct !== null && `${t('slice', { pct: formatPctNumber(g.slicePct) })} · `}
-							{t('devicesCount', { count: g.devices.length })}
-						</span>
-					</span>
-					<div
-						className={cn(
-							'grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-4',
-							moved && 'opacity-60',
-						)}
-					>
-						<SliceBar label='5h' pct={g.sessionBudgetPct} color={g.color} />
-						<SliceBar label={t('week')} pct={g.weeklyBudgetPct} color={g.color} />
-						{modelLimits.map(limit => (
-							<SliceBar
-								key={limit.model}
-								label={limit.label}
-								// Absent from the split means no events of this model in its window.
-								pct={limit.groups.find(x => x.groupId === g.groupId)?.budgetPct ?? 0}
-								color={g.color}
-							/>
-						))}
-					</div>
-					{moved && (
-						<span className='text-xs text-muted-foreground'>
-							{movedTo
-								? t.rich('movedTo', {
-										account: movedTo,
-										mark: chunks => <span className='text-foreground'>{chunks}</span>,
-										time: () => (
-											<RelativeTime
-												date={g.lastUsedAt === null ? null : new Date(g.lastUsedAt)}
-											/>
-										),
-									})
-								: t('moved')}
-						</span>
-					)}
-				</summary>
-				<div className='flex flex-col gap-3 pb-3 pl-4 text-xs'>
-					{g.devices.length > 0 && (
-						<ul>
-							{g.devices.map(d => (
-								<li key={d.id} className='flex justify-between gap-3 py-0.5'>
-									<span className='truncate'>{d.name}</span>
-									<span className='shrink-0 text-muted-foreground'>
-										<RelativeTime date={d.lastSeenAt === null ? null : new Date(d.lastSeenAt)} />
-									</span>
-								</li>
-							))}
-						</ul>
-					)}
-					<div>
-						<p className='mb-1 text-muted-foreground'>{t('models')}</p>
-						<ul>
-							{g.models.map(m => (
-								<ModelRow key={m.model} model={m} groupCostUsd={groupCostUsd} />
-							))}
-						</ul>
-					</div>
-				</div>
-			</details>
-		</li>
+		<div className='flex flex-col gap-3 pl-4 text-xs'>
+			{g.devices.length > 0 && (
+				<ul>
+					{g.devices.map(d => (
+						<li key={d.id} className='flex justify-between gap-3 py-0.5'>
+							<span className='truncate'>{d.name}</span>
+							<span className='shrink-0 text-muted-foreground'>
+								<RelativeTime date={d.lastSeenAt === null ? null : new Date(d.lastSeenAt)} />
+							</span>
+						</li>
+					))}
+				</ul>
+			)}
+			<div>
+				<p className='mb-1 text-muted-foreground'>{t('models')}</p>
+				<ul>
+					{g.models.map(m => (
+						<ModelRow key={m.model} model={m} groupCostUsd={groupCostUsd} />
+					))}
+				</ul>
+			</div>
+		</div>
 	)
 }
 

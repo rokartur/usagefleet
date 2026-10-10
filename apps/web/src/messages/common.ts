@@ -2,6 +2,8 @@
  *  plus the meta description every page falls back to. */
 const en = {
 	backToSite: 'Back to site',
+	copied: 'Copied',
+	copyFailed: "Couldn't copy",
 	error: {
 		description: "We couldn't load this page. This is usually temporary.",
 		retry: 'Try again',
@@ -48,6 +50,8 @@ const en = {
 
 const pl: typeof en = {
 	backToSite: 'Wróć na stronę',
+	copied: 'Skopiowano',
+	copyFailed: 'Nie udało się skopiować',
 	error: {
 		description: 'Nie udało się wczytać tej strony. Zwykle to chwilowy problem.',
 		retry: 'Spróbuj ponownie',

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useTranslations } from 'use-intl'
+import { Alert } from '@/components/arc/alert/alert'
+import { Button } from '@/components/arc/button/button'
 import { Card } from '@/components/arc/card/card'
 import { AuthForm } from '@/components/AuthForm'
 import { OAuthSignIn } from '@/components/OAuthSignIn'
@@ -106,22 +108,14 @@ function LoginPage() {
 						<hr className='flex-1' />
 					</div>
 					<AuthForm mode={mode} plan={plan} lastUsed={lastMethod === 'email'} />
-					{error && (
-						<p role='alert' className='text-center text-sm text-destructive'>
-							{errorMessage}
-						</p>
-					)}
+					{error && <Alert tone='danger' title={errorMessage} />}
 					{signupEnabled ? (
-						<button
-							type='button'
-							onClick={() => setMode(isSignup ? 'login' : 'signup')}
-							className='text-center text-sm text-muted-foreground'
-						>
+						<Button type='button' variant='ghost' onClick={() => setMode(isSignup ? 'login' : 'signup')}>
 							{isSignup ? t('haveAccount') : t('noAccount')}
-							<span className='font-medium text-foreground underline underline-offset-4'>
+							<span className='text-foreground underline underline-offset-4'>
 								{isSignup ? t('title') : t('createOne')}
 							</span>
-						</button>
+						</Button>
 					) : (
 						!error && <p className='text-center text-sm text-muted-foreground'>{t('signupsOff')}</p>
 					)}

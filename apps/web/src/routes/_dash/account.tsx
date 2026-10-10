@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { KeyRound } from 'lucide-react'
 import { useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
+import { Alert } from '@/components/arc/alert/alert'
 import { Button } from '@/components/arc/button/button'
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/arc/dialog/dialog'
 import { Select } from '@/components/arc/select/select'
@@ -240,11 +241,7 @@ function SignInMethods({
 
 	return (
 		<div>
-			{linkError && (
-				<p role='alert' className='pb-3 text-sm text-destructive'>
-					{t(linkErrorKey(linkError), { email })}
-				</p>
-			)}
+			{linkError && <Alert tone='danger' title={t(linkErrorKey(linkError), { email })} className='mb-3' />}
 			<div className='flex flex-col divide-y border-y'>
 				{PROVIDER_IDS.map(id => {
 					const linked = connected.find(row => row.providerId === id)
