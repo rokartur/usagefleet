@@ -60,6 +60,14 @@ export function toDate(v: string | null | undefined): Date | null {
 	return Number.isNaN(d.getTime()) ? null : d
 }
 
+/** Whether two reset stamps name the same reset; oauth/usage jitters them by under a second. */
+export function sameReset(a: string | null, b: string | null): boolean {
+	if (a === null || b === null) {
+		return a === b
+	}
+	return Math.abs(Date.parse(a) - Date.parse(b)) < 60_000
+}
+
 /** The window fields of a limits report, as the collector sends them. */
 interface WindowReport {
 	fiveHourPct?: number | null

@@ -12,7 +12,7 @@ import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO } from '@/lib/data'
 import { formatPct, formatPctNumber, formatRelative, formatTokens, formatUsd } from '@/lib/format'
 import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
 import type { ModelUsage } from '@/lib/usage'
-import { billableTokens, LIMITS_STALE_MS } from '@/lib/usage'
+import { billableTokens, LIMITS_STALE_MS, sameReset } from '@/lib/usage'
 import { cn } from '@/lib/utils'
 
 const POLL_MS = 5000
@@ -449,7 +449,7 @@ function ModelLimitRow({ limit, weeklyResetsAt }: { limit: ModelLimitDTO; weekly
 			<span>{limit.label}</span>
 			<UsageBar pct={limit.pct} className='w-24' />
 			<span className={cn('font-medium tabular-nums', overrun(limit.pct))}>{formatPct(limit.pct)}</span>
-			{limit.resetsAt !== weeklyResetsAt && (
+			{!sameReset(limit.resetsAt, weeklyResetsAt) && (
 				<span className='text-xs text-muted-foreground'>
 					<ResetCountdown resetsAt={limit.resetsAt} />
 				</span>
