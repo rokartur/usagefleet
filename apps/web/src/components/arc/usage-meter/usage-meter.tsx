@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { KeyboardEvent, PointerEvent } from 'react'
+import type { PointerEvent } from 'react'
 import { CircleAlert, TriangleAlert } from 'lucide-react'
 import {
 	AnimatePresence,
@@ -45,9 +45,8 @@ const styles = {
 	overTint:
 		'fill-(--danger) opacity-0 transition-opacity duration-(--duration-fast) ease-(--ease-standard) group-data-[highlight=on]/over:opacity-100 motion-reduce:transition-none',
 	limit: 'pointer-events-none absolute inset-y-0 -left-px w-0.5 rounded-[1px] bg-(--foreground)',
-	// The legend doubles as the keyboard path: arrow keys move between categories, focus previews one, a press pins it.
 	legend: '-mx-2 grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-x-3',
-	item: 'flex min-w-0 items-center justify-between gap-3 rounded-[calc(var(--radius-control)-2px)] px-2 py-1 text-left [-webkit-tap-highlight-color:transparent] transition-[background-color,opacity] duration-(--duration-fast) ease-(--ease-standard) hover:bg-(--surface-muted) aria-pressed:bg-(--surface-muted) data-[highlight=off]:opacity-45 motion-reduce:transition-none',
+	item: 'flex min-w-0 items-center justify-between gap-3 px-2 py-1 transition-opacity duration-(--duration-fast) ease-(--ease-standard) data-[highlight=off]:opacity-45 motion-reduce:transition-none',
 	itemHead: 'flex min-w-0 flex-1 items-center gap-2 text-sm leading-(--leading-body) text-(--text-secondary)',
 	itemLabel: 'min-w-0 flex-1',
 	key: 'grid size-3 flex-none place-items-center',
@@ -575,11 +574,8 @@ export function UsageMeter({
 		return soon(() => animate(shownLimit, limit, settle))
 	}, [limit, reduced, shownLimit])
 
-	// Hover previews a category, focus previews it too, and a press pins it until pressed again or Escape.
-	const [hovered, setHovered] = useState<string | null>(null)
-	const [focused, setFocused] = useState<string | null>(null)
-	const [pinned, setPinned] = useState<string | null>(null)
-	const [roving, setRoving] = useState(0)
+	// Hover only: a pinned highlight outlived the pointer and left the headline showing one group as the total.
+	const [active, setActive] = useState<string | null>(null)
 	const items = [
 		...segments.map(segment => ({
 			id: segment.id,
@@ -594,9 +590,7 @@ export function UsageMeter({
 			color: undefined,
 		},
 	]
-	const active = hovered ?? focused ?? pinned
 	const activeItem = items.find(item => item.id === active) ?? null
-	const legend = useRef<HTMLDivElement>(null)
 
 	const idAt = (clientX: number) => {
 		const rect = trackRef.current?.getBoundingClientRect()
@@ -619,40 +613,8 @@ export function UsageMeter({
 	}
 	const onTrackMove = (event: PointerEvent<HTMLDivElement>) => {
 		if (event.pointerType === 'mouse') {
-			setHovered(idAt(event.clientX))
+			setActive(idAt(event.clientX))
 		}
-	}
-	const onTrackTap = (event: PointerEvent<HTMLDivElement>) => {
-		if (event.pointerType !== 'mouse') {
-			const id = idAt(event.clientX)
-			setPinned(current => (current === id ? null : id))
-		}
-	}
-	const onLegendKey = (event: KeyboardEvent<HTMLDivElement>) => {
-		if (event.key === 'Escape') {
-			if (pinned || focused) {
-				event.preventDefault()
-				setPinned(null)
-			}
-			return
-		}
-		const next = (
-			{
-				ArrowRight: roving + 1,
-				ArrowDown: roving + 1,
-				ArrowLeft: roving - 1,
-				ArrowUp: roving - 1,
-				Home: 0,
-				End: items.length - 1,
-			} as Record<string, number>
-		)[event.key]
-		if (next === undefined) {
-			return
-		}
-		event.preventDefault()
-		const index = (next + items.length) % items.length
-		setRoving(index)
-		legend.current?.querySelectorAll<HTMLButtonElement>('button')[index]?.focus()
 	}
 
 	const headline = ready ? (activeItem ? activeItem.value : total) : 0
@@ -709,8 +671,7 @@ export function UsageMeter({
 					aria-label={summary}
 					data-active={active ?? undefined}
 					onPointerMove={onTrackMove}
-					onPointerLeave={() => setHovered(null)}
-					onPointerUp={onTrackTap}
+					onPointerLeave={() => setActive(null)}
 				>
 					{segments.map((segment, index) => (
 						<Segment
@@ -752,46 +713,28 @@ export function UsageMeter({
 					aria-hidden='true'
 				/>
 			</div>
-			<div
-				ref={legend}
-				className={styles.legend}
-				role='group'
-				aria-label={messages.byCategory(label)}
-				onKeyDown={onLegendKey}
-			>
+			<div className={styles.legend} role='group' aria-label={messages.byCategory(label)}>
 				{items.map((item, index) => {
 					const warning = item.id === 'free' && status === 'over'
 					return (
-						<button
+						<div
 							key={item.id}
-							type='button'
 							className={styles.item}
 							data-highlight={active ? (active === item.id ? 'on' : 'off') : undefined}
-							aria-pressed={pinned === item.id}
-							aria-label={`${item.label}, ${format(item.value)}`}
-							tabIndex={index === roving ? 0 : -1}
-							onClick={() => {
-								setRoving(index)
-								setPinned(current => (current === item.id ? null : item.id))
-							}}
-							onFocus={() => {
-								setRoving(index)
-								setFocused(item.id)
-							}}
-							onBlur={() => setFocused(null)}
 							onPointerEnter={event => {
 								if (event.pointerType === 'mouse') {
-									setHovered(item.id)
+									setActive(item.id)
 								}
 							}}
 							onPointerLeave={event => {
 								if (event.pointerType === 'mouse') {
-									setHovered(null)
+									setActive(null)
 								}
 							}}
 						>
-							<span className={styles.itemHead}>
-								<span className={styles.key} aria-hidden='true'>
+							<span className={styles.srOnly}>{`${item.label}, ${format(item.value)}`}</span>
+							<span className={styles.itemHead} aria-hidden='true'>
+								<span className={styles.key}>
 									<AnimatePresence mode='popLayout' initial={false}>
 										{warning ? (
 											<motion.span
@@ -822,11 +765,11 @@ export function UsageMeter({
 									<Swap text={item.label} reduced={reduced} />
 								</span>
 							</span>
-							<span className={styles.itemValue}>
+							<span className={styles.itemValue} aria-hidden='true'>
 								<Ticker value={item.value} decimals={decimals} locale={locale} reduced={reduced} />
 								{unit && <span className={styles.itemUnit}>{unit}</span>}
 							</span>
-						</button>
+						</div>
 					)
 				})}
 			</div>
