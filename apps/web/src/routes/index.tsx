@@ -7,12 +7,15 @@ import type { Variants } from 'motion/react'
 import { motion, MotionConfig, useScroll, useTransform } from 'motion/react'
 import { createTranslator, useLocale, useTranslations } from 'use-intl'
 import { Accordion } from '@/components/arc/accordion/accordion'
+import { AnimatedCounter } from '@/components/arc/animated-counter/animated-counter'
+import { Badge } from '@/components/arc/badge/badge'
 import { buttonClassName } from '@/components/arc/button/button'
 import { CopyButton } from '@/components/arc/copy-button/copy-button'
 import SegmentedControl from '@/components/arc/segmented-control/segmented-control'
-import { OrbitMark } from '@/components/orbit-mark'
+import { GroupDot, Meter, SliceBar } from '@/components/LiveDashboard'
 import { SiteFooter } from '@/components/site-footer'
 import { UsageFleetMark } from '@/components/usage-fleet-mark'
+import { formatTokens, formatUsd } from '@/lib/format'
 import { detectLocale, LOCALE_CURRENCY } from '@/lib/i18n'
 import type { Locale } from '@/lib/i18n'
 import { formatPlanPrice, FREE_DEVICES, PLANS, planPriceCents } from '@/lib/plans'
@@ -114,18 +117,17 @@ export const Route = createFileRoute('/')({
 	component: Landing,
 })
 
-/** Illustrative dashboard row: what one account's groups look like mid window.
- *  `tokens` is in millions so the account row can add it up instead of carrying
- *  a hardcoded sum that goes stale the moment these numbers are edited. */
+/** Sample account mid window. `session` and `weekly` are each group's use of
+ *  its own slice, as the dashboard reports them; `costUsd` is this week's spend. */
 const EXAMPLE_GROUPS = [
 	// Hexes are straight out of lib/group-colors, so the mockup can only show a
 	// dot a real group could actually be wearing.
-	{ name: 'laptops', color: '#6366f1', devices: 3, session: 62, weekly: 41, tokens: 4.2 },
-	{ name: 'workDesktops', color: '#10b981', devices: 2, session: 23, weekly: 18, tokens: 1.6 },
-	{ name: 'homeServer', color: '#06b6d4', devices: 1, session: 9, weekly: 6, tokens: 0.5 },
+	{ name: 'laptops', color: '#6366f1', devices: 3, session: 62, weekly: 41, tokens: 4_200_000, costUsd: 21.4 },
+	{ name: 'workDesktops', color: '#10b981', devices: 2, session: 23, weekly: 18, tokens: 1_600_000, costUsd: 8.1 },
+	{ name: 'homeServer', color: '#06b6d4', devices: 1, session: 9, weekly: 6, tokens: 500_000, costUsd: 2.12 },
 ] as const
 
-const millions = (value: number) => `${value.toFixed(1)}M`
+const EXAMPLE_MONTH_USD = 128.35
 
 /** One published package, whichever manager the machine already has. npm goes
  *  first: it ships with the Node the collector needs anyway. */
@@ -143,15 +145,13 @@ const MANAGERS = Object.keys(INSTALL_COMMANDS) as PackageManager[]
  *  the real one is generated per device on the Devices page. Only the number
  *  and the command are fixed; the prose is a message key. */
 const STEPS = [
-	{ n: '01', key: 'install', command: INSTALL_COMMANDS.npm },
-	{ n: '02', key: 'pair', command: 'usagefleet login <token>' },
-	{ n: '03', key: 'leave', command: 'usagefleet status' },
+	{ n: 1, key: 'install', command: INSTALL_COMMANDS.npm },
+	{ n: 2, key: 'pair', command: 'usagefleet login <token>' },
+	{ n: 3, key: 'leave', command: 'usagefleet status' },
 ] as const
 
-// The label stays English: it is the machine-side vocabulary, same as the
-// commands above. Keep `privacy` in step with the collector payload
-// (apps/cli/src/types.ts): it also uploads cwd, git branch, hostname, model
-// and session id.
+// Keep `privacy` in step with the collector payload (apps/cli/src/types.ts):
+// it also uploads cwd, git branch, hostname, model and session id.
 const SPECS = ['source', 'split', 'privacy'] as const
 
 /** Max groups always equals the plan's device cap, so one number drives both
@@ -225,26 +225,6 @@ function customTier(prices: PlanPrices, locale: Locale): Tier {
 		devices: PLANS.custom.minDevices,
 		highlight: false,
 	}
-}
-
-const sums = EXAMPLE_GROUPS.reduce(
-	(sum, g) => ({
-		devices: sum.devices + g.devices,
-		session: sum.session + g.session,
-		weekly: sum.weekly + g.weekly,
-		tokens: sum.tokens + g.tokens,
-	}),
-	{ devices: 0, session: 0, weekly: 0, tokens: 0 },
-)
-
-/** Devices and tokens add up, percentages do not: a group's percentage is
- *  measured against its own 1/N slice of the account, so each one contributes
- *  only 1/N of the account figure and the account row is their mean. Summing
- *  them would show 94% for an account actually sitting at 31%. */
-const account = {
-	...sums,
-	session: Math.round(sums.session / EXAMPLE_GROUPS.length),
-	weekly: Math.round(sums.weekly / EXAMPLE_GROUPS.length),
 }
 
 // ─── Motion language ─────────────────────────────────────────────────────────
@@ -345,29 +325,19 @@ function Landing() {
 				</header>
 
 				<div className='mx-auto w-full max-w-7xl px-6'>
-					{/* isolate, so the mark's -z-10 lands behind the hero copy and not
-					    behind the page background, where it would vanish. */}
-					<section id='top' ref={heroRef} className='relative isolate pt-16 sm:pt-24'>
-						{/* Out of flow and behind the copy: decorative, and the only thing on
-						    the page that repaints every frame, so a phone skips it. */}
-						<motion.div
-							className='absolute right-0 bottom-0 -z-10 hidden lg:block'
-							initial={{ opacity: 0, filter: 'blur(10px)' }}
-							animate={{ opacity: 1, filter: 'blur(0px)' }}
-							transition={{ delay: 0.24, duration: 1, ease: EASE_OUT }}
-						>
-							<OrbitMark className='w-[210px]' />
-						</motion.div>
+					<section id='top' ref={heroRef} className='pt-20 sm:pt-28'>
 						{/* The copy drifts up and dims as the page scrolls past it, so the
 						    dashboard below arrives into a settled frame. */}
-						<motion.div style={{ y: heroY, opacity: heroOpacity }}>
-							{/* One line from the small breakpoint up: the clamp is sized so the
-							    32 characters still clear the container at its 1280px cap. */}
-							<h1 className='text-[clamp(1.6rem,4.1vw,3.75rem)] leading-[1] font-semibold tracking-[-0.045em]'>
+						<motion.div
+							style={{ y: heroY, opacity: heroOpacity }}
+							className='flex flex-col items-center text-center'
+						>
+							<h1 className='text-[clamp(2.1rem,7vw,4.75rem)] leading-[1.02] font-semibold tracking-[-0.045em]'>
 								{/* Word by word out of a blur: the one piece of choreography on
 								    the page, and it only plays once, on load. */}
 								<Word delay={0.06}>{t('hero.headline.one')}</Word>{' '}
-								<Word delay={0.16}>{t('hero.headline.subscription')}</Word>{' '}
+								<Word delay={0.16}>{t('hero.headline.subscription')}</Word>
+								<br />
 								<Word delay={0.26} className='text-muted-foreground'>
 									{t('hero.headline.many')}
 								</Word>{' '}
@@ -376,7 +346,7 @@ function Landing() {
 								</Word>
 							</h1>
 							<motion.p
-								className='mt-6 text-[15px] text-muted-foreground'
+								className='mt-6 max-w-[52ch] text-lg text-muted-foreground'
 								initial={{ opacity: 0, y: 8 }}
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.44, duration: 0.45, ease: EASE_OUT }}
@@ -384,7 +354,7 @@ function Landing() {
 								{t('hero.lead')}
 							</motion.p>
 							<motion.div
-								className='mt-8 flex flex-wrap items-center gap-3'
+								className='mt-8 flex w-full flex-wrap items-center justify-center gap-3'
 								initial={{ opacity: 0, y: 8 }}
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.56, duration: 0.45, ease: EASE_OUT }}
@@ -393,7 +363,7 @@ function Landing() {
 								<InstallPicker />
 							</motion.div>
 							<motion.ul
-								className='mt-5 flex flex-wrap gap-x-6 gap-y-2 font-mono text-[11.5px] text-muted-foreground/70'
+								className='mt-5 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground'
 								initial={{ opacity: 0 }}
 								animate={{ opacity: 1 }}
 								transition={{ delay: 0.72, duration: 0.5, ease: EASE_OUT }}
@@ -401,7 +371,7 @@ function Landing() {
 								{(['setup', 'prompts'] as const).map(badge => (
 									<li
 										key={badge}
-										className='flex items-center gap-2 before:size-[3px] before:rounded-full before:bg-current'
+										className='flex items-center gap-2 before:size-1 before:rounded-full before:bg-current'
 									>
 										{t(`hero.badges.${badge}`)}
 									</li>
@@ -410,11 +380,16 @@ function Landing() {
 						</motion.div>
 					</section>
 
-					<Reveal className='mt-12'>
+					<Reveal className='relative mt-16 sm:mt-20'>
 						<DashboardMockup />
+						{/* The app rises out of the page instead of ending on a hard edge. */}
+						<div
+							className='pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-linear-to-b from-transparent to-background'
+							aria-hidden
+						/>
 					</Reveal>
 
-					<section id='how' className='scroll-mt-20 border-t border-border py-20'>
+					<section id='how' className='scroll-mt-20 pt-28 sm:pt-36'>
 						<SectionHead
 							title={
 								<>
@@ -425,54 +400,49 @@ function Landing() {
 							}
 							lead={t('how.lead')}
 						/>
-						{/* bg-border showing through the gap is what draws the hairline. */}
-						<div className='overflow-hidden rounded-xl border border-border bg-border'>
-							<Stagger className='grid gap-px sm:grid-cols-3'>
-								{STEPS.map(step => (
-									<motion.div
-										key={step.n}
-										data-reveal
-										variants={RISE_ITEM}
-										className='bg-background px-5 py-6 transition-colors hover:bg-muted/40'
-									>
-										<span className='font-mono text-[11px] text-muted-foreground/70'>{step.n}</span>
-										<h3 className='mt-3.5 text-lg font-medium tracking-tight'>
-											{t(`how.steps.${step.key}.title`)}
-										</h3>
-										<p className='mt-2.5 text-sm leading-relaxed text-muted-foreground'>
-											{t(`how.steps.${step.key}.body`)}
-										</p>
-										<code className='mt-3.5 block overflow-x-auto font-mono text-xs whitespace-nowrap text-muted-foreground/70'>
-											{step.command}
-										</code>
-									</motion.div>
-								))}
-							</Stagger>
-							{/* What the collector actually does, in the same panel as the setup
-							    steps: it is the same story, and it did not need a heading of its
-							    own to say so. */}
-							<Stagger className='grid gap-px'>
-								{SPECS.map(spec => (
-									<motion.div
-										key={spec}
-										data-reveal
-										variants={RISE_ITEM}
-										className='grid gap-x-7 gap-y-1 bg-background px-5 py-4 transition-colors hover:bg-muted/40 sm:grid-cols-[90px_1fr]'
-									>
-										<span className='font-mono text-xs text-muted-foreground/70'>{spec}</span>
-										<p className='text-sm leading-relaxed text-muted-foreground'>
-											<span className='font-medium text-foreground'>
-												{t(`how.specs.${spec}.title`)}.
-											</span>{' '}
-											{t(`how.specs.${spec}.body`)}
-										</p>
-									</motion.div>
-								))}
-							</Stagger>
-						</div>
+						<Stagger className='grid gap-4 sm:grid-cols-3'>
+							{STEPS.map(step => (
+								<motion.div
+									key={step.n}
+									data-reveal
+									variants={RISE_ITEM}
+									className='flex flex-col gap-3 rounded-(--radius-surface) border bg-surface p-6'
+								>
+									<span className='grid size-8 place-items-center rounded-full bg-muted text-sm text-muted-foreground tabular-nums'>
+										{step.n}
+									</span>
+									<h3 className='mt-1 text-lg font-medium tracking-tight'>
+										{t(`how.steps.${step.key}.title`)}
+									</h3>
+									<p className='text-sm leading-relaxed text-muted-foreground'>
+										{t(`how.steps.${step.key}.body`)}
+									</p>
+									<code className='mt-auto block overflow-x-auto pt-1 font-mono text-xs whitespace-nowrap text-muted-foreground'>
+										{step.command}
+									</code>
+								</motion.div>
+							))}
+						</Stagger>
+						{/* What the collector actually does: the same story as the steps, so
+						    it follows them without a heading of its own. */}
+						<Stagger className='mt-12 grid gap-8 sm:grid-cols-3'>
+							{SPECS.map(spec => (
+								<motion.div
+									key={spec}
+									data-reveal
+									variants={RISE_ITEM}
+									className='flex flex-col gap-1.5'
+								>
+									<h3 className='font-medium'>{t(`how.specs.${spec}.title`)}</h3>
+									<p className='text-sm leading-relaxed text-muted-foreground'>
+										{t(`how.specs.${spec}.body`)}
+									</p>
+								</motion.div>
+							))}
+						</Stagger>
 					</section>
 
-					<section id='pricing' className='scroll-mt-20 border-t border-border py-20'>
+					<section id='pricing' className='scroll-mt-20 pt-28 sm:pt-36'>
 						<SectionHead
 							title={
 								<>
@@ -483,99 +453,93 @@ function Landing() {
 							}
 							lead={t('pricing.lead')}
 						/>
-						<div className='overflow-hidden rounded-xl border border-border bg-border'>
-							{/* Custom rides in the grid as a fourth column instead of a stranded
-							    row below it: same five lines as the rest, its price is just per
-							    device. */}
-							<Stagger className='grid gap-px sm:grid-cols-2 lg:grid-cols-4'>
-								{tiers.map(tier => (
-									<motion.div
-										key={tier.plan}
-										data-reveal
-										variants={RISE_ITEM}
-										// No fill on the recommended tier: its solid button already says
-										// it, and a grey panel sitting there from the first paint reads
-										// as a disabled card rather than the pick.
-										className='flex flex-col gap-3.5 bg-background px-5 py-5 transition-colors hover:bg-muted/40'
-									>
-										<div className='flex items-baseline justify-between gap-2'>
-											<span className='font-medium tracking-tight'>{tier.plan}</span>
-											<span className='truncate font-mono text-[11px] text-muted-foreground/70'>
-												{tier.note}
+						{/* Custom rides in the grid as a fourth column instead of a stranded
+						    row below it: same lines as the rest, its price is just per device. */}
+						<Stagger className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
+							{tiers.map(tier => (
+								<motion.div
+									key={tier.plan}
+									data-reveal
+									variants={RISE_ITEM}
+									className={cn(
+										'flex flex-col gap-4 rounded-(--radius-surface) border bg-surface p-6',
+										tier.highlight && 'border-(--border-strong) bg-muted',
+									)}
+								>
+									<div className='flex items-center justify-between gap-2'>
+										<span className='text-lg font-medium tracking-tight'>{tier.plan}</span>
+										{tier.highlight ? (
+											<Badge size='sm'>{tier.note}</Badge>
+										) : (
+											<span className='truncate text-xs text-muted-foreground'>{tier.note}</span>
+										)}
+									</div>
+									<div className='flex items-baseline text-4xl leading-none font-semibold tracking-[-0.03em] tabular-nums'>
+										<RollIn text={tier.price} />
+										{tier.period && (
+											<span className='ml-1.5 text-sm font-normal tracking-normal text-muted-foreground'>
+												{tier.period}
 											</span>
-										</div>
-										<div className='flex items-baseline font-mono text-[2.1rem] leading-none tracking-[-0.045em]'>
-											<RollIn text={tier.price} />
-											{tier.period && (
-												<span className='ml-1.5 text-[11px] tracking-normal text-muted-foreground/70'>
-													{tier.period}
-												</span>
-											)}
-										</div>
-										<ul className='flex flex-col gap-1.5 text-sm text-muted-foreground'>
-											<li>
-												<b className='font-mono font-medium text-foreground'>{tier.devices}</b>
-												{tier.id === 'custom' ? (
-													<>
-														{t('pricing.rangeTo')}
-														<b className='font-mono font-medium text-foreground'>
-															{PLANS.custom.maxDevices}
-														</b>
-													</>
-												) : null}{' '}
-												{/* Custom shows a range, so the noun has to agree with the
-												    number the reader ends on, not with the floor. */}
-												{t('pricing.devices', {
-													count:
-														tier.id === 'custom' ? PLANS.custom.maxDevices : tier.devices,
-												})}
-											</li>
-											<li>
-												{tier.id === 'custom' ? (
-													t('pricing.asManyGroups')
-												) : (
-													<>
-														<b className='font-mono font-medium text-foreground'>
-															{tier.devices}
-														</b>{' '}
-														{t('pricing.groups', { count: tier.devices })}
-													</>
-												)}
-											</li>
-										</ul>
-										{/* /login drops ?plan= for anyone already signed in, so send
-										    them straight to the page that acts on it. */}
-										<Link
-											to={signedIn ? '/account' : '/login'}
-											search={tier.id ? { plan: tier.id } : {}}
-											className={buttonClassName({
-												variant: tier.highlight ? 'primary' : 'secondary',
-												className: 'mt-auto w-full justify-center',
+										)}
+									</div>
+									<ul className='flex flex-col gap-1.5 text-sm text-muted-foreground'>
+										<li>
+											<b className='font-medium text-foreground tabular-nums'>{tier.devices}</b>
+											{tier.id === 'custom' ? (
+												<>
+													{t('pricing.rangeTo')}
+													<b className='font-medium text-foreground tabular-nums'>
+														{PLANS.custom.maxDevices}
+													</b>
+												</>
+											) : null}{' '}
+											{/* Custom shows a range, so the noun has to agree with the
+											    number the reader ends on, not with the floor. */}
+											{t('pricing.devices', {
+												count: tier.id === 'custom' ? PLANS.custom.maxDevices : tier.devices,
 											})}
-										>
-											{tier.highlight
-												? t('pricing.choose', { plan: tier.plan })
-												: t('pricing.start', { plan: tier.plan })}
-										</Link>
-									</motion.div>
-								))}
-							</Stagger>
-
-							{/* The plans differ in device and group count and nothing else, so
-							    the shared half is stated once instead of as an "everything in the
-							    tier below" chain up the columns. */}
-							<Reveal className='mt-px flex flex-wrap items-baseline gap-x-6 gap-y-2 bg-background px-5 py-4'>
-								<span className='font-mono text-[11px] text-muted-foreground/70'>
-									{t('pricing.everyPlan')}
-								</span>
-								<span className='text-sm text-muted-foreground'>{t('pricing.everyPlanBody')}</span>
-							</Reveal>
-						</div>
+										</li>
+										<li>
+											{tier.id === 'custom' ? (
+												t('pricing.asManyGroups')
+											) : (
+												<>
+													<b className='font-medium text-foreground tabular-nums'>
+														{tier.devices}
+													</b>{' '}
+													{t('pricing.groups', { count: tier.devices })}
+												</>
+											)}
+										</li>
+									</ul>
+									{/* /login drops ?plan= for anyone already signed in, so send
+									    them straight to the page that acts on it. */}
+									<Link
+										to={signedIn ? '/account' : '/login'}
+										search={tier.id ? { plan: tier.id } : {}}
+										className={buttonClassName({
+											variant: tier.highlight ? 'primary' : 'secondary',
+											className: 'mt-auto w-full justify-center',
+										})}
+									>
+										{tier.highlight
+											? t('pricing.choose', { plan: tier.plan })
+											: t('pricing.start', { plan: tier.plan })}
+									</Link>
+								</motion.div>
+							))}
+						</Stagger>
+						{/* The plans differ in device and group count and nothing else, so
+						    the shared half is stated once under all of them. */}
+						<Reveal className='mt-6 text-center text-sm text-muted-foreground'>
+							<span className='font-medium text-foreground'>{t('pricing.everyPlan')}:</span>{' '}
+							{t('pricing.everyPlanBody')}
+						</Reveal>
 					</section>
 
-					<section id='faq' className='scroll-mt-20 border-t border-border py-20'>
+					<section id='faq' className='scroll-mt-20 pt-28 sm:pt-36'>
 						<SectionHead title={t('faq.title')} />
-						<Reveal>
+						<Reveal className='mx-auto max-w-3xl'>
 							<Accordion
 								size='lg'
 								items={FAQ.map(key => ({
@@ -587,9 +551,11 @@ function Landing() {
 						</Reveal>
 					</section>
 
-					<section className='border-t border-border py-20'>
-						<Reveal className='flex flex-wrap items-center justify-between gap-5'>
-							<h2 className='max-w-[20ch] text-3xl font-semibold tracking-[-0.03em]'>{t('cta.title')}</h2>
+					<section className='py-28 sm:py-36'>
+						<Reveal className='flex flex-col items-center gap-6 rounded-(--radius-panel) border bg-surface px-6 py-16 text-center sm:py-20'>
+							<h2 className='max-w-[22ch] text-3xl leading-[1.05] font-semibold tracking-[-0.03em] sm:text-4xl'>
+								{t('cta.title')}
+							</h2>
 							<PrimaryCta to={appHref} label={appLabel} />
 						</Reveal>
 					</section>
@@ -727,14 +693,14 @@ function InstallPicker() {
 	const command = INSTALL_COMMANDS[manager]
 
 	return (
-		<div className='flex w-full flex-col gap-2 font-mono text-[13px] sm:w-auto sm:flex-row sm:items-center'>
+		<div className='flex w-full flex-col items-center gap-2 sm:w-auto sm:flex-row'>
 			<SegmentedControl
 				label={t('manager')}
 				options={MANAGERS.map(name => ({ value: name, label: name }))}
 				value={manager}
 				onValueChange={setManager}
 			/>
-			<div className='flex h-9 min-w-0 items-center gap-2 rounded-(--radius-control) border pr-1 pl-3'>
+			<div className='flex h-11 min-w-0 items-center gap-2 self-stretch rounded-(--radius-control) border bg-surface pr-1.5 pl-4 font-mono text-[13px] sm:self-auto'>
 				{/* Widest command reserves the width, so switching manager never
 				    reflows the row the CTA sits in. Phones get a scroll instead. */}
 				<span className='min-w-0 flex-1 overflow-x-auto whitespace-nowrap sm:w-[29ch] sm:flex-none'>
@@ -759,14 +725,14 @@ function InstallPicker() {
 	)
 }
 
-/** The heading leads, the lead paragraph follows a beat later. */
+/** Centered: the heading leads, the lead paragraph follows a beat later. */
 function SectionHead({ title, lead }: { title: ReactNode; lead?: string }) {
 	return (
-		<Stagger className='mb-11 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between'>
+		<Stagger className='mb-12 flex flex-col items-center gap-5 text-center'>
 			<motion.h2
 				data-reveal
 				variants={RISE_ITEM}
-				className='text-4xl leading-[0.95] font-semibold tracking-[-0.04em] sm:text-5xl'
+				className='text-4xl leading-[1.02] font-semibold tracking-[-0.04em] sm:text-5xl'
 			>
 				{title}
 			</motion.h2>
@@ -774,7 +740,7 @@ function SectionHead({ title, lead }: { title: ReactNode; lead?: string }) {
 				<motion.p
 					data-reveal
 					variants={RISE_ITEM}
-					className='max-w-[40ch] text-sm leading-relaxed text-muted-foreground'
+					className='max-w-[52ch] text-base leading-relaxed text-muted-foreground'
 				>
 					{lead}
 				</motion.p>
@@ -783,154 +749,88 @@ function SectionHead({ title, lead }: { title: ReactNode; lead?: string }) {
 	)
 }
 
-/** Fills on the way in, from the left, once. The track carries the width so the
- *  bar animates on the compositor, and it is also what triggers: a bar scaled
- *  to zero has no area for the observer to see. */
-function Meter({ percent, className }: { percent: number; className?: string }) {
-	return (
-		<motion.span
-			data-reveal
-			className={cn('block h-1 rounded-full bg-foreground/10', className)}
-			initial='hidden'
-			whileInView='visible'
-			viewport={VIEWPORT}
-		>
-			<motion.span
-				className='block h-full w-full origin-left rounded-full bg-foreground'
-				variants={{
-					hidden: { scaleX: 0 },
-					visible: { scaleX: percent / 100, transition: { duration: 0.9, ease: EASE_OUT } },
-				}}
-			/>
-		</motion.span>
-	)
-}
-
-// ─── Dashboard mockup ────────────────────────────────────────────────────────
-// A stripped copy of the real /dashboard: the status line, the headline strip
-// of windows, the group table. Same numbers in the same places, none of the
-// controls. Keep it in step with components/LiveDashboard.tsx — a shot that
-// stops matching the product is worse than no shot.
-
-function GroupDot({ color }: { color: string }) {
-	return <span className='size-2 shrink-0 rounded-full' style={{ backgroundColor: color }} aria-hidden />
-}
-
-/** One window on one group: bar, budget percentage, tokens. */
-function WindowCell({ percent, tokens }: { percent: number; tokens?: number }) {
-	return (
-		<div className='flex items-center gap-3 text-sm'>
-			<Meter percent={percent} className='w-16 shrink-0' />
-			<span className='tabular-nums'>
-				~{percent}%
-				{tokens !== undefined && <span className='text-muted-foreground'> · {millions(tokens)}</span>}
-			</span>
-		</div>
-	)
-}
-
-/** One column of the headline strip: label, one big number, detail underneath. */
-function StatCell({ label, value, children }: { label: string; value: string; children?: ReactNode }) {
-	return (
-		<motion.div data-reveal variants={RISE_ITEM} className='flex flex-col gap-2 bg-background px-5 py-4'>
-			<div className='text-[11px] text-muted-foreground'>{label}</div>
-			<div className='text-2xl leading-none tabular-nums'>{value}</div>
-			{children}
-		</motion.div>
-	)
-}
-
-/** The account's own utilization for one window, split across the groups
- *  underneath it — the whole product in one cell. */
-function WindowStat({
-	label,
-	percent,
-	resets,
-	split,
-}: {
-	label: string
-	percent: number
-	resets: string
-	split: 'session' | 'weekly'
-}) {
-	const t = useTranslations('landing.mockup')
-	return (
-		<StatCell label={label} value={`${percent}%`}>
-			<Meter percent={percent} />
-			<div className='text-[11px] text-muted-foreground'>{resets}</div>
-			<div className='flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground'>
-				{EXAMPLE_GROUPS.map(group => (
-					<span key={group.name} className='flex min-w-0 items-center gap-1.5'>
-						<GroupDot color={group.color} />
-						<span className='truncate'>{t(`groupNames.${group.name}`)}</span>
-						<span className='text-foreground tabular-nums'>{group[split]}%</span>
-					</span>
-				))}
-			</div>
-		</StatCell>
-	)
-}
+// ─── Dashboard preview ───────────────────────────────────────────────────────
+// The "Current usage" section of /dashboard over sample data, drawn with the
+// dashboard's own Meter and SliceBar so the shot cannot drift from the product.
 
 function DashboardMockup() {
 	const t = useTranslations('landing.mockup')
+	const tDash = useTranslations('dash.overview')
+	const tUsage = useTranslations('dash.usage')
+	// A group's percentage is of its 1/N slice, so it adds 1/N of that to the account.
+	const split = (window: 'session' | 'weekly') =>
+		EXAMPLE_GROUPS.map(g => ({
+			color: g.color,
+			id: g.name,
+			label: t(`groupNames.${g.name}`),
+			value: g[window] / EXAMPLE_GROUPS.length,
+		}))
+	const session = split('session')
+	const weekly = split('weekly')
+	const total = (values: readonly number[]) => values.reduce((sum, v) => sum + v, 0)
+
 	return (
-		<div className='overflow-hidden rounded-xl border border-border'>
-			<div className='flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-5 py-3 text-xs text-muted-foreground'>
-				<span className='size-1.5 rounded-full bg-success' aria-hidden />
-				<span className='text-foreground'>{t('live')}</span>
-				{t('status')}
+		<div className='overflow-hidden rounded-(--radius-panel) border bg-surface'>
+			<div className='flex items-center gap-3 border-b px-5 py-3 text-xs text-muted-foreground'>
+				<span className='flex gap-1.5' aria-hidden>
+					<span className='size-2.5 rounded-full bg-muted' />
+					<span className='size-2.5 rounded-full bg-muted' />
+					<span className='size-2.5 rounded-full bg-muted' />
+				</span>
 				<span className='ml-auto'>{t('account')}</span>
 			</div>
-
-			{/* gap-px over bg-border is what draws the rules between the cells. */}
-			<Stagger className='grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-4'>
-				<WindowStat
-					label={t('session')}
-					percent={account.session}
-					resets={t('resetsSession')}
-					split='session'
-				/>
-				<WindowStat label={t('weekly')} percent={account.weekly} resets={t('resetsWeekly')} split='weekly' />
-				<StatCell label={t('devicesReporting')} value={String(account.devices)}>
-					<div className='text-[11px] text-muted-foreground'>
-						{t('acrossGroups', { count: EXAMPLE_GROUPS.length })}
-					</div>
-				</StatCell>
-				<StatCell label={t('tokens')} value={millions(account.tokens)}>
-					<div className='text-[11px] text-muted-foreground'>{t('billable')}</div>
-				</StatCell>
-			</Stagger>
-
-			<div className='border-t border-border px-5 py-4'>
-				<h3 className='text-[11px] font-medium tracking-wider text-muted-foreground uppercase'>
-					{t('groups')}
-				</h3>
-				<div className='mt-3 hidden grid-cols-[minmax(0,1.4fr)_repeat(2,minmax(0,1fr))] gap-4 text-[11px] text-muted-foreground sm:grid'>
-					<span>{t('group')}</span>
-					<span>{t('sessionShort')}</span>
-					<span>{t('weekly')}</span>
+			<div className='flex flex-col gap-8 p-5 sm:p-6'>
+				<div className='flex flex-wrap items-center justify-between gap-x-4 gap-y-2'>
+					<h3 className='text-base font-medium'>{tDash('currentUsage')}</h3>
+					<p className='flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
+						<Badge tone='success' size='sm'>
+							{t('live')}
+						</Badge>
+						{t('status')}
+					</p>
 				</div>
-				{/* Rows land one after another, the way the collector fills them. */}
-				<Stagger className='mt-1'>
-					{EXAMPLE_GROUPS.map(group => (
-						<motion.div
-							key={group.name}
-							data-reveal
-							variants={RISE_ITEM}
-							className='grid gap-x-4 gap-y-2 border-t border-border py-3 sm:grid-cols-[minmax(0,1.4fr)_repeat(2,minmax(0,1fr))] sm:items-center'
-						>
+				<div className='grid grid-cols-[repeat(auto-fit,minmax(15rem,1fr))] gap-x-8 gap-y-6'>
+					<Meter
+						label={tDash('fiveHourSession')}
+						pct={total(session.map(s => s.value))}
+						resets={t('resetsSession')}
+						segments={session}
+					/>
+					<Meter
+						label={tUsage('weekly')}
+						pct={total(weekly.map(s => s.value))}
+						resets={t('resetsWeekly')}
+						segments={weekly}
+					/>
+					<div className='flex min-w-0 flex-col gap-4'>
+						<p className='flex min-h-7 items-center text-base font-medium'>{tDash('spendWeek')}</p>
+						<AnimatedCounter
+							value={total(EXAMPLE_GROUPS.map(g => g.costUsd))}
+							prefix='$'
+							decimals={2}
+							animateOnView
+						/>
+						<p className='text-xs text-muted-foreground'>
+							{formatTokens(total(EXAMPLE_GROUPS.map(g => g.tokens)))} · {formatUsd(EXAMPLE_MONTH_USD)}{' '}
+							{tDash('month')}
+						</p>
+					</div>
+				</div>
+				<ul className='grid grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-3'>
+					{EXAMPLE_GROUPS.map(g => (
+						<li key={g.name} className='flex min-w-0 flex-col gap-3 rounded-(--radius-panel) border p-4'>
 							<div className='flex min-w-0 items-center gap-2 text-sm'>
-								<GroupDot color={group.color} />
-								<span className='truncate'>{t(`groupNames.${group.name}`)}</span>
-								<span className='shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums'>
-									{t('devices', { count: group.devices })}
+								<GroupDot color={g.color} />
+								<span className='truncate font-medium'>{t(`groupNames.${g.name}`)}</span>
+								<span className='ml-auto shrink-0 text-xs text-muted-foreground'>
+									{t('devices', { count: g.devices })}
 								</span>
 							</div>
-							<WindowCell percent={group.session} tokens={group.tokens} />
-							<WindowCell percent={group.weekly} />
-						</motion.div>
+							<SliceBar label='5h' pct={g.session} color={g.color} />
+							<SliceBar label={tDash('week')} pct={g.weekly} color={g.color} />
+						</li>
 					))}
-				</Stagger>
+				</ul>
 			</div>
 		</div>
 	)

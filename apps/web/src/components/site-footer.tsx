@@ -13,10 +13,13 @@ export function SiteFooter() {
 	const t = useTranslations('common.footer')
 
 	return (
-		<footer className='flex flex-wrap items-center justify-between gap-x-6 gap-y-4 border-t border-border py-5 pb-10 font-mono text-xs text-muted-foreground/70'>
-			<Link to='/' className='flex items-center gap-2 transition-colors hover:text-foreground'>
-				<UsageFleetMark className='size-3.5' />
-				USAGEFLEET
+		<footer className='flex flex-wrap items-center justify-between gap-x-6 gap-y-4 border-t border-border py-6 pb-10 text-sm text-muted-foreground'>
+			<Link
+				to='/'
+				className='flex items-center gap-2 font-medium text-foreground transition-opacity hover:opacity-70'
+			>
+				<UsageFleetMark className='size-4' />
+				UsageFleet
 			</Link>
 			<nav className='flex flex-wrap items-center gap-x-5 gap-y-2'>
 				<Link to='/privacy' className='transition-colors hover:text-foreground'>
@@ -37,7 +40,8 @@ export function SiteFooter() {
 					{t('npm')}
 				</a>
 			</nav>
-			<div className='flex items-center gap-2'>
+			{/* Wraps: the two switches side by side are wider than a 375px phone. */}
+			<div className='flex flex-wrap items-center gap-2'>
 				<LocaleToggle />
 				<ThemeToggle />
 			</div>

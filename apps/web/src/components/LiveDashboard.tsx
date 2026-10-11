@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { CheckIcon } from 'lucide-react'
@@ -25,7 +26,7 @@ import { cn } from '@/lib/utils'
 const POLL_MS = 5000
 
 /** Colored dot used for a group's identity across cards and tables. */
-function GroupDot({ color }: { color: string }) {
+export function GroupDot({ color }: { color: string }) {
 	return <span className='size-2 shrink-0 rounded-full' style={{ backgroundColor: color }} aria-hidden />
 }
 
@@ -301,7 +302,7 @@ export function LiveDashboard({
 					<Meter
 						label={t('fiveHourSession')}
 						pct={dash.fiveHourPct}
-						resetsAt={dash.fiveHourResetsAt}
+						resets={<ResetCountdown resetsAt={dash.fiveHourResetsAt} />}
 						segments={dash.groups.map(g => ({
 							color: g.color,
 							id: groupKey(g.groupId),
@@ -312,7 +313,7 @@ export function LiveDashboard({
 					<Meter
 						label={tUsage('weekly')}
 						pct={dash.sevenDayPct}
-						resetsAt={dash.sevenDayResetsAt}
+						resets={<ResetCountdown resetsAt={dash.sevenDayResetsAt} />}
 						segments={dash.groups.map(g => ({
 							color: g.color,
 							id: groupKey(g.groupId),
@@ -326,7 +327,7 @@ export function LiveDashboard({
 							key={limit.model}
 							label={limit.label}
 							pct={limit.pct}
-							resetsAt={limit.resetsAt}
+							resets={<ResetCountdown resetsAt={limit.resetsAt} />}
 							segments={[{ id: limit.model, label: limit.label, value: limit.pct }]}
 						/>
 					))}
@@ -376,16 +377,17 @@ function AccountSwitcher({
 
 /** One limit window: Anthropic's figure, cut into the groups' contributions.
  *  What they leave of it no collector's events explain: usage from outside the
- *  fleet (claude.ai, phone, a machine without the collector). */
-function Meter({
+ *  fleet (claude.ai, phone, a machine without the collector). The landing
+ *  preview draws it too, with a fixed reset line instead of a countdown. */
+export function Meter({
 	label,
 	pct,
-	resetsAt,
+	resets,
 	segments,
 }: {
 	label: string
 	pct: number
-	resetsAt: string | null
+	resets: ReactNode
 	segments: UsageMeterSegment[]
 }) {
 	const t = useTranslations('dash.usage')
@@ -421,9 +423,7 @@ function Meter({
 					usedOf: used => tMeter('usedOf', { used }),
 				}}
 			/>
-			<p className='text-xs text-muted-foreground'>
-				<ResetCountdown resetsAt={resetsAt} />
-			</p>
+			<p className='text-xs text-muted-foreground'>{resets}</p>
 		</div>
 	)
 }
@@ -624,7 +624,7 @@ function ModelRow({ model: m, maxTokens }: { model: ModelUsage; maxTokens: numbe
 	)
 }
 
-function SliceBar({ label, pct, color }: { label: string; pct: number; color: string }) {
+export function SliceBar({ label, pct, color }: { label: string; pct: number; color: string }) {
 	return (
 		<div className='flex items-center gap-2 text-xs'>
 			<span className='w-10 shrink-0 text-muted-foreground'>{label}</span>

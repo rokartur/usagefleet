@@ -64,33 +64,25 @@ const en = {
 		offerDevices: '{count, plural, one {# device} other {# devices}}',
 		title: 'Coding agent usage tracker for your whole fleet',
 	},
+	// The preview borrows the dashboard's own labels (dash.*); only what is sample data lives here.
 	mockup: {
 		account: 'example account',
-		acrossGroups: 'across {count, plural, one {# group} other {# groups}}',
-		billable: 'billable, folded per request',
 		devices: '{count, plural, one {# device} other {# devices}}',
-		devicesReporting: 'Devices reporting',
-		group: 'Group',
 		// Sample data, so these read as names a user would have typed themselves.
 		groupNames: { homeServer: 'Home server', laptops: 'Laptops', workDesktops: 'Work desktops' },
-		groups: 'Groups',
 		live: 'live',
-		resetsSession: 'resets in 02:14',
+		resetsSession: 'resets in 2h 14m',
 		resetsWeekly: 'resets Mon 09:00',
-		session: '5-hour session',
-		sessionShort: 'Session (5h)',
-		status: '· subscription · updated 12s ago',
-		tokens: 'Tokens, this session',
-		weekly: 'Weekly',
+		status: 'subscription · updated 12s ago',
 	},
 	nav: { app: 'Dashboard', faq: 'FAQ', how: 'How it works', pricing: 'Pricing', signIn: 'Sign in' },
 	pricing: {
 		asManyGroups: 'as many groups',
 		choose: 'Choose {plan}',
-		// No `#`: the pricing table renders the number itself so it can keep its
-		// mono/bold styling, and passes `count` only to pick the right form.
+		// No `#`: the pricing cards render the number themselves so it can stay
+		// bold, and pass `count` only to pick the right form.
 		devices: '{count, plural, one {device} other {devices}}',
-		everyPlan: 'in every plan',
+		everyPlan: 'Every plan',
 		everyPlanBody:
 			'Live 5h and weekly windows, the per group split, per model breakdown, history, and the prompt guard.',
 		groups: '{count, plural, one {group} other {groups}}',
@@ -171,28 +163,19 @@ const pl: typeof en = {
 	},
 	mockup: {
 		account: 'konto przykładowe',
-		acrossGroups: 'w {count, plural, one {# grupie} few {# grupach} many {# grupach} other {# grupach}}',
-		billable: 'płatne, składane per żądanie',
 		devices: '{count, plural, one {# urządzenie} few {# urządzenia} many {# urządzeń} other {# urządzenia}}',
-		devicesReporting: 'Raportujące urządzenia',
-		group: 'Grupa',
 		groupNames: { homeServer: 'Serwer domowy', laptops: 'Laptopy', workDesktops: 'Komputery służbowe' },
-		groups: 'Grupy',
 		live: 'na żywo',
-		resetsSession: 'reset za 02:14',
+		resetsSession: 'reset za 2 h 14 min',
 		resetsWeekly: 'reset w pon. 09:00',
-		session: 'Sesja 5-godzinna',
-		sessionShort: 'Sesja (5h)',
-		status: '· subskrypcja · aktualizacja 12 s temu',
-		tokens: 'Tokeny w tej sesji',
-		weekly: 'Tygodniowe',
+		status: 'subskrypcja · aktualizacja 12 s temu',
 	},
 	nav: { app: 'Pulpit', faq: 'FAQ', how: 'Jak to działa', pricing: 'Cennik', signIn: 'Zaloguj się' },
 	pricing: {
 		asManyGroups: 'dowolnie wiele grup',
 		choose: 'Wybierz {plan}',
 		devices: '{count, plural, one {urządzenie} few {urządzenia} many {urządzeń} other {urządzenia}}',
-		everyPlan: 'w każdym planie',
+		everyPlan: 'Każdy plan',
 		everyPlanBody:
 			'Okna 5-godzinne i tygodniowe na żywo, podział na grupy, rozbicie na modele, historia i strażnik promptów.',
 		groups: '{count, plural, one {grupa} few {grupy} many {grup} other {grupy}}',

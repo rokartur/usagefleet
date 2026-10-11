@@ -9,7 +9,7 @@ const en = {
 		retry: 'Try again',
 		title: 'Something went wrong',
 	},
-	footer: { github: 'GITHUB', npm: 'NPM', privacy: 'PRIVACY', terms: 'TERMS' },
+	footer: { github: 'GitHub', npm: 'npm', privacy: 'Privacy', terms: 'Terms' },
 	language: { en: 'English', label: 'Language', pl: 'Polski' },
 	loading: 'Loading',
 	nav: {
@@ -57,7 +57,7 @@ const pl: typeof en = {
 		retry: 'Spróbuj ponownie',
 		title: 'Coś poszło nie tak',
 	},
-	footer: { github: 'GITHUB', npm: 'NPM', privacy: 'PRYWATNOŚĆ', terms: 'REGULAMIN' },
+	footer: { github: 'GitHub', npm: 'npm', privacy: 'Prywatność', terms: 'Regulamin' },
 	language: { en: 'English', label: 'Język', pl: 'Polski' },
 	loading: 'Wczytywanie',
 	nav: {
