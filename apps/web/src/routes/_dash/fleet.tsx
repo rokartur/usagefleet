@@ -9,7 +9,12 @@ import { Button } from '@/components/arc/button/button'
 import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import { AutoRefresh } from '@/components/AutoRefresh'
 import { ConfirmAction } from '@/components/ConfirmAction'
-import { DeviceBlockingToggle, DeviceGroupSelect, RevokeDeviceButton } from '@/components/devices/DeviceActions'
+import {
+	DeviceBlockingToggle,
+	DeviceGroupSelect,
+	DeviceNotifySelect,
+	RevokeDeviceButton,
+} from '@/components/devices/DeviceActions'
 import { GroupFormDialog } from '@/components/groups/GroupFormDialog'
 import { RelativeTime } from '@/components/RelativeTime'
 import { deleteGroup } from '@/lib/actions'
@@ -239,6 +244,9 @@ function FleetPage() {
 											deviceName={d.name}
 											enabled={d.blockingEnabled}
 										/>
+									)}
+									{!d.revoked && (
+										<DeviceNotifySelect deviceId={d.id} deviceName={d.name} mode={d.notifyMode} />
 									)}
 									<DeviceGroupSelect
 										deviceId={d.id}

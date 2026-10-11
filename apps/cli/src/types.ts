@@ -63,6 +63,10 @@ export interface StateFile {
 	updatedAt: string
 }
 
+/** How loud the desktop alerts are. `off` is silent; the rest pick the utilization
+ *  thresholds that fire (see NOTIFY_MODES in notifier.ts). */
+export type NotifyMode = 'off' | 'quiet' | 'standard' | 'steady' | 'critical'
+
 /** High-water mark for one limit window, so a threshold alerts once per window. */
 export interface WindowNotifyState {
 	lastBucket: number
@@ -109,6 +113,9 @@ export interface Store {
 	/** false disables desktop notifications (USAGEFLEET_NOTIFY). Named apart
 	 *  from the machine-managed `notify` section below. */
 	notifications?: boolean
+	/** Alert preset for this machine (USAGEFLEET_NOTIFY_MODE). Beats the mode set on
+	 *  the Devices page; an explicit `notifyThresholds` list beats both. */
+	notifyMode?: NotifyMode
 	/** Utilization % alert thresholds (USAGEFLEET_NOTIFY_THRESHOLDS). */
 	notifyThresholds?: number[]
 	/** false keeps the prompt guard out of Claude Code and pi (USAGEFLEET_HOOK). */
