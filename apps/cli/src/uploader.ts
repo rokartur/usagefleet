@@ -1,6 +1,7 @@
 import type { LimitsReport } from './claude-limits.js'
 import { ENDPOINT, tokenFor } from './config.js'
-import type { BatchPayload, Config } from './types.js'
+import { parseNotifyMode } from './notifier.js'
+import type { BatchPayload, Config, NotifyMode } from './types.js'
 
 const MAX_ATTEMPTS = 6
 const REQUEST_TIMEOUT_MS = 15_000
@@ -139,6 +140,8 @@ export interface GroupLimits {
 	group: string | null
 	sessionPct: number
 	weeklyPct: number
+	/** The alert mode set for this device on the Devices page; null from an older server. */
+	notifyMode: NotifyMode | null
 }
 
 /** Null when the server cannot answer (offline, rejected, older than this field). */
@@ -155,7 +158,12 @@ export async function fetchGroupLimits(cfg: Config, accountExtId?: string): Prom
 		if (typeof body?.sessionPct !== 'number' || typeof body.weeklyPct !== 'number') {
 			return null
 		}
-		return { group: body.group ?? null, sessionPct: body.sessionPct, weeklyPct: body.weeklyPct }
+		return {
+			group: body.group ?? null,
+			notifyMode: parseNotifyMode(body.notifyMode),
+			sessionPct: body.sessionPct,
+			weeklyPct: body.weeklyPct,
+		}
 	} catch {
 		return null
 	}

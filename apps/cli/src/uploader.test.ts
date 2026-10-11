@@ -142,9 +142,17 @@ describe(fetchGroupLimits, () => {
 		mockFetch(200, JSON.stringify({ group: 'Laptop', sessionPct: 12.5, weeklyPct: 40, blocked: false }))
 		await expect(fetchGroupLimits(cfg)).resolves.toStrictEqual({
 			group: 'Laptop',
+			notifyMode: null,
 			sessionPct: 12.5,
 			weeklyPct: 40,
 		})
+	})
+
+	it('carries the device alert mode, ignoring a value it does not know', async () => {
+		mockFetch(200, JSON.stringify({ group: 'Laptop', notifyMode: 'critical', sessionPct: 1, weeklyPct: 2 }))
+		await expect(fetchGroupLimits(cfg)).resolves.toMatchObject({ notifyMode: 'critical' })
+		mockFetch(200, JSON.stringify({ group: 'Laptop', notifyMode: 'loud', sessionPct: 1, weeklyPct: 2 }))
+		await expect(fetchGroupLimits(cfg)).resolves.toMatchObject({ notifyMode: null })
 	})
 
 	it('a server that cannot answer is null', async () => {

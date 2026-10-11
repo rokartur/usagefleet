@@ -1948,6 +1948,7 @@ export async function listDevices(userId: string) {
 				id: devices.id,
 				lastSeenAt: devices.lastSeenAt,
 				name: devices.name,
+				notifyMode: devices.notifyMode,
 				os: devices.os,
 				revoked: devices.revoked,
 				tokenPrefix: devices.tokenPrefix,

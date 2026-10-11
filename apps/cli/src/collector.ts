@@ -6,7 +6,7 @@ import { detectClaudeCreds, macKeychainDenied } from './claude-creds.js'
 import { fetchLimits } from './claude-limits.js'
 import type { LimitsReport } from './claude-limits.js'
 import { ENDPOINT } from './config.js'
-import { maybeNotify } from './notifier.js'
+import { loadNotifyConfig, maybeNotify } from './notifier.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
 import { listJsonlFiles } from './scanner.js'
@@ -375,7 +375,8 @@ export async function reportLimitsOnce(
 			groupLimits.group === null
 				? report
 				: { ...report, fiveHourPct: groupLimits.sessionPct, sevenDayPct: groupLimits.weeklyPct },
-			undefined,
+			// The device's mode from the Devices page rides along on the same answer.
+			loadNotifyConfig(undefined, undefined, groupLimits.notifyMode),
 			log,
 		)
 	}

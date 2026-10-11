@@ -195,7 +195,12 @@ async function cmdWatch(): Promise<void> {
 function cmdNotifyTest(): void {
 	const cfg = loadNotifyConfig()
 	if (!cfg.enabled) {
-		console.log(warn('notify', 'disabled · unset USAGEFLEET_NOTIFY=0 / `"notifications": false` to enable'))
+		console.log(
+			warn(
+				'notify',
+				'disabled · mode off, or USAGEFLEET_NOTIFY=0 / `"notifications": false` · see `usagefleet config`',
+			),
+		)
 		return
 	}
 	sendNotification('usagefleet', 'Test notification — desktop alerts are working.', {
@@ -342,7 +347,8 @@ function cmdConfig(): void {
 		],
 		['batch', 'USAGEFLEET_BATCH', 'records per upload (default 100, max 1000)'],
 		['notifications', 'USAGEFLEET_NOTIFY', 'desktop notifications (false/0 disables)'],
-		['notifyThresholds', 'USAGEFLEET_NOTIFY_THRESHOLDS', '% alerts · array; env comma list (default 80,95)'],
+		['notifyMode', 'USAGEFLEET_NOTIFY_MODE', 'alert preset: off | quiet | standard | steady | critical'],
+		['notifyThresholds', 'USAGEFLEET_NOTIFY_THRESHOLDS', '% alerts · array; env comma list (replaces the preset)'],
 		['hook', 'USAGEFLEET_HOOK', 'register the prompt guard on install (false/0 skips)'],
 		['update', 'USAGEFLEET_UPDATE', 'self-update while watching (false/0 disables)'],
 		['updateInterval', 'USAGEFLEET_UPDATE_INTERVAL', 'seconds between update checks (default 21600)'],

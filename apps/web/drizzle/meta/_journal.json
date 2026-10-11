@@ -225,6 +225,13 @@
       "when": 1791386365386,
       "tag": "0031_account_identity_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791749173899,
+      "tag": "0032_device_notify_mode",
+      "breakpoints": true
     }
   ]
 }

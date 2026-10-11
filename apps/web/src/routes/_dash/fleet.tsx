@@ -9,7 +9,12 @@ import { Button } from '@/components/arc/button/button'
 import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import { AutoRefresh } from '@/components/AutoRefresh'
 import { ConfirmAction } from '@/components/ConfirmAction'
-import { DeviceBlockingToggle, DeviceGroupSelect, RevokeDeviceButton } from '@/components/devices/DeviceActions'
+import {
+	DeviceBlockingToggle,
+	DeviceGroupSelect,
+	DeviceNotifySelect,
+	RevokeDeviceButton,
+} from '@/components/devices/DeviceActions'
 import { GroupFormDialog } from '@/components/groups/GroupFormDialog'
 import { RelativeTime } from '@/components/RelativeTime'
 import { deleteGroup } from '@/lib/actions'
@@ -197,8 +202,11 @@ function FleetPage() {
 					) : (
 						<ul className='mt-3'>
 							{items.map(d => (
-								<li key={d.id} className='flex items-center gap-4 border-t py-3.5 last:pb-0'>
-									<div className='min-w-0 flex-1'>
+								<li
+									key={d.id}
+									className='flex flex-wrap items-center gap-x-4 gap-y-2 border-t py-3.5 last:pb-0'
+								>
+									<div className='min-w-40 flex-1'>
 										<div className='flex flex-wrap items-center gap-2'>
 											<span className='text-sm font-medium'>{d.name}</span>
 											{d.os && <Badge size='sm'>{OS_LABEL[d.os] ?? d.os}</Badge>}
@@ -239,6 +247,9 @@ function FleetPage() {
 											deviceName={d.name}
 											enabled={d.blockingEnabled}
 										/>
+									)}
+									{!d.revoked && (
+										<DeviceNotifySelect deviceId={d.id} deviceName={d.name} mode={d.notifyMode} />
 									)}
 									<DeviceGroupSelect
 										deviceId={d.id}
