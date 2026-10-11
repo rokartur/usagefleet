@@ -202,8 +202,11 @@ function FleetPage() {
 					) : (
 						<ul className='mt-3'>
 							{items.map(d => (
-								<li key={d.id} className='flex items-center gap-4 border-t py-3.5 last:pb-0'>
-									<div className='min-w-0 flex-1'>
+								<li
+									key={d.id}
+									className='flex flex-wrap items-center gap-x-4 gap-y-2 border-t py-3.5 last:pb-0'
+								>
+									<div className='min-w-40 flex-1'>
 										<div className='flex flex-wrap items-center gap-2'>
 											<span className='text-sm font-medium'>{d.name}</span>
 											{d.os && <Badge size='sm'>{OS_LABEL[d.os] ?? d.os}</Badge>}
