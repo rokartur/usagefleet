@@ -214,13 +214,17 @@ never spawn it again (`EX_CONFIG`) — the machine then drops off the fleet with
 no error anywhere but `launchctl print`. `uninstall` removes the
 agent/unit/task, the guard hook and the pi guard extension.
 
+Linux without systemd as init (`/run/systemd/system` missing: Docker, WSL
+without it) gets no unit: `login` prints the `watch` command to run instead,
+and `status` reads `no autostart` rather than a stopped service.
+
 ## Self-update
 
 `update.ts` reinstalls `@usagefleet/cli` from the public registry when a newer
 version exists — no server, no token, no GitHub involved.
 `USAGEFLEET_UPDATE=0` opts out.
 
-Upgrading *this* install, rather than some other copy, takes three steps that all
+Upgrading *this* install, rather than some other copy, takes four steps that all
 exist because a failure here is silent and permanent — the collector keeps
 running, keeps reporting, and simply never leaves its version:
 
@@ -236,6 +240,11 @@ running, keeps reporting, and simply never leaves its version:
   somewhere else, so the version is re-read off disk afterwards. Mismatch means
   two copies exist and the wrong one moved: log it and skip the restart, which
   would otherwise bounce the service onto the same old code every 6 hours.
+- **Only the service is restarted.** `login` restarts the installed unit, so a
+  `watch` it does not own (a container's command, a terminal) would run the old
+  code until something killed it. After an install it exits 75 when it is not
+  the service's pid (`isServiceProcess`), non-zero so `restart: on-failure`
+  still brings it back.
 
 **Every push to `main` publishes a new version** (`.github/workflows/release.yml`,
 version = manifest major.minor + run number), so installed collectors pick up CLI

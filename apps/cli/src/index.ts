@@ -11,7 +11,8 @@ import { sendNotification } from './notify.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
 import type { DirCache } from './scanner.js'
-import { serviceStatus } from './service.js'
+import { isServiceProcess, serviceStatus } from './service.js'
+import type { ServiceStatus } from './service.js'
 import { readStore, storePath, updateStore } from './store.js'
 import {
 	ago,
@@ -149,7 +150,13 @@ async function cmdWatch(): Promise<void> {
 			const nowMs = Date.now()
 			if (nowMs - lastUpdateAt >= updateInterval) {
 				lastUpdateAt = nowMs
-				await checkForUpdate((level, m) => line(level === 'ok' ? blue('↻') : yellow('!'), m))
+				const updated = await checkForUpdate((level, m) => line(level === 'ok' ? blue('↻') : yellow('!'), m))
+				// `login` restarts only the installed service. Any other watch (a container's command, a terminal)
+				// exits so its supervisor starts the new version; non-zero because `restart: on-failure` ignores 0.
+				if (updated && !isServiceProcess()) {
+					line(blue('↻'), `exiting to restart on ${updated}`)
+					process.exit(75)
+				}
 			}
 			if (nowMs - lastLimitsAt >= limitsInterval) {
 				lastLimitsAt = nowMs
@@ -215,15 +222,7 @@ async function cmdStatus(): Promise<void> {
 	console.log(header())
 	console.log('')
 
-	console.log(
-		svc.state === 'running'
-			? stateLine('ok', 'service', `running${svc.pid ? dim(` · pid ${svc.pid}`) : ''}`)
-			: stateLine(
-					'bad',
-					'service',
-					`${svc.state} ${dim(svc.state === 'stopped' ? '· check the log' : '· run `usagefleet login`')}`,
-				),
-	)
+	console.log(serviceLine(svc))
 	console.log(
 		creds
 			? stateLine(
@@ -254,6 +253,20 @@ async function cmdStatus(): Promise<void> {
 		row('tracked', `${tracked} file${tracked === 1 ? '' : 's'} · ${mb} MB read · synced ${ago(state.updatedAt)}`),
 	)
 	console.log(row('config', tilde(cfg.storePath)))
+}
+
+function serviceLine(svc: ServiceStatus): string {
+	if (svc.state === 'running') {
+		return stateLine('ok', 'service', `running${svc.pid ? dim(` · pid ${svc.pid}`) : ''}`)
+	}
+	if (svc.state === 'no autostart') {
+		return stateLine('warn', 'service', `no autostart here ${dim('· keep `usagefleet watch` running yourself')}`)
+	}
+	return stateLine(
+		'bad',
+		'service',
+		`${svc.state} ${dim(svc.state === 'stopped' ? '· check the log' : '· run `usagefleet login`')}`,
+	)
 }
 
 /** Worst of the two windows decides the dot colour. */

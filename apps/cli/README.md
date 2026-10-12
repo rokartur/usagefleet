@@ -211,6 +211,9 @@ until you re-run `usagefleet login` under the new one.
   it holds your token.
 - **Linux** — a `systemd --user` unit, plus `loginctl enable-linger $USER` so it
   survives logout. If `systemctl` can't be driven it prints the manual steps.
+- **Linux without systemd** (a Docker container, WSL without it) — no service.
+  Run `usagefleet watch` as the container's command or under your own
+  supervisor, with a restart policy such as `restart: unless-stopped`.
 - **Windows** — a Scheduled Task (`usagefleet`) starting at logon, restarting on
   failure, running hidden through a `wscript` launcher in
   `%LOCALAPPDATA%\usagefleet` (which carries the env values set at install
@@ -230,6 +233,10 @@ it runs `npm install -g @usagefleet/cli@<version>` and re-runs `login` to
 restart the service on it. `usagefleet update` does the same on demand. npm is
 called through the absolute path next to the running `node`, because a
 launchd/systemd service gets a minimal PATH.
+
+A `watch` that is not the installed service (a container's command, a
+terminal) exits with code 75 after an update, so whatever runs it starts the
+new version.
 
 Every failure is a no-op — registry unreachable, non-semver version, npm
 missing or exiting non-zero, local `dev` builds — and the service is only
