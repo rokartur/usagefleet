@@ -39,6 +39,7 @@ function fixture(count: number): { cfg: Config; logPath: string } {
 		cfg: {
 			batchSize: 100,
 			desktopDir: null,
+			jcodeDir: join(dir, 'jcode'),
 			piDirs: [],
 			projectsDir: projects,
 			storePath: join(dir, 'config.json'),
@@ -206,6 +207,50 @@ describe('runOnce pi account attribution', () => {
 			['acc-c', ['pi:msg_c']],
 			['acc-c', ['pi:msg_d']],
 		])
+	})
+})
+
+// jcode rewrites its session snapshot whole and folds its journal into it, so there is
+// no append-only offset to keep: each message must still upload exactly once.
+describe('runOnce jcode sessions', () => {
+	const turn = (id: string, ms: number) => ({
+		id,
+		role: 'assistant',
+		timestamp: new Date(ms).toISOString(),
+		token_usage: { input_tokens: 1, output_tokens: 1 },
+	})
+	const journalLine = (...messages: object[]) =>
+		`${JSON.stringify({ append_messages: messages, meta: { model: 'claude-x', provider_key: 'claude' } })}\n`
+
+	it('uploads each turn once across snapshot, journal and later appends', async () => {
+		const { cfg } = fixture(0)
+		const jcodeDir = mkdtempSync(join(tmpdir(), 'uf-jcode-'))
+		const snapshot = join(jcodeDir, 'session_owl_1_a.json')
+		const journal = join(jcodeDir, 'session_owl_1_a.journal.jsonl')
+		const t0 = Date.parse('2026-10-13T10:00:00Z')
+		writeFileSync(
+			snapshot,
+			JSON.stringify({
+				id: 'session_owl_1_a',
+				messages: [turn('m1', t0)],
+				model: 'claude-x',
+				provider_key: 'claude',
+			}),
+		)
+		// An interrupted checkpoint leaves m1 in both files.
+		writeFileSync(journal, journalLine(turn('m1', t0), turn('m2', t0 + 1000)))
+		const sent: string[][] = []
+		uploadBatch.mockImplementation(async (payload: { records: { uuid: string }[] }) => {
+			sent.push(payload.records.map(r => r.uuid))
+			return { accepted: payload.records.length, duplicates: 0, ok: true }
+		})
+
+		await runOnce({ ...cfg, jcodeDir })
+		await runOnce({ ...cfg, jcodeDir })
+		appendFileSync(journal, journalLine(turn('m3', t0 + 2000)))
+		await runOnce({ ...cfg, jcodeDir })
+
+		expect(sent).toStrictEqual([['jcode:m1', 'jcode:m2'], ['jcode:m3']])
 	})
 })
 

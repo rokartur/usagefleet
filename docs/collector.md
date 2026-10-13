@@ -58,6 +58,15 @@ Every `USAGEFLEET_INTERVAL` seconds (default 15) `runOnce()`:
 5. Offsets for files that no longer exist are pruned, so a long-lived install
    doesn't grow one state entry per session forever.
 
+jcode sessions don't fit the tailer: `~/.jcode/sessions/session_*.json` is rewritten
+whole, and `*.journal.jsonl` beside it is appended per turn and folded back into the
+snapshot at checkpoints. `jcode.ts` re-reads both when either file's mtime moves,
+keys turns on their message id (an interrupted checkpoint leaves one in both) and
+sends only turns newer than the session's stored `uploadedThrough` timestamp, which
+is committed like an offset. Only `claude`/`claude-oauth` providers count;
+`claude-api` is a billed key. jcode keeps its own Anthropic logins and names none per
+session, so its turns book on the account `~/.claude.json` names.
+
 A `400`/`422` means the server parsed the request and rejected the *records*, so
 the chunk is split and each half retried: one malformed line costs one record
 instead of the whole batch. `402` parks the device (plan wall) without losing
@@ -187,7 +196,7 @@ reading refreshes its `at` only every 10 minutes while the numbers hold.
 Every knob is a top-level file key (`interval`, `limitsInterval`, `batch`,
 `notifications`, `notifyThresholds`, `hook`, `update`, `updateInterval`, plus
 the dirs and `token`) with a matching env var that overrides it:
-`USAGEFLEET_TOKEN`, `_PROJECTS`, `_DESKTOP`, `_PI`, `_BATCH`, `_INTERVAL`,
+`USAGEFLEET_TOKEN`, `_PROJECTS`, `_DESKTOP`, `_PI`, `_JCODE`, `_BATCH`, `_INTERVAL`,
 `_LIMITS_INTERVAL`, `_UPDATE`, `_UPDATE_INTERVAL`, `_NOTIFY`,
 `_NOTIFY_THRESHOLDS`, `_HOOK`. Resolution is env → file → default
 (`positiveNumber`/`flagOff` in `config.ts`); `normalize()` in `store.ts` must

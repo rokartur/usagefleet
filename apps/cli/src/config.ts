@@ -1,4 +1,9 @@
-import { defaultDesktopSessionsDir, defaultPiSessionsDirs, defaultProjectsDir } from './paths.js'
+import {
+	defaultDesktopSessionsDir,
+	defaultJcodeSessionsDir,
+	defaultPiSessionsDirs,
+	defaultProjectsDir,
+} from './paths.js'
 import { readStore, storePath } from './store.js'
 import type { Config } from './types.js'
 
@@ -30,6 +35,7 @@ export function loadConfig(): Config {
 		accountTokens: file.accountTokens ?? {},
 		batchSize,
 		desktopDir: resolveOptionalDir(process.env.USAGEFLEET_DESKTOP, file.desktopDir, defaultDesktopSessionsDir()),
+		jcodeDir: resolveOptionalDir(process.env.USAGEFLEET_JCODE, file.jcodeDir, defaultJcodeSessionsDir()),
 		piDirs: resolvePiDirs(process.env.USAGEFLEET_PI, file.piDir),
 		projectsDir: process.env.USAGEFLEET_PROJECTS || file.projectsDir || defaultProjectsDir(),
 		storePath: storePath(),
@@ -80,7 +86,7 @@ export function resolvePiDirs(env?: string, fromFile?: string | string[]): strin
 	return [...new Set(raw.map(d => d.trim()).filter(d => d.length > 0))]
 }
 
-/** Optional scan root (USAGEFLEET_DESKTOP): env "off"/"0" disables, env or
+/** Optional scan root (USAGEFLEET_DESKTOP, USAGEFLEET_JCODE): env "off"/"0" disables, env or
  *  config-file path overrides, else the auto-detected default. */
 function resolveOptionalDir(env: string | undefined, fromFile: string | undefined, fallback: string): string | null {
 	if (env === '0' || env?.toLowerCase() === 'off') {

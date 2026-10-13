@@ -6,6 +6,7 @@ import { detectClaudeCreds, macKeychainDenied } from './claude-creds.js'
 import { fetchLimits } from './claude-limits.js'
 import type { LimitsReport } from './claude-limits.js'
 import { ENDPOINT } from './config.js'
+import { listJcodeSessions, readJcodeSession } from './jcode.js'
 import { maybeNotify } from './notifier.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
@@ -14,7 +15,7 @@ import type { DirCache } from './scanner.js'
 import { readStore, updateStore } from './store.js'
 import { tailFile } from './tailer.js'
 import type { AccountSegment } from './tailer.js'
-import type { Config, FileState, UsageRecord, UsageSource } from './types.js'
+import type { Config, FileState, JcodeSessionState, UsageRecord, UsageSource } from './types.js'
 import type { Log } from './ui.js'
 import { tilde } from './ui.js'
 import { fetchGroupLimits, postLimits, uploadBatch } from './uploader.js'
@@ -41,9 +42,10 @@ export interface CycleResult {
 }
 
 /**
- * One full scan: tail every JSONL file from its stored offset, upload new usage
- * records (chunked to batchSize), and commit each file's offset only after all
- * its chunks are acknowledged (at-least-once; the server dedups on uuid).
+ * One full scan: tail every JSONL file from its stored offset and re-read every
+ * changed jcode session, upload new usage records (chunked to batchSize), and commit
+ * each source's progress only after all its chunks are acknowledged (at-least-once;
+ * the server dedups on uuid).
  */
 export async function runOnce(
 	cfg: Config,
@@ -76,12 +78,21 @@ export async function runOnce(
 		}
 	}
 
+	const jcodeSessions = cfg.jcodeDir ? listJcodeSessions(cfg.jcodeDir) : []
+
+	// Each source yields its new records and how to commit having sent them, so both
+	// share one upload path: offsets for appended JSONL, a watermark for jcode.
+	const reads = [
+		...files.map(({ fp, source }) => ({ fp, read: () => tailPending(fp, source, state.files) })),
+		...jcodeSessions.map(fp => ({ fp, read: () => jcodePending(fp, state.jcode) })),
+	]
+
 	const result: CycleResult = {
 		accepted: 0,
 		dropped: 0,
 		duplicates: 0,
 		failed: false,
-		files: files.length,
+		files: reads.length,
 		sent: 0,
 	}
 
@@ -92,29 +103,29 @@ export async function runOnce(
 	// so the cycle reports one count instead of a screenful of identical lines.
 	let transientFiles = 0
 
-	for (const { fp, source } of files) {
-		let tail
+	for (const { fp, read } of reads) {
+		let pending
 		try {
-			tail = tailFile(fp, state.files[fp], source)
+			pending = read()
 		} catch (error) {
 			// One unreadable/oversized file must not abort the whole cycle.
 			log('warn', `skipped ${tilde(fp)} · ${(error as Error).message}`)
 			continue
 		}
-		if (!tail || tail.consumedBytes === 0) {
+		if (!pending) {
 			continue
 		}
 
-		if (tail.segments.length === 0) {
+		if (pending.segments.length === 0) {
 			// Consumed only non-usage lines — safe to advance immediately.
-			state.files[fp] = tail.nextState
+			pending.commit()
 			advanced = true
 			continue
 		}
 
 		// sendChunk absorbs "invalid" by bisecting, so only auth/plan/transient escape.
 		let outcome: 'ok' | UploadFailure = 'ok'
-		for (const chunk of chunks(tail.segments, step)) {
+		for (const chunk of chunks(pending.segments, step)) {
 			outcome = await sendChunk(chunk.records, chunk.accountExtId, cfg, result, log)
 			if (outcome !== 'ok') {
 				break
@@ -122,7 +133,7 @@ export async function runOnce(
 		}
 
 		if (outcome === 'ok') {
-			state.files[fp] = tail.nextState
+			pending.commit()
 			advanced = true
 		} else if (outcome === 'auth') {
 			// Token revoked/expired. The data is valid and must NOT be skipped — keep
@@ -164,9 +175,12 @@ export async function runOnce(
 	// on every save, and a crash mid-cycle only costs a re-upload the server
 	// dedups. Only our own section is replaced, so a token written by a
 	// concurrent `usagefleet login` survives.
-	if (pruneMissingFiles(state, files) || advanced) {
+	const pruned = pruneMissingFiles(state, files)
+	const prunedJcode = pruneGoneSessions(state.jcode, jcodeSessions)
+	if (pruned || prunedJcode || advanced) {
 		updateStore(cfg.storePath, store => {
 			store.state.files = state.files
+			store.state.jcode = state.jcode
 			store.state.updatedAt = new Date().toISOString()
 		})
 	}
@@ -249,6 +263,54 @@ function chunks(segments: AccountSegment[], step: number): AccountSegment[] {
 		}
 	}
 	return out
+}
+
+/** New records from one source, and how to record having uploaded them. */
+interface PendingUpload {
+	segments: AccountSegment[]
+	commit: () => void
+}
+
+function tailPending(fp: string, source: UsageSource, files: Record<string, FileState>): PendingUpload | null {
+	const tail = tailFile(fp, files[fp], source)
+	if (!tail || tail.consumedBytes === 0) {
+		return null
+	}
+	return {
+		commit: () => {
+			files[fp] = tail.nextState
+		},
+		segments: tail.segments,
+	}
+}
+
+function jcodePending(fp: string, sessions: Record<string, JcodeSessionState>): PendingUpload | null {
+	const session = readJcodeSession(fp, sessions[fp])
+	if (!session) {
+		return null
+	}
+	return {
+		commit: () => {
+			sessions[fp] = session.nextState
+		},
+		// shortcut: jcode keeps its own Anthropic logins and stamps none on a session, so its
+		// turns book on the device's Claude Code account; read jcode's active login if they differ.
+		segments: session.records.length > 0 ? [{ accountExtId: undefined, records: session.records }] : [],
+	}
+}
+
+/** Drop the progress of jcode sessions no longer on disk; returns whether anything went. */
+function pruneGoneSessions(sessions: Record<string, JcodeSessionState>, listed: string[]): boolean {
+	const kept = new Set(listed)
+	let removed = false
+	for (const fp of Object.keys(sessions)) {
+		if (!kept.has(fp)) {
+			// oxlint-disable-next-line typescript/no-dynamic-delete -- state.jcode is a JSON blob keyed by path
+			delete sessions[fp]
+			removed = true
+		}
+	}
+	return removed
 }
 
 /**

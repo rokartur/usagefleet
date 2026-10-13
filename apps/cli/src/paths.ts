@@ -68,6 +68,12 @@ function realDir(dir: string): string {
 	}
 }
 
+/** jcode keeps every session flat in `~/.jcode/sessions`. JCODE_HOME moves it, but a
+ *  service never inherits the user's shell env, so a moved one is set via USAGEFLEET_JCODE. */
+export function defaultJcodeSessionsDir(): string {
+	return join(homedir(), '.jcode', 'sessions')
+}
+
 /** pi's agent dir, the root for its sessions and extensions.
  *  PI_CODING_AGENT_DIR is pi's own relocation knob; unlike the service-side
  *  scan above, the guard installer runs from the user's shell where that env

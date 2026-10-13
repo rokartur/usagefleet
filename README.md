@@ -52,7 +52,7 @@ Full manual: **[apps/cli/README.md](apps/cli/README.md)**.
 Read-only tailing of local agent logs: Claude Code
 (`~/.claude/projects/**/*.jsonl`), Claude Desktop agent-mode sessions, and the
 [pi](https://github.com/badlogic/pi-mono) agent (Anthropic-provider records
-only).
+only) and the jcode agent (Claude subscription turns only).
 
 Uploaded: token counts, model, session id, hostname, working directory, git
 branch. Never uploaded: prompts, responses, file contents, or your Claude

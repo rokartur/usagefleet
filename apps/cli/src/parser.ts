@@ -13,7 +13,7 @@ interface RawUsage {
 }
 
 /** Only accept genuine strings; ignores numbers/objects that would later break. */
-function str(v: unknown): string | null {
+export function str(v: unknown): string | null {
 	return typeof v === 'string' && v.length > 0 ? v : null
 }
 

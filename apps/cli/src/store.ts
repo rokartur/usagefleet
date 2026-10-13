@@ -57,6 +57,7 @@ function normalize(raw: Partial<Store>): Store {
 		desktopDir: raw.desktopDir,
 		hook: raw.hook,
 		interval: raw.interval,
+		jcodeDir: raw.jcodeDir,
 		limits: raw.limits,
 		limitsInterval: raw.limitsInterval,
 		notifications: raw.notifications,
@@ -70,6 +71,7 @@ function normalize(raw: Partial<Store>): Store {
 		state: {
 			deviceId: raw.state?.deviceId || randomUUID(),
 			files: raw.state?.files ?? {},
+			jcode: raw.state?.jcode ?? {},
 			updatedAt: raw.state?.updatedAt ?? new Date().toISOString(),
 		},
 		token: raw.token,
