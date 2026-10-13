@@ -61,6 +61,7 @@ const SOURCE_LABEL: Record<string, string> = {
 	cli: 'Claude Code',
 	desktop: 'Claude Desktop',
 	pi: 'pi',
+	jcode: 'jcode',
 }
 
 const daysAgo = (n: number) => utcDay(new Date(Date.now() - n * DAY_MS))
