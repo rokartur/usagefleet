@@ -46,7 +46,7 @@ const RecordSchema = type({
 	cacheReadTokens: TOKENS,
 	'serviceTier?': `string <= ${ID} | null`,
 	// Which app produced the record. Older collectors omit it → 'cli'.
-	'source?': "'cli' | 'desktop' | 'pi' | 'jcode' | null",
+	'source?': "'cli' | 'desktop' | 'pi' | 'jcode' | 'pj' | null",
 })
 
 const BatchSchema = type({

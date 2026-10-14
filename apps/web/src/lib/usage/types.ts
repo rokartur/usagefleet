@@ -22,7 +22,7 @@ export interface UsageRecord {
 	deviceId?: string | null
 	/** The Anthropic account that metered the row (usage_event.claude_account_id). */
 	claudeAccountId?: string | null
-	/** Which app produced the row: 'cli' (Claude Code), 'desktop', 'pi' or 'jcode'. */
+	/** Which app produced the row: 'cli' (Claude Code), 'desktop', 'pi', 'jcode' or 'pj'. */
 	source?: string | null
 }
 

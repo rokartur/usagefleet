@@ -45,8 +45,8 @@ function Privacy() {
 
 			<Clause title='What the collector sends'>
 				<p>
-					The CLI reads the log files Claude Code, Claude Desktop and the pi and jcode agents already write on
-					your machine, and uploads one record per assistant message:
+					The CLI reads the log files Claude Code, Claude Desktop and the pi, jcode and pj agents already
+					write on your machine, and uploads one record per assistant message:
 				</p>
 				<Bullets
 					items={[
