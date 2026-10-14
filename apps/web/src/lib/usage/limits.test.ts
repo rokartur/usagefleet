@@ -57,15 +57,25 @@ describe(projectSession, () => {
 		{ at: at('11:40'), pct: 40 },
 	]
 
-	it('runs the last hour pace to the reset and says when it hits 100%', () => {
-		// 20% at 11:00, 50% at 12:00: 30 points an hour, so the other 50 take 1h40m.
-		expect(projectSession(rises, 50, start, reset, at('12:00'))).toStrictEqual({ fullAt: at('13:40'), pct: 100 })
+	it('runs the last hour pace to the reset and says when it hits 100% and the next full ten', () => {
+		// 20% at 11:00, 50% at 12:00: 30 points an hour, so 60% at 12:20 and the other 50 take 1h40m.
+		expect(projectSession(rises, 50, start, reset, at('12:00'))).toStrictEqual({
+			fullAt: at('13:40'),
+			next: { at: at('12:20'), pct: 60 },
+			pct: 100,
+		})
 	})
 
 	it('projects a pace that lasts past the reset without a time', () => {
 		// 40% at 11:40 still stands at 12:40; 10 points an hour for the 2h20m left.
 		expect(projectSession(rises, 50, start, reset, at('12:40'))?.pct).toBeCloseTo(50 + 10 * (7 / 3))
 		expect(projectSession(rises, 50, start, reset, at('12:40'))?.fullAt).toBeNull()
+	})
+
+	it('has no next ten when the reset comes first or the next one is the limit itself', () => {
+		// 45% at 13:50, 50% at 14:50: 60% would take two hours, the reset is in ten minutes.
+		expect(projectSession([{ at: at('13:50'), pct: 45 }], 50, start, reset, at('14:50'))?.next).toBeNull()
+		expect(projectSession(rises, 95, start, reset, at('12:00'))?.next).toBeNull()
 	})
 
 	it('counts from 0% at the window start while the window is younger than an hour', () => {

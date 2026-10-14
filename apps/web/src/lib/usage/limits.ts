@@ -59,6 +59,8 @@ export interface SessionProjection {
 	pct: number
 	/** When that pace reaches 100%, or null when the reset comes first. */
 	fullAt: Date | null
+	/** The next full ten under 100 and when the pace reaches it, or null when the reset or the limit comes first. */
+	next: { at: Date; pct: number } | null
 }
 
 /**
@@ -92,11 +94,14 @@ export function projectSession(
 	if (perMs <= 0) {
 		return null
 	}
-	const fullAt = new Date(now.getTime() + (100 - pct) / perMs)
-	if (fullAt.getTime() < resetsAt.getTime()) {
-		return { fullAt, pct: 100 }
+	const reachAt = (target: number) => new Date(now.getTime() + (target - pct) / perMs)
+	const nextPct = Math.floor(pct / 10) * 10 + 10
+	const next = nextPct < 100 && reachAt(nextPct) < resetsAt ? { at: reachAt(nextPct), pct: nextPct } : null
+	const fullAt = reachAt(100)
+	if (fullAt < resetsAt) {
+		return { fullAt, next, pct: 100 }
 	}
-	return { fullAt: null, pct: pct + perMs * (resetsAt.getTime() - now.getTime()) }
+	return { fullAt: null, next, pct: pct + perMs * (resetsAt.getTime() - now.getTime()) }
 }
 
 /** An ISO string from a collector, or null when it is absent or unparseable. */

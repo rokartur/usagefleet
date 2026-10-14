@@ -381,6 +381,9 @@ export interface LiveDashboard {
 	fiveHourResetsAt: Date | null
 	sevenDayResetsAt: Date | null
 	sessionProjection: SessionProjection | null
+	/** Account-wide readings inside the current 5h and weekly windows, oldest first, for the window chart. */
+	fiveHourPoints: { at: Date; pct: number }[]
+	sevenDayPoints: { at: Date; pct: number }[]
 	groups: LiveGroupUsage[]
 	/** Per-model official limits (e.g. Fable weekly), group-split like above. */
 	modelLimits: LiveModelLimit[]
@@ -817,9 +820,11 @@ async function loadLiveDashboard(
 	if (!hasLimits) {
 		return {
 			connected: false,
+			fiveHourPoints: [],
 			groups: [],
 			modelLimits: [],
 			sessionProjection: null,
+			sevenDayPoints: [],
 			spend: emptySpend(),
 			...base,
 		}
@@ -847,6 +852,10 @@ async function loadLiveDashboard(
 	// The model filter is not optional: one table holds both series, so dropping it
 	// would feed a model family's rises into the account headline and back.
 	const pointsFor = (w: PointWindow, model = '') => pointRows.filter(p => p.window === w && p.model === model)
+	const chartPoints = (w: PointWindow, start: Date) =>
+		pointsFor(w)
+			.filter(p => p.at >= start)
+			.map(p => ({ at: p.at, pct: p.pct }))
 
 	// Usage belongs to the account its device is signed into *now*, the same way
 	// it already follows a device between groups.
@@ -1014,10 +1023,12 @@ async function loadLiveDashboard(
 
 	return {
 		connected: true,
+		fiveHourPoints: chartPoints('5h', fiveStart),
 		groups: groupUsages,
 		modelLimits,
 		sessionProjection:
 			fiveHourResetsAt && projectSession(pointsFor('5h'), base.fiveHourPct, fiveStart, fiveHourResetsAt, now),
+		sevenDayPoints: chartPoints('7d', weekStart),
 		spend,
 		...base,
 	}
@@ -1830,7 +1841,13 @@ export interface DashboardDTO {
 	sevenDayPct: number
 	fiveHourResetsAt: string | null
 	sevenDayResetsAt: string | null
-	sessionProjection: { pct: number; fullAt: string | null } | null
+	sessionProjection: {
+		pct: number
+		fullAt: string | null
+		next: { at: string; pct: number } | null
+	} | null
+	fiveHourPoints: { at: string; pct: number }[]
+	sevenDayPoints: { at: string; pct: number }[]
 	groups: LiveGroupUsage[]
 	modelLimits: ModelLimitDTO[]
 	spend: Spend
@@ -1842,6 +1859,7 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
 		accountLabel: d.accountLabel,
 		connected: d.connected,
 		fiveHourPct: d.fiveHourPct,
+		fiveHourPoints: d.fiveHourPoints.map(p => ({ at: p.at.toISOString(), pct: p.pct })),
 		fiveHourResetsAt: d.fiveHourResetsAt?.toISOString() ?? null,
 		groups: d.groups,
 		modelLimits: d.modelLimits.map(m => ({
@@ -1851,9 +1869,14 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
 		reportedAt: d.reportedAt?.toISOString() ?? null,
 		sessionProjection: d.sessionProjection && {
 			fullAt: d.sessionProjection.fullAt?.toISOString() ?? null,
+			next: d.sessionProjection.next && {
+				at: d.sessionProjection.next.at.toISOString(),
+				pct: d.sessionProjection.next.pct,
+			},
 			pct: d.sessionProjection.pct,
 		},
 		sevenDayPct: d.sevenDayPct,
+		sevenDayPoints: d.sevenDayPoints.map(p => ({ at: p.at.toISOString(), pct: p.pct })),
 		sevenDayResetsAt: d.sevenDayResetsAt?.toISOString() ?? null,
 		source: d.source,
 		spend: d.spend,
