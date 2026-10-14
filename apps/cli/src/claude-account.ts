@@ -49,6 +49,24 @@ export function detectClaudeAccount(path = claudeStatePath()): ClaudeAccount | n
 
 const OAUTH_PROFILE_URL = 'https://api.anthropic.com/api/oauth/profile'
 
+interface JcodeAuthFile {
+	active_anthropic_account?: unknown
+	anthropic_accounts?: { label?: unknown; access?: unknown }[]
+}
+
+/** The OAuth access token of the login jcode (or pj) has active in its `auth.json`,
+ *  falling back to the first saved login the way jcode does. Null when unreadable. */
+export function activeJcodeToken(authPath: string): string | null {
+	try {
+		const auth = JSON.parse(readFileSync(authPath, 'utf-8')) as JcodeAuthFile
+		const accounts = auth.anthropic_accounts ?? []
+		const active = accounts.find(a => a.label === auth.active_anthropic_account) ?? accounts[0]
+		return typeof active?.access === 'string' && active.access !== '' ? active.access : null
+	} catch {
+		return null
+	}
+}
+
 /** The accountUuid Anthropic says owns this OAuth token, or null when it cannot
  *  say. Null fails open to the file's identity: the endpoint is undocumented, and
  *  losing it must not stop every collector from reporting limits. */

@@ -137,13 +137,14 @@ async function cmdWatch(): Promise<void> {
 	let timer: ReturnType<typeof setTimeout> | null = null
 	let running = false
 	const dirCache: DirCache = new Map()
+	const tokenOwners = new Map<string, string>()
 	const tick = async () => {
 		if (stopping) {
 			return
 		}
 		running = true
 		try {
-			const r = await runOnce(cfg, stream, dirCache)
+			const r = await runOnce(cfg, stream, dirCache, tokenOwners)
 			// Dropped records are real data loss, so they must show up even in a
 			// cycle that uploaded nothing.
 			if (r.sent > 0 || r.dropped > 0) {

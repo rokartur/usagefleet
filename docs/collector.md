@@ -65,7 +65,9 @@ keys turns on their message id (an interrupted checkpoint leaves one in both) an
 sends only turns newer than the session's stored `uploadedThrough` timestamp, which
 is committed like an offset. Only `claude`/`claude-oauth` providers count;
 `claude-api` is a billed key. jcode keeps its own Anthropic logins and names none per
-session, so its turns book on the account `~/.claude.json` names.
+session, so its turns book on the owner of the login active in the `auth.json` beside
+its sessions dir, resolved through the OAuth profile endpoint at upload time; when
+that fails, on the account `~/.claude.json` names.
 pj, a jcode fork, writes the same files under `~/.pj/sessions`; the same reader
 sends them as source `pj`.
 

@@ -272,6 +272,45 @@ describe('runOnce jcode sessions', () => {
 
 		expect(sent).toStrictEqual([{ source: 'pj', uuid: 'pj:m1' }])
 	})
+
+	it('books turns on the login pj marks active, not the Claude Code one', async () => {
+		const { cfg } = fixture(0)
+		const claudeDir = mkdtempSync(join(tmpdir(), 'uf-acc-'))
+		writeFileSync(join(claudeDir, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: 'acc-device' } }))
+		vi.stubEnv('CLAUDE_CONFIG_DIR', claudeDir)
+		const pjHome = mkdtempSync(join(tmpdir(), 'uf-pj-'))
+		const pjDir = join(pjHome, 'sessions')
+		mkdirSync(pjDir)
+		writeFileSync(
+			join(pjHome, 'auth.json'),
+			JSON.stringify({
+				active_anthropic_account: 'claude-fox',
+				anthropic_accounts: [
+					{ access: 'tok-otter', label: 'claude-otter' },
+					{ access: 'tok-fox', label: 'claude-fox' },
+				],
+			}),
+		)
+		vi.stubGlobal('fetch', async (_url: string, init: { headers: Record<string, string> }) =>
+			Response.json({
+				account: { uuid: init.headers.authorization === 'Bearer tok-fox' ? 'acc-fox' : 'acc-otter' },
+			}),
+		)
+		writeFileSync(join(pjDir, 'session_owl_1_a.journal.jsonl'), journalLine(turn('m1', Date.now())))
+		writeFileSync(
+			join(pjDir, 'session_owl_1_a.json'),
+			JSON.stringify({ id: 'session_owl_1_a', provider_key: 'claude' }),
+		)
+		const booked: (string | undefined)[] = []
+		uploadBatch.mockImplementation(async (payload: { accountExtId?: string; records: unknown[] }) => {
+			booked.push(payload.accountExtId)
+			return { accepted: payload.records.length, duplicates: 0, ok: true }
+		})
+
+		await runOnce({ ...cfg, pjDir })
+
+		expect(booked).toStrictEqual(['acc-fox'])
+	})
 })
 
 // 2026-10-06: a Windows login switch posted one account's 75% weekly reading under

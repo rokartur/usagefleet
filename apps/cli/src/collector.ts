@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { hostname } from 'node:os'
-import { sep } from 'node:path'
-import { detectClaudeAccount, tokenOwner } from './claude-account.js'
+import { dirname, join, sep } from 'node:path'
+import { activeJcodeToken, detectClaudeAccount, tokenOwner } from './claude-account.js'
 import { detectClaudeCreds, macKeychainDenied } from './claude-creds.js'
 import { fetchLimits } from './claude-limits.js'
 import type { LimitsReport } from './claude-limits.js'
@@ -54,6 +54,7 @@ export async function runOnce(
 		/* empty */
 	},
 	dirCache: DirCache = new Map(),
+	tokenOwners = new Map<string, string>(),
 ): Promise<CycleResult> {
 	const { state } = readStore(cfg.storePath)
 
@@ -79,19 +80,16 @@ export async function runOnce(
 		}
 	}
 
-	const jcodeRoots: { dir: string | null; source: JcodeSource }[] = [
-		{ dir: cfg.jcodeDir, source: 'jcode' },
-		{ dir: cfg.pjDir, source: 'pj' },
-	]
-	const jcodeSessions = jcodeRoots.flatMap(({ dir, source }) =>
-		dir ? listJcodeSessions(dir).map(fp => ({ fp, source })) : [],
-	)
+	const jcodeSessions = await listJcodeSessionsWithAccount(cfg, tokenOwners)
 
 	// Each source yields its new records and how to commit having sent them, so both
 	// share one upload path: offsets for appended JSONL, a watermark for jcode and pj.
 	const reads = [
 		...files.map(({ fp, source }) => ({ fp, read: () => tailPending(fp, source, state.files) })),
-		...jcodeSessions.map(({ fp, source }) => ({ fp, read: () => jcodePending(fp, source, state.jcode) })),
+		...jcodeSessions.map(({ accountExtId, fp, source }) => ({
+			fp,
+			read: () => jcodePending(fp, source, accountExtId, state.jcode),
+		})),
 	]
 
 	const result: CycleResult = {
@@ -297,6 +295,7 @@ function tailPending(fp: string, source: UsageSource, files: Record<string, File
 function jcodePending(
 	fp: string,
 	source: JcodeSource,
+	accountExtId: string | undefined,
 	sessions: Record<string, JcodeSessionState>,
 ): PendingUpload | null {
 	const session = readJcodeSession(fp, source, sessions[fp])
@@ -307,10 +306,54 @@ function jcodePending(
 		commit: () => {
 			sessions[fp] = session.nextState
 		},
-		// shortcut: jcode keeps its own Anthropic logins and stamps none on a session, so its
-		// turns book on the device's Claude Code account; read jcode's active login if they differ.
-		segments: session.records.length > 0 ? [{ accountExtId: undefined, records: session.records }] : [],
+		segments: session.records.length > 0 ? [{ accountExtId, records: session.records }] : [],
 	}
+}
+
+async function listJcodeSessionsWithAccount(
+	cfg: Config,
+	tokenOwners: Map<string, string>,
+): Promise<{ fp: string; source: JcodeSource; accountExtId: string | undefined }[]> {
+	const roots: { dir: string | null; source: JcodeSource }[] = [
+		{ dir: cfg.jcodeDir, source: 'jcode' },
+		{ dir: cfg.pjDir, source: 'pj' },
+	]
+	const out: { fp: string; source: JcodeSource; accountExtId: string | undefined }[] = []
+	for (const { dir, source } of roots) {
+		const sessions = dir ? listJcodeSessions(dir) : []
+		if (!dir || sessions.length === 0) {
+			continue
+		}
+		const accountExtId = await jcodeAccount(dir, tokenOwners)
+		for (const fp of sessions) {
+			out.push({ accountExtId, fp, source })
+		}
+	}
+	return out
+}
+
+/** The Anthropic account jcode (or pj) is signed into: the owner of the active login in
+ *  the `auth.json` beside its sessions dir. Undefined (the batch then books on the
+ *  Claude Code account) when that file or the profile lookup fails. Owners are cached per
+ *  access token, so the profile call repeats only when jcode refreshes or switches logins.
+ *  shortcut: books a turn on the login active at upload time, so a switch between a turn
+ *  and its upload (or a backfill) books it on the new login; stamp the login per turn in
+ *  jcode if that matters. */
+async function jcodeAccount(sessionsDir: string, owners: Map<string, string>): Promise<string | undefined> {
+	const token = activeJcodeToken(join(dirname(sessionsDir), 'auth.json'))
+	if (!token) {
+		return undefined
+	}
+	const cached = owners.get(token)
+	if (cached) {
+		return cached
+	}
+	const owner = await tokenOwner(token)
+	if (!owner) {
+		return undefined
+	}
+	owners.set(token, owner)
+	return owner
 }
 
 /** Drop the progress of jcode sessions no longer on disk; returns whether anything went. */
