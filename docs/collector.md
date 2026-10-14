@@ -66,6 +66,8 @@ sends only turns newer than the session's stored `uploadedThrough` timestamp, wh
 is committed like an offset. Only `claude`/`claude-oauth` providers count;
 `claude-api` is a billed key. jcode keeps its own Anthropic logins and names none per
 session, so its turns book on the account `~/.claude.json` names.
+pj, a jcode fork, writes the same files under `~/.pj/sessions`; the same reader
+sends them as source `pj`.
 
 A `400`/`422` means the server parsed the request and rejected the *records*, so
 the chunk is split and each half retried: one malformed line costs one record
@@ -196,7 +198,7 @@ reading refreshes its `at` only every 10 minutes while the numbers hold.
 Every knob is a top-level file key (`interval`, `limitsInterval`, `batch`,
 `notifications`, `notifyThresholds`, `hook`, `update`, `updateInterval`, plus
 the dirs and `token`) with a matching env var that overrides it:
-`USAGEFLEET_TOKEN`, `_PROJECTS`, `_DESKTOP`, `_PI`, `_JCODE`, `_BATCH`, `_INTERVAL`,
+`USAGEFLEET_TOKEN`, `_PROJECTS`, `_DESKTOP`, `_PI`, `_JCODE`, `_PJ`, `_BATCH`, `_INTERVAL`,
 `_LIMITS_INTERVAL`, `_UPDATE`, `_UPDATE_INTERVAL`, `_NOTIFY`,
 `_NOTIFY_THRESHOLDS`, `_HOOK`. Resolution is env → file → default
 (`positiveNumber`/`flagOff` in `config.ts`); `normalize()` in `store.ts` must

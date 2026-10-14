@@ -67,6 +67,7 @@ function normalize(raw: Partial<Store>): Store {
 		},
 		notifyThresholds: raw.notifyThresholds,
 		piDir: raw.piDir,
+		pjDir: raw.pjDir,
 		projectsDir: raw.projectsDir,
 		state: {
 			deviceId: raw.state?.deviceId || randomUUID(),

@@ -41,6 +41,7 @@ function fixture(count: number): { cfg: Config; logPath: string } {
 			desktopDir: null,
 			jcodeDir: join(dir, 'jcode'),
 			piDirs: [],
+			pjDir: join(dir, 'pj'),
 			projectsDir: projects,
 			storePath: join(dir, 'config.json'),
 			token: 'uf_t',
@@ -251,6 +252,25 @@ describe('runOnce jcode sessions', () => {
 		await runOnce({ ...cfg, jcodeDir })
 
 		expect(sent).toStrictEqual([['jcode:m1', 'jcode:m2'], ['jcode:m3']])
+	})
+
+	it('reads pj sessions as their own source', async () => {
+		const { cfg } = fixture(0)
+		const pjDir = mkdtempSync(join(tmpdir(), 'uf-pj-'))
+		writeFileSync(join(pjDir, 'session_owl_1_a.journal.jsonl'), journalLine(turn('m1', Date.now())))
+		writeFileSync(
+			join(pjDir, 'session_owl_1_a.json'),
+			JSON.stringify({ id: 'session_owl_1_a', provider_key: 'claude' }),
+		)
+		const sent: { source?: string; uuid: string }[] = []
+		uploadBatch.mockImplementation(async (payload: { records: { source?: string; uuid: string }[] }) => {
+			sent.push(...payload.records.map(({ source, uuid }) => ({ source, uuid })))
+			return { accepted: payload.records.length, duplicates: 0, ok: true }
+		})
+
+		await runOnce({ ...cfg, pjDir })
+
+		expect(sent).toStrictEqual([{ source: 'pj', uuid: 'pj:m1' }])
 	})
 })
 

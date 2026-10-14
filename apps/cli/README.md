@@ -78,8 +78,8 @@ shell once. `uninstall` removes both again, and self-update keeps them current.
   Desktop agent-mode (Cowork) sessions, and the
   [pi](https://github.com/badlogic/pi-mono) agent (`~/.pi/agent/sessions`,
   `anthropic` and `claude-bridge` provider records only; other providers don't
-  touch Claude limits), and the jcode agent (`~/.jcode/sessions`, Claude
-  subscription turns only).
+  touch Claude limits), and the jcode agent (`~/.jcode/sessions`) and its pj fork
+  (`~/.pj/sessions`), Claude subscription turns only.
   A per-file byte offset in the config file means each line is sent once;
   rotation and truncation are handled and partial lines are never sent. Delivery
   is at-least-once — the server dedups on `uuid`.
@@ -159,6 +159,7 @@ it (`usagefleet config` prints this same table):
 | `desktopDir` | `USAGEFLEET_DESKTOP` | override the Claude Desktop sessions dir; `off` to skip it |
 | `piDir` | `USAGEFLEET_PI` | pi sessions dirs — string or array in the file, comma-separated in env; `off` to skip |
 | `jcodeDir` | `USAGEFLEET_JCODE` | override the jcode sessions dir (`~/.jcode/sessions`); `off` to skip it |
+| `pjDir` | `USAGEFLEET_PJ` | override the pj sessions dir (`~/.pj/sessions`); `off` to skip it |
 | `interval` | `USAGEFLEET_INTERVAL` | watch poll seconds (default 15) |
 | `limitsInterval` | `USAGEFLEET_LIMITS_INTERVAL` | seconds between limit reports (default 60; 300 on API keys, where each report costs a 1-token ping) |
 | `notifications` | `USAGEFLEET_NOTIFY` | desktop notifications, on by default (`false`/`0` disables) |

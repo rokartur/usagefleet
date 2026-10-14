@@ -8,8 +8,9 @@ export type OsName = 'mac' | 'linux' | 'windows' | 'other'
  *  the app's `local-agent-mode-sessions/<session>/.claude/projects`);
  *  `pi` = the pi coding agent (`~/.pi/agent/sessions`, its own JSONL format —
  *  only providers "anthropic" and "claude-bridge" count against Claude limits);
- *  `jcode` = the jcode agent (`~/.jcode/sessions`, JSON snapshot + journal). */
-export type UsageSource = 'cli' | 'desktop' | 'pi' | 'jcode'
+ *  `jcode` = the jcode agent (`~/.jcode/sessions`, JSON snapshot + journal);
+ *  `pj` = the pj fork of jcode (`~/.pj/sessions`, same format). */
+export type UsageSource = 'cli' | 'desktop' | 'pi' | 'jcode' | 'pj'
 
 /** Wire record sent to POST /api/v1/usage. Field names match the server's
  *  `RecordSchema` (apps/web/src/routes/api/v1/usage.ts); a mismatch is a 400,
@@ -107,6 +108,7 @@ export interface Store {
 	projectsDir?: string
 	desktopDir?: string
 	jcodeDir?: string
+	pjDir?: string
 	/** One path, or several (pi's session root moves with PI_CODING_AGENT_DIR). */
 	piDir?: string | string[]
 	// Every USAGEFLEET_* knob is also a file key (the matching env var wins);
@@ -146,5 +148,7 @@ export interface Config {
 	piDirs: string[]
 	/** jcode's flat sessions dir (`session_*.json` + `.journal.jsonl`), or null to disable. */
 	jcodeDir: string | null
+	/** pj's sessions dir, jcode's format under `~/.pj`, or null to disable. */
+	pjDir: string | null
 	batchSize: number
 }

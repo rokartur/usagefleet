@@ -33,7 +33,7 @@ describe(readJcodeSession, () => {
 			})}\n`,
 		)
 
-		expect(readJcodeSession(snapshot)?.records).toStrictEqual([
+		expect(readJcodeSession(snapshot, 'jcode')?.records).toStrictEqual([
 			{
 				cacheCreation1h: null,
 				cacheCreation5m: null,

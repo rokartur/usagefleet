@@ -7,6 +7,7 @@ import { fetchLimits } from './claude-limits.js'
 import type { LimitsReport } from './claude-limits.js'
 import { ENDPOINT } from './config.js'
 import { listJcodeSessions, readJcodeSession } from './jcode.js'
+import type { JcodeSource } from './jcode.js'
 import { maybeNotify } from './notifier.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
@@ -78,13 +79,19 @@ export async function runOnce(
 		}
 	}
 
-	const jcodeSessions = cfg.jcodeDir ? listJcodeSessions(cfg.jcodeDir) : []
+	const jcodeRoots: { dir: string | null; source: JcodeSource }[] = [
+		{ dir: cfg.jcodeDir, source: 'jcode' },
+		{ dir: cfg.pjDir, source: 'pj' },
+	]
+	const jcodeSessions = jcodeRoots.flatMap(({ dir, source }) =>
+		dir ? listJcodeSessions(dir).map(fp => ({ fp, source })) : [],
+	)
 
 	// Each source yields its new records and how to commit having sent them, so both
-	// share one upload path: offsets for appended JSONL, a watermark for jcode.
+	// share one upload path: offsets for appended JSONL, a watermark for jcode and pj.
 	const reads = [
 		...files.map(({ fp, source }) => ({ fp, read: () => tailPending(fp, source, state.files) })),
-		...jcodeSessions.map(fp => ({ fp, read: () => jcodePending(fp, state.jcode) })),
+		...jcodeSessions.map(({ fp, source }) => ({ fp, read: () => jcodePending(fp, source, state.jcode) })),
 	]
 
 	const result: CycleResult = {
@@ -176,7 +183,10 @@ export async function runOnce(
 	// dedups. Only our own section is replaced, so a token written by a
 	// concurrent `usagefleet login` survives.
 	const pruned = pruneMissingFiles(state, files)
-	const prunedJcode = pruneGoneSessions(state.jcode, jcodeSessions)
+	const prunedJcode = pruneGoneSessions(
+		state.jcode,
+		jcodeSessions.map(s => s.fp),
+	)
 	if (pruned || prunedJcode || advanced) {
 		updateStore(cfg.storePath, store => {
 			store.state.files = state.files
@@ -284,8 +294,12 @@ function tailPending(fp: string, source: UsageSource, files: Record<string, File
 	}
 }
 
-function jcodePending(fp: string, sessions: Record<string, JcodeSessionState>): PendingUpload | null {
-	const session = readJcodeSession(fp, sessions[fp])
+function jcodePending(
+	fp: string,
+	source: JcodeSource,
+	sessions: Record<string, JcodeSessionState>,
+): PendingUpload | null {
+	const session = readJcodeSession(fp, source, sessions[fp])
 	if (!session) {
 		return null
 	}

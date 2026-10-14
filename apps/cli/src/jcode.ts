@@ -1,7 +1,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { str } from './parser.js'
-import type { JcodeSessionState, UsageRecord } from './types.js'
+import type { JcodeSessionState, UsageRecord, UsageSource } from './types.js'
+
+/** pj is a jcode fork writing the same session files under its own dir. */
+export type JcodeSource = Extract<UsageSource, 'jcode' | 'pj'>
 
 // "claude" and "claude-oauth" run on the Claude subscription; "claude-api" is a billed API key.
 const SUBSCRIPTION_PROVIDERS = new Set(['claude', 'claude-oauth'])
@@ -50,6 +53,7 @@ export function listJcodeSessions(dir: string): string[] {
  */
 export function readJcodeSession(
 	snapshotPath: string,
+	source: JcodeSource,
 	prev?: JcodeSessionState,
 ): { records: UsageRecord[]; nextState: JcodeSessionState } | null {
 	const journalPath = snapshotPath.replace(/\.json$/, '.journal.jsonl')
@@ -79,7 +83,7 @@ export function readJcodeSession(
 	const seen = new Set<string>()
 	const records: UsageRecord[] = []
 	for (const [message, meta] of turns) {
-		const record = toRecord(message, meta, str(snapshot.id))
+		const record = toRecord(message, meta, str(snapshot.id), source)
 		if (!record || seen.has(record.uuid) || Date.parse(record.timestamp) <= uploadedThrough) {
 			continue
 		}
@@ -109,7 +113,7 @@ function readJournal(path: string): JournalLine[] {
 }
 
 /** jcode's `token_usage` is Anthropic's usage block (`prompt_tokens` is their sum, left out). */
-function toRecord(m: JcodeMessage, meta: JcodeMeta, sessionId: string | null): UsageRecord | null {
+function toRecord(m: JcodeMessage, meta: JcodeMeta, sessionId: string | null, source: JcodeSource): UsageRecord | null {
 	const u = m.token_usage
 	const id = str(m.id)
 	const timestamp = str(m.timestamp)
@@ -138,9 +142,9 @@ function toRecord(m: JcodeMessage, meta: JcodeMeta, sessionId: string | null): U
 		requestId: null,
 		serviceTier: null,
 		sessionId,
-		source: 'jcode',
+		source,
 		timestamp,
-		uuid: `jcode:${id}`,
+		uuid: `${source}:${id}`,
 		version: null,
 	}
 }

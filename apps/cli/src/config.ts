@@ -2,6 +2,7 @@ import {
 	defaultDesktopSessionsDir,
 	defaultJcodeSessionsDir,
 	defaultPiSessionsDirs,
+	defaultPjSessionsDir,
 	defaultProjectsDir,
 } from './paths.js'
 import { readStore, storePath } from './store.js'
@@ -37,6 +38,7 @@ export function loadConfig(): Config {
 		desktopDir: resolveOptionalDir(process.env.USAGEFLEET_DESKTOP, file.desktopDir, defaultDesktopSessionsDir()),
 		jcodeDir: resolveOptionalDir(process.env.USAGEFLEET_JCODE, file.jcodeDir, defaultJcodeSessionsDir()),
 		piDirs: resolvePiDirs(process.env.USAGEFLEET_PI, file.piDir),
+		pjDir: resolveOptionalDir(process.env.USAGEFLEET_PJ, file.pjDir, defaultPjSessionsDir()),
 		projectsDir: process.env.USAGEFLEET_PROJECTS || file.projectsDir || defaultProjectsDir(),
 		storePath: storePath(),
 		token,
