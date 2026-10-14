@@ -289,6 +289,8 @@ const en = {
 	},
 	reset: {
 		at: ' · at {clock}',
+		fullAt: ' · 100% at {clock} at this pace',
+		projected: ' · ~{pct}% by then at this pace',
 		resetsIn: 'resets in {left}',
 		resetting: 'resetting…',
 	},
@@ -692,6 +694,8 @@ const pl: typeof en = {
 	},
 	reset: {
 		at: ' · o {clock}',
+		fullAt: ' · przy tym tempie 100% o {clock}',
+		projected: ' · przy tym tempie ~{pct}% do resetu',
 		resetsIn: 'reset za {left}',
 		resetting: 'resetowanie…',
 	},

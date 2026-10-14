@@ -110,6 +110,7 @@ export const dashboard: DashboardDTO = {
 	fiveHourPct: 41,
 	fiveHourResetsAt: new Date(NOW + 2 * HOUR + 14 * MIN).toISOString(),
 	groups: liveGroups,
+	sessionProjection: { fullAt: null, pct: 68 },
 	modelLimits: [
 		{
 			groups: liveGroups.map(g => ({

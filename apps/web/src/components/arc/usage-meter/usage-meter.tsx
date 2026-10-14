@@ -45,6 +45,8 @@ const styles = {
 	overTint:
 		'fill-(--danger) opacity-0 transition-opacity duration-(--duration-fast) ease-(--ease-standard) group-data-[highlight=on]/over:opacity-100 motion-reduce:transition-none',
 	limit: 'pointer-events-none absolute inset-y-0 -left-px w-0.5 rounded-[1px] bg-(--foreground)',
+	projected:
+		'pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,var(--danger)_55%,transparent)_0_2px,transparent_2px_5px)]',
 	legend: '-mx-2 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-0.5',
 	item: 'grid min-w-0 justify-items-start gap-0.5 p-2 transition-opacity duration-(--duration-fast) ease-(--ease-standard) data-[highlight=off]:opacity-45 motion-reduce:transition-none',
 	itemHead: 'flex max-w-full min-w-0 items-center gap-2 text-sm leading-(--leading-body) text-(--text-secondary)',
@@ -109,6 +111,8 @@ export interface UsageMeterProps {
 	segments: UsageMeterSegment[]
 	/** The plan limit, in the same unit as the segments. */
 	limit: number
+	/** Where usage is heading, in the unit of `limit`. Drawn as a hatch from the used end up to it. */
+	projected?: number
 	unit?: string
 	/** Digits after the decimal point. */
 	decimals?: number
@@ -454,6 +458,7 @@ export function UsageMeter({
 	label,
 	segments,
 	limit,
+	projected,
 	unit = '',
 	decimals = 1,
 	warnAt = 0.9,
@@ -523,6 +528,13 @@ export function UsageMeter({
 		}
 	}, [markerOpacity, reduced, shownLimit, used])
 	const overClip = useTransform(() => `inset(0 0 0 ${limitX.get() + GAP}px)`)
+	const shownProjected = useMotionValue(0)
+	const projectedClip = useTransform(() => {
+		const toX = (value: number) => (value / span.get()) * width.get()
+		const from = toX(used.get()) + GAP
+		const to = Math.max(from, toX(shownProjected.get()))
+		return `inset(0 ${width.get() - to}px 0 ${from}px)`
+	})
 
 	useLayoutEffect(() => {
 		const node = trackRef.current
@@ -576,6 +588,17 @@ export function UsageMeter({
 		}
 		return soon(() => animate(shownLimit, limit, settle))
 	}, [limit, reduced, shownLimit])
+	useEffect(() => {
+		const target = ready ? (projected ?? 0) : 0
+		if (shownProjected.get() === target) {
+			return
+		}
+		if (reduced) {
+			shownProjected.jump(target)
+			return
+		}
+		return soon(() => animate(shownProjected, target, settle))
+	}, [projected, ready, reduced, shownProjected])
 
 	// Hover only: a pinned highlight outlived the pointer and left the headline showing one group as the total.
 	const [active, setActive] = useState<string | null>(null)
@@ -687,6 +710,7 @@ export function UsageMeter({
 							highlight={active ? (active === segment.id ? 'on' : 'off') : undefined}
 						/>
 					))}
+					<motion.span className={styles.projected} style={{ clipPath: projectedClip }} aria-hidden='true' />
 					{/* Past the limit the bar is struck through: the overflow keeps its colours, hatched so it reads as over without colour. */}
 					<motion.svg
 						className={styles.overflow}

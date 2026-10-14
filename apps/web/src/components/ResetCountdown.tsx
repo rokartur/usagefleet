@@ -53,7 +53,13 @@ function clockLabel(resetsAt: string | null, locale: string): string | null {
 	return `${day}${time}`
 }
 
-export function ResetCountdown({ resetsAt }: { resetsAt: string | null }) {
+export function ResetCountdown({
+	resetsAt,
+	projection = null,
+}: {
+	resetsAt: string | null
+	projection?: { pct: number; fullAt: string | null } | null
+}) {
 	// Single state bumped each second; both labels recompute from `resetsAt` and
 	// the current time, so the weekday prefix stays correct across the 24h boundary.
 	const [, setTick] = useState(0)
@@ -78,6 +84,15 @@ export function ResetCountdown({ resetsAt }: { resetsAt: string | null }) {
 		<span>
 			{left === '' ? t('resetting') : t('resetsIn', { left })}
 			{clock && <span className='text-neutral-500'>{t('at', { clock })}</span>}
+			{projection?.fullAt ? (
+				<span className='text-warning'>
+					{t('fullAt', { clock: clockLabel(projection.fullAt, locale) ?? '' })}
+				</span>
+			) : (
+				projection && (
+					<span className='text-neutral-500'>{t('projected', { pct: Math.round(projection.pct) })}</span>
+				)
+			)}
 		</span>
 	)
 }

@@ -31,6 +31,7 @@ import {
 	modelLabel,
 	monthKey,
 	PROJECT_DAYS,
+	projectSession,
 	refreshPrices,
 	sumTokens,
 	weekWindowStart,
@@ -43,6 +44,7 @@ import type {
 	Calibration,
 	DailyAggRow,
 	ModelUsage,
+	SessionProjection,
 	TokenTotals,
 	UsageRecord,
 	WindowSpan,
@@ -378,6 +380,7 @@ export interface LiveDashboard {
 	sevenDayPct: number
 	fiveHourResetsAt: Date | null
 	sevenDayResetsAt: Date | null
+	sessionProjection: SessionProjection | null
 	groups: LiveGroupUsage[]
 	/** Per-model official limits (e.g. Fable weekly), group-split like above. */
 	modelLimits: LiveModelLimit[]
@@ -816,6 +819,7 @@ async function loadLiveDashboard(
 			connected: false,
 			groups: [],
 			modelLimits: [],
+			sessionProjection: null,
 			spend: emptySpend(),
 			...base,
 		}
@@ -1012,6 +1016,8 @@ async function loadLiveDashboard(
 		connected: true,
 		groups: groupUsages,
 		modelLimits,
+		sessionProjection:
+			fiveHourResetsAt && projectSession(pointsFor('5h'), base.fiveHourPct, fiveStart, fiveHourResetsAt, now),
 		spend,
 		...base,
 	}
@@ -1824,6 +1830,7 @@ export interface DashboardDTO {
 	sevenDayPct: number
 	fiveHourResetsAt: string | null
 	sevenDayResetsAt: string | null
+	sessionProjection: { pct: number; fullAt: string | null } | null
 	groups: LiveGroupUsage[]
 	modelLimits: ModelLimitDTO[]
 	spend: Spend
@@ -1842,6 +1849,10 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
 			resetsAt: m.resetsAt?.toISOString() ?? null,
 		})),
 		reportedAt: d.reportedAt?.toISOString() ?? null,
+		sessionProjection: d.sessionProjection && {
+			fullAt: d.sessionProjection.fullAt?.toISOString() ?? null,
+			pct: d.sessionProjection.pct,
+		},
 		sevenDayPct: d.sevenDayPct,
 		sevenDayResetsAt: d.sevenDayResetsAt?.toISOString() ?? null,
 		source: d.source,

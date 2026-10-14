@@ -302,7 +302,8 @@ export function LiveDashboard({
 					<Meter
 						label={t('fiveHourSession')}
 						pct={dash.fiveHourPct}
-						resets={<ResetCountdown resetsAt={dash.fiveHourResetsAt} />}
+						projected={dash.sessionProjection?.pct}
+						resets={<ResetCountdown resetsAt={dash.fiveHourResetsAt} projection={dash.sessionProjection} />}
 						segments={dash.groups.map(g => ({
 							color: g.color,
 							id: groupKey(g.groupId),
@@ -382,11 +383,13 @@ function AccountSwitcher({
 export function Meter({
 	label,
 	pct,
+	projected,
 	resets,
 	segments,
 }: {
 	label: string
 	pct: number
+	projected?: number
 	resets: ReactNode
 	segments: UsageMeterSegment[]
 }) {
@@ -406,6 +409,7 @@ export function Meter({
 				label={label}
 				segments={bars}
 				limit={100}
+				projected={projected}
 				unit='%'
 				locale={locale}
 				legend={false}
