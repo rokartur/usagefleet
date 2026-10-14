@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlink
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { LimitsReport } from './claude-limits.js'
 import { updateStore } from './store.js'
 import type { Config, Store } from './types.js'
 
@@ -343,6 +344,40 @@ describe('reportLimitsOnce account check', () => {
 	it('skips a reading whose token belongs to another account', async () => {
 		await reportLimitsOnce(signedInAs('acc-a', 'acc-b'))
 		expect(postLimits).not.toHaveBeenCalled()
+	})
+
+	// 2026-10-14: pj ran on claude-fox while Claude Code stayed on claude-otter, so fox's
+	// reading went 4h stale and the dashboard showed it offline.
+	it('also reports the login pj has active when it is another account', async () => {
+		const cfg = signedInAs('acc-otter', 'acc-otter')
+		const pjHome = mkdtempSync(join(tmpdir(), 'uf-pj-'))
+		writeFileSync(
+			join(pjHome, 'auth.json'),
+			JSON.stringify({
+				active_anthropic_account: 'claude-fox',
+				anthropic_accounts: [{ access: 'tok-fox', label: 'claude-fox' }],
+			}),
+		)
+		vi.stubGlobal('fetch', async (url: string, init: { headers: Record<string, string> }) => {
+			const fox = init.headers.authorization === 'Bearer tok-fox'
+			return Response.json(
+				url.endsWith('/profile')
+					? { account: { uuid: fox ? 'acc-fox' : 'acc-otter' } }
+					: { five_hour: { utilization: fox ? 48 : 6 }, seven_day: { utilization: fox ? 69 : 60 } },
+			)
+		})
+
+		await reportLimitsOnce({ ...cfg, jcodeDir: null, pjDir: join(pjHome, 'sessions') })
+
+		const posted = postLimits.mock.calls.map(([report]: [LimitsReport]) => [
+			report.account?.extId,
+			report.fiveHourPct,
+			report.sevenDayPct,
+		])
+		expect(posted).toStrictEqual([
+			['acc-otter', 6, 60],
+			['acc-fox', 48, 69],
+		])
 	})
 
 	// Each save rewrites the whole store, ~0.5 MB of offsets, and this runs every minute.

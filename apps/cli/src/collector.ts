@@ -400,18 +400,60 @@ function planWall(): string {
 	return `device outside your plan's device limit · free a slot or upgrade at ${ENDPOINT}/fleet · nothing is lost, uploads resume once it fits`
 }
 
-/**
- * Auto-detect the local Claude login, read the real 5h/weekly utilization
- * (oauth/usage for subscription logins, rate-limit headers for API keys), and
- * report it to the server. Best-effort — returns null (and logs) when no login
- * is found or the request fails.
- */
+/** Report the Claude Code login's limits, then those of any other account jcode or pj has active. */
 export async function reportLimitsOnce(
 	cfg: Config,
 	log: Log = () => {
 		/* empty */
 	},
 ): Promise<LimitsReport | null> {
+	const report = await reportClaudeCodeLimits(cfg, log)
+	await reportJcodeLimits(cfg, report?.account?.extId, log)
+	return report
+}
+
+/**
+ * jcode and pj keep their own Anthropic logins, so the account one of them has active
+ * can differ from Claude Code's; with no reading of its own that account's limits go
+ * stale on the server and its group stops blocking.
+ */
+async function reportJcodeLimits(cfg: Config, reportedExtId: string | undefined, log: Log): Promise<void> {
+	const reported = new Set(reportedExtId ? [reportedExtId] : [])
+	for (const sessionsDir of [cfg.jcodeDir, cfg.pjDir]) {
+		if (!sessionsDir) {
+			continue
+		}
+		// Never refreshed here: rotating the refresh token would sign jcode or pj out.
+		const token = activeJcodeToken(join(dirname(sessionsDir), 'auth.json'))
+		const extId = token ? await tokenOwner(token) : null
+		if (!token || !extId || reported.has(extId)) {
+			continue
+		}
+		reported.add(extId)
+		let report: LimitsReport
+		try {
+			report = await fetchLimits({ source: 'sub', token })
+		} catch (error) {
+			log(
+				'warn',
+				`limits fetch failed for the ${tilde(dirname(sessionsDir))} login · ${(error as Error).message}`,
+			)
+			continue
+		}
+		const outcome = await postLimits({ ...report, account: { email: null, extId, org: null } }, cfg)
+		if (outcome !== 'ok') {
+			log('warn', `limits upload failed for the ${tilde(dirname(sessionsDir))} login · ${outcome}`)
+		}
+	}
+}
+
+/**
+ * Auto-detect the local Claude login, read the real 5h/weekly utilization
+ * (oauth/usage for subscription logins, rate-limit headers for API keys), and
+ * report it to the server. Best-effort — returns null (and logs) when no login
+ * is found or the request fails.
+ */
+async function reportClaudeCodeLimits(cfg: Config, log: Log): Promise<LimitsReport | null> {
 	const creds = await detectClaudeCreds()
 	if (!creds) {
 		if (process.platform === 'darwin' && macKeychainDenied()) {
