@@ -1284,6 +1284,10 @@ export interface PastWindowGroup {
 	 *  of the utilization Claude reported for the window. Null for windows that
 	 *  closed without a recorded utilization sample. */
 	accountPct: number | null
+	/** The same cut against the group's budget slice, like the live card's
+	 *  sessionBudgetPct. Slices are today's: a window from before a regroup reads
+	 *  against the current split. */
+	budgetPct: number | null
 	/** Billable tokens (cache reads excluded). */
 	tokens: number
 }
@@ -1523,7 +1527,7 @@ export function buildPastWindows(
 	rows: WindowAggRow[],
 	spans: WindowSpan[],
 	ttl: CacheTtl,
-	label: (id: string | null) => { name: string; color: string },
+	groupOf: (id: string | null) => { name: string; color: string; slice: number | undefined; watchOnly: boolean },
 	weights?: BucketWeights,
 ): PastWindow[] {
 	const byBin = new Map<number, WindowAggRow[]>()
@@ -1552,20 +1556,36 @@ export function buildPastWindows(
 				totalCost += cost
 				byGroup.set(c.groupId, cur)
 			}
+			const exactPctOf = (cost: number) =>
+				accountPct === null || totalCost === 0 ? null : accountPct * (cost / totalCost)
+			let watchCost = 0
+			for (const [groupId, g] of byGroup) {
+				if (groupOf(groupId).watchOnly) {
+					watchCost += g.cost
+				}
+			}
+			const watchPct = exactPctOf(watchCost) ?? 0
 			return {
 				// Samples carry decimals; display rounds once, here at the end.
 				accountPct: accountPct === null ? null : roundTenth(accountPct),
 				end: new Date(spanOf.end).toISOString(),
 				groups: [...byGroup.entries()]
-					.map(([groupId, g]) => ({
-						groupId,
-						...label(groupId),
-						accountPct:
-							accountPct === null || totalCost === 0
-								? null
-								: roundTenth(accountPct * (g.cost / totalCost)),
-						tokens: g.tokens,
-					}))
+					.map(([groupId, g]) => {
+						const { name, color, slice } = groupOf(groupId)
+						const exactPct = exactPctOf(g.cost)
+						return {
+							groupId,
+							name,
+							color,
+							accountPct: exactPct === null ? null : roundTenth(exactPct),
+							// No slice reads against the whole account, as on the live card.
+							budgetPct:
+								exactPct === null
+									? null
+									: groupBudgetPct({ exactPct }, slice ?? 1, slice === undefined ? 0 : watchPct),
+							tokens: g.tokens,
+						}
+					})
 					.toSorted((a, b) => b.tokens - a.tokens),
 				start: new Date(spanOf.start).toISOString(),
 				tokens: [...byGroup.values()].reduce((sum, g) => sum + g.tokens, 0),
@@ -1602,16 +1622,26 @@ export async function getWindowHistory(view: AccountView, now: Date): Promise<Wi
 	const weekSpans = windowSpans(weekSamples, SEVEN_D_MS, weekOrigin, now, PAST_WINDOWS)
 
 	await refreshPrices()
-	const [groupRows, sessionRows, weekRows] = await Promise.all([
+	const [groupRows, deviceRows, sessionRows, weekRows] = await Promise.all([
 		db.select().from(groups).where(eq(groups.ownerId, userId)),
+		db
+			.select({ claudeAccountId: devices.claudeAccountId, groupId: devices.groupId, revoked: devices.revoked })
+			.from(devices)
+			.where(eq(devices.userId, userId)),
 		loadWindowAggregates(view, sessionSpans),
 		loadWindowAggregates(view, weekSpans),
 	])
-	const label = (id: string | null) => {
+	const slotted = slottedGroups(
+		deviceRows.filter(d => inAccount(view, d.claudeAccountId)),
+		groupRows,
+	)
+	const groupOf = (id: string | null) => {
 		const g = id === null ? undefined : groupRows.find(x => x.id === id)
 		return {
 			color: g?.color ?? '#94a3b8',
 			name: id === null ? 'Ungrouped' : (g?.name ?? 'Unknown'),
+			slice: id === null ? undefined : slotted.get(id),
+			watchOnly: g?.watchOnly ?? false,
 		}
 	}
 
@@ -1620,8 +1650,8 @@ export async function getWindowHistory(view: AccountView, now: Date): Promise<Wi
 	// depending on which card shows it.
 	const weights = view.account?.calibration?.weights
 	return {
-		sessions: buildPastWindows(sessionRows, sessionSpans, ttl, label, weights),
-		weeks: buildPastWindows(weekRows, weekSpans, ttl, label, weights),
+		sessions: buildPastWindows(sessionRows, sessionSpans, ttl, groupOf, weights),
+		weeks: buildPastWindows(weekRows, weekSpans, ttl, groupOf, weights),
 	}
 }
 
@@ -1884,14 +1914,13 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
 }
 
 /** Everything the dashboard page renders for one user: one live card per
- *  Anthropic account (with its past windows), the usage history and the
- *  per-project table. Shared by /dashboard (own data) and the admin's per-user
- *  view, so both always read the same numbers. */
+ *  Anthropic account (with its past windows) and the usage history. Shared by
+ *  /dashboard (own data) and the admin's per-user view, so both always read the
+ *  same numbers. */
 export async function getDashboardOverview(userId: string, now = new Date()) {
-	const [dashboards, history, projects, pastWindows] = await Promise.all([
+	const [dashboards, history, pastWindows] = await Promise.all([
 		getLiveDashboards(userId),
 		getHistory(userId),
-		getProjectUsage(userId, now),
 		// Past windows need only the account views, not the live cards, so they load
 		// alongside them instead of after: they are the slowest scan on this page.
 		listAccountViews(userId).then(views =>
@@ -1907,7 +1936,7 @@ export async function getDashboardOverview(userId: string, now = new Date()) {
 		dash: toDashboardDTO(dash),
 		windows: (pastWindows.find(w => w.accountId === dash.accountId) ?? pastWindows[0]).windows,
 	}))
-	return { accounts, history, projects }
+	return { accounts, history }
 }
 
 /** The user's "default" group — the oldest one, or a freshly created "Default"

@@ -5,7 +5,7 @@ import { useEffect } from 'react'
 import { createFileRoute, notFound } from '@tanstack/react-router'
 import { AppShell } from '@/components/app-shell'
 import { Cockpit } from '@/components/dashboard/Cockpit'
-import { dashboard, history, projects, windows } from '@/lib/shots-fixture'
+import { dashboard, history, windows } from '@/lib/shots-fixture'
 
 export const Route = createFileRoute('/shots')({
 	// A deployment must not serve a page of made-up numbers under its own domain.
@@ -32,7 +32,7 @@ function ShotsPage() {
 	// Same shell as _dash.tsx, or the screenshots stop matching the app.
 	return (
 		<AppShell email='you@example.com' isAdmin={false}>
-			<Cockpit accounts={[{ dash: dashboard, windows }]} history={history} projects={projects} setup={null} />
+			<Cockpit accounts={[{ dash: dashboard, windows }]} history={history} setup={null} />
 		</AppShell>
 	)
 }

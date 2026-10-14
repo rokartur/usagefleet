@@ -51,6 +51,8 @@ const calibrated = (over: Partial<Calibration> = {}): Calibration => ({
 const label = (id: string | null) => ({
 	color: '#fff',
 	name: id ?? 'Ungrouped',
+	slice: undefined,
+	watchOnly: false,
 })
 const build = (rows: WindowAggRow[], pct: number | null) =>
 	buildPastWindows(rows, [{ end: START.getTime() + STRIDE, pct, start: START.getTime() }], '1h', label)
@@ -63,6 +65,7 @@ describe(buildPastWindows, () => {
 		expect(w.groups).toStrictEqual([
 			{
 				accountPct: 50,
+				budgetPct: 50,
 				color: '#fff',
 				groupId: 'a',
 				name: 'a',
@@ -70,6 +73,7 @@ describe(buildPastWindows, () => {
 			},
 			{
 				accountPct: 10,
+				budgetPct: 10,
 				color: '#fff',
 				groupId: 'b',
 				name: 'b',
@@ -86,6 +90,23 @@ describe(buildPastWindows, () => {
 
 	it('drops windows with no activity', () => {
 		expect(build([], 40)).toStrictEqual([])
+	})
+
+	it('reads each slotted group against its slice of what watch-only groups left', () => {
+		// 60% split evenly: watch takes 20, the two half-slice groups 20 each of the 80 left.
+		const groupOf = (id: string | null) => ({
+			...label(id),
+			slice: id === 'w' ? undefined : 1 / 2,
+			watchOnly: id === 'w',
+		})
+		const rows = ['a', 'b', 'w'].map(id => cell(id, 'claude-sonnet-4', 1_000_000))
+		const [w] = buildPastWindows(
+			rows,
+			[{ end: START.getTime() + STRIDE, pct: 60, start: START.getTime() }],
+			'1h',
+			groupOf,
+		)
+		expect(Object.fromEntries(w.groups.map(g => [g.groupId, g.budgetPct]))).toStrictEqual({ a: 50, b: 50, w: 20 })
 	})
 
 	it('splits by the same fitted weights the live card uses', () => {

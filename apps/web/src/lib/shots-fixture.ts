@@ -171,6 +171,7 @@ function pastWindow(startMs: number, endMs: number, accountPct: number, shares: 
 		end: new Date(endMs).toISOString(),
 		groups: GROUPS.map((g, i) => ({
 			accountPct: Math.round(accountPct * shares[i]),
+			budgetPct: Math.round(accountPct * shares[i] * GROUPS.length),
 			color: g.color,
 			groupId: g.id,
 			name: g.name,

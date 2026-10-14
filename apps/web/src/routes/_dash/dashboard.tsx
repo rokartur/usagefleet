@@ -7,11 +7,11 @@ import { requireUser } from '@/lib/session'
 
 const dashboardData = createServerFn().handler(async () => {
 	const user = await requireUser()
-	const { accounts, history, projects } = await getDashboardOverview(user.id)
+	const { accounts, history } = await getDashboardOverview(user.id)
 	// Only a never-reported account sees the setup rail, so this extra query costs
 	// nothing once data is flowing.
 	const setup = accounts.some(a => a.dash.connected) ? null : await setupState(user.id)
-	return { accounts, history, projects, setup }
+	return { accounts, history, setup }
 })
 
 /** Newest active device (the one just added, usually) and whether any device
@@ -30,12 +30,12 @@ export const Route = createFileRoute('/_dash/dashboard')({
 })
 
 function DashboardPage() {
-	const { accounts, history, projects, setup } = Route.useLoaderData()
+	const { accounts, history, setup } = Route.useLoaderData()
 	return (
 		<>
 			{/* The live column polls on its own; this keeps the history chart fresh. */}
 			<AutoRefresh intervalMs={60_000} />
-			<Cockpit accounts={accounts} history={history} projects={projects} setup={setup} />
+			<Cockpit accounts={accounts} history={history} setup={setup} />
 		</>
 	)
 }

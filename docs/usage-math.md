@@ -239,12 +239,12 @@ the method difference, not a bug. The *prices* behind that cost are the same
 ones the live card uses, calibration included: the method may differ, the
 account's price list may not.
 
-These percentages are **account shares, not budget slices**: the card's group
-rows carry `accountPct`, so a group at half the account reads 50% here while the
-live dashboard shows the same group at 100% of its slice. The budget-slice rule
-above applies to the live cards only. Two tables on one page, two meanings, on
-purpose: a closed window is a record of what happened, not a live budget to
-spend against.
+The per-window bars are **account shares** (`accountPct`): a group at half the
+account reads 50% there. Above them, each group's average and worst window are
+read **against its budget slice** (`budgetPct`, same `groupBudgetPct()` and
+watch-only rule as the live cards), so that same group reads 100% when it holds
+half. The slices are today's (`slottedGroups()` on the current devices): a
+window from before a regroup reads against the current split.
 
 ## Usage explorer
 

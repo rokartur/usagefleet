@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { ComponentProps, ReactNode } from 'react'
 import { useTranslations } from 'use-intl'
-import { ProjectTable } from '@/components/dashboard/ProjectTable'
 import { UsageExplorer } from '@/components/dashboard/UsageExplorer'
 import { WindowHistory } from '@/components/dashboard/WindowHistory'
 import { accountKey, LiveDashboard } from '@/components/LiveDashboard'
@@ -14,18 +13,14 @@ import type { DashboardDTO, WindowHistoryDTO } from '@/lib/data'
 export function Cockpit({
 	accounts,
 	history,
-	projects,
 	setup,
 	poll,
-	readOnly,
 	notConnected,
 }: {
 	accounts: { dash: DashboardDTO; windows: WindowHistoryDTO }[]
 	history: ComponentProps<typeof UsageExplorer>['history']
-	projects: ComponentProps<typeof ProjectTable>['projects']
 	setup: SetupState | null
 	poll?: boolean
-	readOnly?: boolean
 	/** Shown in place of the setup rail while no account has reported limits. */
 	notConnected?: ReactNode
 }) {
@@ -53,7 +48,6 @@ export function Cockpit({
 					account={accounts.length > 1 ? (current.dash.accountLabel ?? t('unidentifiedAccount')) : undefined}
 				/>
 			)}
-			{projects.length > 0 && <ProjectTable projects={projects} readOnly={readOnly} />}
 		</>
 	)
 
