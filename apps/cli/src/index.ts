@@ -127,7 +127,7 @@ async function cmdWatch(): Promise<void> {
 	const rawUpdate = positiveNumber(process.env.USAGEFLEET_UPDATE_INTERVAL, settings.updateInterval) ?? 6 * 60 * 60
 	const updateInterval = Math.max(60, rawUpdate) * 1000
 	let lastUpdateAt = 0
-	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs, cfg.jcodeDir, cfg.pjDir].filter(
+	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs, cfg.jcodeDir, cfg.pjDir, cfg.agentDir].filter(
 		(d): d is string => !!d,
 	)
 	console.log(header(`watching every ${interval / 1000}s`))
@@ -248,7 +248,7 @@ async function cmdStatus(): Promise<void> {
 	console.log('')
 	console.log(row('endpoint', host(ENDPOINT)))
 	console.log(row('device', `${state.deviceId} · token ${tokenFor(cfg, detectClaudeAccount()?.extId).slice(0, 8)}…`))
-	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs, cfg.jcodeDir, cfg.pjDir].filter(
+	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs, cfg.jcodeDir, cfg.pjDir, cfg.agentDir].filter(
 		(d): d is string => !!d,
 	)
 	for (const [i, dir] of watching.entries()) {
@@ -354,6 +354,7 @@ function cmdConfig(): void {
 		['piDir', 'USAGEFLEET_PI', 'pi session dirs · string or array; env comma-separated'],
 		['jcodeDir', 'USAGEFLEET_JCODE', 'override ~/.jcode/sessions ("off" disables)'],
 		['pjDir', 'USAGEFLEET_PJ', 'override ~/.pj/sessions ("off" disables)'],
+		['agentDir', 'USAGEFLEET_AGENT', 'override ~/.agents/sessions ("off" disables)'],
 		['interval', 'USAGEFLEET_INTERVAL', 'watch interval seconds (default 15)'],
 		[
 			'limitsInterval',

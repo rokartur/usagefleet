@@ -1,5 +1,6 @@
 import { closeSync, openSync, readSync, statSync } from 'node:fs'
-import { parseLine } from './parser.js'
+import { basename } from 'node:path'
+import { parseAgentLine, parseLine } from './parser.js'
 import type { FileState, UsageRecord, UsageSource } from './types.js'
 import { dim, line, tilde, yellow } from './ui.js'
 
@@ -12,7 +13,7 @@ const USAGE_KEY = Buffer.from('"usage"')
 const ACCOUNT_KEY = Buffer.from('"customType":"claude-account"')
 
 /**
- * The working directory of a pi session, read from the file's first line
+ * The working directory of a pi or agent session, read from the file's first line
  * (`{"type":"session",…,"cwd":"/path"}`). pi's message lines carry no cwd, and
  * tailing usually resumes past the header, so it is re-read per cycle rather
  * than remembered. The session dir name encodes the same path but lossily
@@ -51,7 +52,7 @@ export interface AccountSegment {
 }
 
 export interface TailResult {
-	/** New records in file order, split wherever a pi session switched accounts. */
+	/** New records in file order, split wherever a pi or agent session switched accounts. */
 	segments: AccountSegment[]
 	/** New offset to persist ONLY after the records are acknowledged by the server. */
 	nextState: FileState
@@ -94,7 +95,7 @@ export function tailFile(
 	let sessionCwd: string | null = null
 	try {
 		readSync(fd, buf, 0, length, start)
-		if (source === 'pi') {
+		if (source === 'pi' || source === 'agent') {
 			sessionCwd = piSessionCwd(fd)
 		}
 	} finally {
@@ -132,6 +133,11 @@ export function tailFile(
 		const text = consumed.toString('utf-8', lineStart, lineEnd)
 		if (isAccountLine) {
 			account = piSessionAccount(text)
+		} else if (source === 'agent') {
+			const usage = parseAgentLine(text, sessionCwd, basename(filePath, '.jsonl'))
+			if (usage) {
+				addRecord(segments, usage.accountExtId, usage.record)
+			}
 		} else {
 			const rec = parseLine(text, source, sessionCwd)
 			if (rec) {

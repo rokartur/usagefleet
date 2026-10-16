@@ -53,6 +53,7 @@ export function freshWindow(): WindowNotifyState {
 function normalize(raw: Partial<Store>): Store {
 	return {
 		accountTokens: raw.accountTokens,
+		agentDir: raw.agentDir,
 		batch: raw.batch,
 		desktopDir: raw.desktopDir,
 		hook: raw.hook,

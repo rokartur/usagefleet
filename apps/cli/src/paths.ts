@@ -79,6 +79,11 @@ export function defaultPjSessionsDir(): string {
 	return join(homedir(), '.pj', 'sessions')
 }
 
+/** The agent CLI keeps every session flat in `~/.agents/sessions`. */
+export function defaultAgentSessionsDir(): string {
+	return join(homedir(), '.agents', 'sessions')
+}
+
 /** pi's agent dir, the root for its sessions and extensions.
  *  PI_CODING_AGENT_DIR is pi's own relocation knob; unlike the service-side
  *  scan above, the guard installer runs from the user's shell where that env

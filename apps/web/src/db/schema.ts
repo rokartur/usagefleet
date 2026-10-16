@@ -187,7 +187,7 @@ export const usageEvents = pgTable(
 		gitBranch: text('git_branch'),
 		claudeVersion: text('claude_version'),
 		// Which app produced the row: 'cli' = Claude Code, 'desktop' = Claude Desktop
-		// agent-mode sessions, 'pi', 'jcode', 'pj'. Legacy rows default to 'cli'.
+		// agent-mode sessions, 'pi', 'jcode', 'pj', 'agent'. Legacy rows default to 'cli'.
 		source: text('source').notNull().default('cli'),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 	},

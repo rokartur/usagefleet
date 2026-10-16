@@ -31,7 +31,7 @@ SQL aggregates do the same fold in-database (`loadRecentEvents`,
   0.1×. Prices refresh from LiteLLM's map once a day per process, falling back to
   hardcoded tiers offline. Cache writes are priced by the per-TTL breakdown the
   log carried (`cache_creation_5m/1h_tokens`, reported by the collector) where
-  present; only the untagged remainder (legacy rows, pi, jcode and pj rows) falls back to
+  present; only the untagged remainder (legacy rows, pi, jcode, pj and agent rows) falls back to
   `cacheWriteTtl` in `user_settings` — Claude Code writes 5m caches unless
   `ENABLE_PROMPT_CACHING_1H=1`.
 

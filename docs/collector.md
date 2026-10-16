@@ -44,7 +44,12 @@ Every `USAGEFLEET_INTERVAL` seconds (default 15) `runOnce()`:
    account that metered it across a `/login` switch. A pi session pinned to one
    account by a `{"customType":"claude-account","data":{"uuid"}}` line books every
    later record in its file on that uuid instead, so concurrent pi sessions on two
-   accounts stay apart; the file's offset state carries it. The batch goes out with
+   accounts stay apart; the file's offset state carries it. The agent CLI
+   (`~/.agents/sessions/<id>.jsonl`) switches accounts between requests, so each of
+   its `usage` lines names the `provider` and Claude `account` that served it and
+   books on that; lines without an account (API keys, agents before it stamped one)
+   and other providers are skipped. `/clone` copies lines into a new session, so they
+   key on the response `id`. The batch goes out with
    `tokenFor(cfg, accountExtId)`: the token `login` bound to that account in the
    store's `accountTokens`, else the default one. Limits reports and `guard` pick
    their token the same way, so an account in another fleet never reports here.

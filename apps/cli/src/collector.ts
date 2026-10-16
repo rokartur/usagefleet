@@ -70,6 +70,9 @@ export async function runOnce(
 	for (const dir of cfg.piDirs) {
 		roots.push({ dir, onlyProjects: false, source: 'pi' })
 	}
+	if (cfg.agentDir) {
+		roots.push({ dir: cfg.agentDir, onlyProjects: false, source: 'agent' })
+	}
 	const files: { fp: string; source: UsageSource }[] = []
 	for (const root of roots) {
 		for (const fp of listJsonlFiles(root.dir, dirCache)) {

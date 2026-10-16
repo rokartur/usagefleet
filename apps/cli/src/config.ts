@@ -1,4 +1,5 @@
 import {
+	defaultAgentSessionsDir,
 	defaultDesktopSessionsDir,
 	defaultJcodeSessionsDir,
 	defaultPiSessionsDirs,
@@ -34,6 +35,7 @@ export function loadConfig(): Config {
 		// Kept even when the env names a token: the service unit bakes the default
 		// one into USAGEFLEET_TOKEN, and bindings are what route around it.
 		accountTokens: file.accountTokens ?? {},
+		agentDir: resolveOptionalDir(process.env.USAGEFLEET_AGENT, file.agentDir, defaultAgentSessionsDir()),
 		batchSize,
 		desktopDir: resolveOptionalDir(process.env.USAGEFLEET_DESKTOP, file.desktopDir, defaultDesktopSessionsDir()),
 		jcodeDir: resolveOptionalDir(process.env.USAGEFLEET_JCODE, file.jcodeDir, defaultJcodeSessionsDir()),

@@ -6,9 +6,9 @@ file owns each hop.
 ## End-to-end flow
 
 ```
-Claude Code / Desktop / Pi / jcode / pj
+Claude Code / Desktop / Pi / jcode / pj / agent
   └─ ~/.claude/projects/**/*.jsonl        one line per streamed segment
-       └─ cli: scanner → tailer → parser  read from stored byte offset
+       └─ cli: scanner → tailer → parser  read from stored byte offset (also ~/.agents/sessions)
        └─ cli: jcode                      ~/.jcode/sessions + ~/.pj/sessions snapshot + journal, per-session watermark
             └─ POST /api/v1/usage         bearer device token, ≤1000 records
                  └─ usage_event rows      deduped on (userId, uuid)
