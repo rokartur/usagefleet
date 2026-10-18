@@ -15,6 +15,7 @@ import {
 	uniqueIndex,
 } from 'drizzle-orm/pg-core'
 import type { Calibration } from '@/lib/usage/calibration'
+import type { FrozenGroupSplit } from '@/lib/usage/window'
 import { user } from './auth-schema'
 
 // Re-export the better-auth-owned tables (user/session/account/verification).
@@ -275,6 +276,9 @@ export const limitSamples = pgTable(
 			.notNull()
 			.references(() => claudeAccounts.id, { onDelete: 'cascade' }),
 		peakPct: real('peak_pct').notNull(),
+		/** Per-group split written once the window closed (freezeClosedWindows); null
+		 *  for the open window and for windows closed before anyone could freeze them. */
+		split: jsonb('split').$type<FrozenGroupSplit[]>(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 		userId: text('user_id')
 			.notNull()

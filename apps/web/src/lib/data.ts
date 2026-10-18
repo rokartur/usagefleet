@@ -43,6 +43,7 @@ import type {
 	CacheTtl,
 	Calibration,
 	DailyAggRow,
+	FrozenGroupSplit,
 	ModelUsage,
 	SessionProjection,
 	TokenTotals,
@@ -720,7 +721,10 @@ export interface AccountView {
 
 /** Does a device (or an event, by the account stamped on it) belong to this
  *  account's view? */
-export function inAccount(view: AccountView, accountId: string | null): boolean {
+export function inAccount(
+	view: { account: { id: string } | null; absorbsUnstamped: boolean },
+	accountId: string | null,
+): boolean {
 	return accountId === (view.account?.id ?? null) || (accountId === null && view.absorbsUnstamped)
 }
 
@@ -1486,13 +1490,125 @@ export async function recalibrateAccount(
 	await db.update(claudeAccounts).set({ calibration: fit }).where(eq(claudeAccounts.id, account.id))
 }
 
+/** How long after a window closes its split is frozen: collectors upload every
+ *  15s, so this lets every online machine land the window's last events first. */
+const FREEZE_GRACE_MS = 15 * 60 * 1000
+
+/** Each group's share of a closed window as the live card read it at the end:
+ *  budget pct against the slices held then, watch-only usage off the top. */
+export function frozenSplit(
+	split: Map<string | null, { exactPct: number }>,
+	slices: Map<string, number>,
+	watchOnly: Set<string>,
+): FrozenGroupSplit[] {
+	let watchPct = 0
+	for (const [groupId, s] of split) {
+		if (groupId !== null && watchOnly.has(groupId)) {
+			watchPct += s.exactPct
+		}
+	}
+	return [...split].map(([groupId, { exactPct }]) => {
+		const slice = groupId === null ? undefined : slices.get(groupId)
+		const budgetPct =
+			slice === undefined ? groupBudgetPct({ exactPct }, 1) : groupBudgetPct({ exactPct }, slice, watchPct)
+		return { budgetPct, exactPct, groupId }
+	})
+}
+
+/**
+ * Record the group split of every window of this account that closed in the last
+ * day, so the past-windows card reads it the way the live card did: by delta
+ * attribution, against the slices held at the time. Neither survives otherwise:
+ * change points age out after a week, and slices move with every regroup.
+ *
+ * Runs off the back of a limits report like {@link recalibrateAccount}; a window
+ * nobody reported in the day after it closed stays on the cost-share fallback
+ * rather than being frozen against slices from long after it.
+ */
+export async function freezeClosedWindows(
+	account: { calibration: Calibration | null; id: string; userId: string },
+	now = new Date(),
+): Promise<void> {
+	const lenOf = (w: LimitWindow) => (w === '5h' ? FIVE_H_MS : SEVEN_D_MS)
+	const unfrozen = await db
+		.select({ peakPct: limitSamples.peakPct, window: limitSamples.window, windowStart: limitSamples.windowStart })
+		.from(limitSamples)
+		.where(
+			and(
+				eq(limitSamples.claudeAccountId, account.id),
+				isNull(limitSamples.split),
+				gte(limitSamples.windowStart, new Date(now.getTime() - SEVEN_D_MS - 24 * HOUR_MS)),
+			),
+		)
+	const due = unfrozen.filter(r => {
+		const closedFor = now.getTime() - (r.windowStart.getTime() + lenOf(r.window))
+		return closedFor >= FREEZE_GRACE_MS && closedFor < 24 * HOUR_MS
+	})
+	if (due.length === 0) {
+		return
+	}
+	const earliest = new Date(Math.min(...due.map(r => r.windowStart.getTime())))
+	const views = await listAccountViews(account.userId)
+	const absorbsUnstamped = views.some(v => v.account?.id === account.id && v.absorbsUnstamped)
+	const view = { absorbsUnstamped, account }
+	const [settings, groupRows, deviceRows, points, events] = await Promise.all([
+		ensureSettings(account.userId),
+		db.select().from(groups).where(eq(groups.ownerId, account.userId)),
+		db
+			.select({ claudeAccountId: devices.claudeAccountId, groupId: devices.groupId, revoked: devices.revoked })
+			.from(devices)
+			.where(eq(devices.userId, account.userId)),
+		db
+			.select({ at: limitChangePoints.at, pct: limitChangePoints.pct, window: limitChangePoints.window })
+			.from(limitChangePoints)
+			.where(
+				and(
+					eq(limitChangePoints.claudeAccountId, account.id),
+					eq(limitChangePoints.model, ''),
+					gte(limitChangePoints.at, earliest),
+				),
+			)
+			.orderBy(asc(limitChangePoints.at)),
+		loadRecentEvents(account.userId, earliest, view),
+		refreshPrices(),
+	])
+	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
+	const slices = slottedGroups(
+		deviceRows.filter(d => inAccount(view, d.claudeAccountId)),
+		groupRows,
+	)
+	const watchOnly = new Set(groupRows.filter(g => g.watchOnly).map(g => g.id))
+	for (const r of due) {
+		const end = new Date(r.windowStart.getTime() + lenOf(r.window))
+		const split = splitByShare(
+			events,
+			r.windowStart,
+			end,
+			r.peakPct,
+			ttl,
+			points.filter(p => p.window === r.window),
+			account.calibration,
+		)
+		await db
+			.update(limitSamples)
+			.set({ split: frozenSplit(split, slices, watchOnly) })
+			.where(
+				and(
+					eq(limitSamples.claudeAccountId, account.id),
+					eq(limitSamples.window, r.window),
+					eq(limitSamples.windowStart, r.windowStart),
+					isNull(limitSamples.split),
+				),
+			)
+	}
+}
 /** Every recorded utilization sample for one account+window at or after
  *  `since`, raw — {@link windowSpans} turns them into real window boundaries. */
 async function loadWindowSamples(
 	accountId: string | null,
 	window: LimitWindow,
 	since: Date,
-): Promise<{ start: number; pct: number }[]> {
+): Promise<{ start: number; pct: number; split?: FrozenGroupSplit[] }[]> {
 	// No account row yet means nothing has ever been sampled.
 	if (accountId === null) {
 		return []
@@ -1500,6 +1616,7 @@ async function loadWindowSamples(
 	const rows = await db
 		.select({
 			peakPct: limitSamples.peakPct,
+			split: limitSamples.split,
 			windowStart: limitSamples.windowStart,
 		})
 		.from(limitSamples)
@@ -1510,19 +1627,24 @@ async function loadWindowSamples(
 				gte(limitSamples.windowStart, since),
 			),
 		)
-	return rows.map(r => ({ pct: r.peakPct, start: new Date(r.windowStart).getTime() }))
+	return rows.map(r => ({
+		pct: r.peakPct,
+		start: new Date(r.windowStart).getTime(),
+		...(r.split && { split: r.split }),
+	}))
 }
 
 /** Fold span-bucketed rows into per-window group splits, newest window first.
- *  The window's recorded utilization is split across groups by cost share, so
- *  the group cells sum to the window's account-wide percentage. Windows with no
- *  activity are dropped; windows with activity but no recorded utilization show
- *  tokens only (accountPct null).
+ *  A window frozen at close ({@link freezeClosedWindows}) reads its recorded
+ *  split: delta attribution with the slices of that moment, the live card's
+ *  method. An unfrozen one splits its recorded utilization by cost share, so the
+ *  group cells sum to the account-wide percentage. Windows with no activity are
+ *  dropped; windows with activity but no recorded utilization show tokens only
+ *  (accountPct null).
  *
- *  Cost share, not delta attribution: these windows are aggregated per span in
+ *  Cost share is the fallback because these windows are aggregated per span in
  *  SQL, so the per-event timeline a rise needs is long gone. `weights` still
- *  applies — the account's own price list is what makes a share correct, and a
- *  history card built on list prices would contradict the live card beside it. */
+ *  applies — a history card built on list prices would contradict the live card. */
 export function buildPastWindows(
 	rows: WindowAggRow[],
 	spans: WindowSpan[],
@@ -1556,6 +1678,14 @@ export function buildPastWindows(
 				totalCost += cost
 				byGroup.set(c.groupId, cur)
 			}
+			const frozen = spanOf.split && new Map(spanOf.split.map(s => [s.groupId, s]))
+			// A device that changed group after the freeze moves its tokens, not the
+			// share recorded for the group it was in.
+			for (const groupId of frozen?.keys() ?? []) {
+				if (!byGroup.has(groupId)) {
+					byGroup.set(groupId, { cost: 0, tokens: 0 })
+				}
+			}
 			const exactPctOf = (cost: number) =>
 				accountPct === null || totalCost === 0 ? null : accountPct * (cost / totalCost)
 			let watchCost = 0
@@ -1565,6 +1695,19 @@ export function buildPastWindows(
 				}
 			}
 			const watchPct = exactPctOf(watchCost) ?? 0
+			const shareOf = (groupId: string | null, cost: number, slice: number | undefined) => {
+				if (frozen) {
+					const f = frozen.get(groupId)
+					return { budgetPct: f?.budgetPct ?? 0, exactPct: f?.exactPct ?? 0 }
+				}
+				const exactPct = exactPctOf(cost)
+				if (exactPct === null) {
+					return null
+				}
+				// No slice reads against the whole account, as on the live card.
+				const budgetPct = groupBudgetPct({ exactPct }, slice ?? 1, slice === undefined ? 0 : watchPct)
+				return { budgetPct, exactPct }
+			}
 			return {
 				// Samples carry decimals; display rounds once, here at the end.
 				accountPct: accountPct === null ? null : roundTenth(accountPct),
@@ -1572,17 +1715,13 @@ export function buildPastWindows(
 				groups: [...byGroup.entries()]
 					.map(([groupId, g]) => {
 						const { name, color, slice } = groupOf(groupId)
-						const exactPct = exactPctOf(g.cost)
+						const share = shareOf(groupId, g.cost, slice)
 						return {
 							groupId,
 							name,
 							color,
-							accountPct: exactPct === null ? null : roundTenth(exactPct),
-							// No slice reads against the whole account, as on the live card.
-							budgetPct:
-								exactPct === null
-									? null
-									: groupBudgetPct({ exactPct }, slice ?? 1, slice === undefined ? 0 : watchPct),
+							accountPct: share && roundTenth(share.exactPct),
+							budgetPct: share && share.budgetPct,
 							tokens: g.tokens,
 						}
 					})

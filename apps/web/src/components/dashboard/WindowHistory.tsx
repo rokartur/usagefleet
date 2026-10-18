@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useLocale, useTranslations } from 'use-intl'
-import { Badge } from '@/components/arc/badge/badge'
 import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import SegmentedControl from '@/components/arc/segmented-control/segmented-control'
 import { Tooltip } from '@/components/arc/tooltip/tooltip'
@@ -100,9 +99,6 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 			title={account ? t('pastWindowsFor', { account }) : t('pastWindows')}
 			actions={
 				<div className='flex flex-wrap items-center gap-3'>
-					<Tooltip content={t('betaHint')}>
-						<Badge tabIndex={0}>{t('beta')}</Badge>
-					</Tooltip>
 					<SegmentedControl
 						label={t('window')}
 						value={kind}

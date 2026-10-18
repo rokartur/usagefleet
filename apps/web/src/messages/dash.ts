@@ -178,9 +178,6 @@ const en = {
 		accountLimit: 'Account limit',
 		addDevice: 'Add device',
 		averagePeak: 'Average peak {pct}',
-		beta: 'Beta',
-		betaHint:
-			'Window history is new: it reconstructs closed windows from the samples the collector happened to record, so a window that nobody reported during reads as tokens only.',
 		collectorOffline: 'collector offline',
 		deviceAdded: 'Device added: {name}',
 		devices: 'Devices',
@@ -603,9 +600,6 @@ const pl: typeof en = {
 		accountLimit: 'Limit konta',
 		addDevice: 'Dodaj urządzenie',
 		averagePeak: 'Średni szczyt {pct}',
-		beta: 'Beta',
-		betaHint:
-			'Historia okien jest nowa: odtwarza zamknięte okna z próbek, które kolektor akurat zapisał, więc okno, w trakcie którego nikt nie raportował, pokazuje tylko tokeny.',
 		collectorOffline: 'kolektor offline',
 		deviceAdded: 'Urządzenie dodane: {name}',
 		devices: 'Urządzenia',

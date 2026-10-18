@@ -88,7 +88,8 @@ Data access is layered so pages stay thin:
   `claude_account`.
 - `limit_sample` — peak utilization per `(claude_account, window, window_start)`.
   Claude only reports the *open* window, so this is the only record of how full a
-  closed one got; the past-windows card reads it instead of guessing.
+  closed one got; the past-windows card reads it instead of guessing. `split`
+  holds the per-group split frozen when the window closed (`freezeClosedWindows`).
 - `usage_event` timestamps are stamped by the reporting machine, so ingest
   shifts each batch onto server time before any window or attribution decision,
   using the minimum `receivedAt - sentAt` over an hour-long window held on

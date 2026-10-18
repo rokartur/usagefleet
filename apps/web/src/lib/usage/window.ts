@@ -34,6 +34,16 @@ export function pastWindowStarts(origin: Date, strideMs: number, now: Date, coun
 	return Array.from({ length: count }, (_, i) => new Date(currentStart - (i + 1) * strideMs))
 }
 
+/** One group's share of a closed window, recorded when it closed: delta
+ *  attribution and the slices held at that moment, both of which a later read
+ *  can no longer reconstruct (change points age out, groups get re-sliced). */
+export interface FrozenGroupSplit {
+	groupId: string | null
+	/** Share of the account pct, unrounded. */
+	exactPct: number
+	budgetPct: number
+}
+
 /** One past limit window: a real recorded one (pct = its peak utilization) or
  *  a grid-guessed / clipped filler for time no sample covers (pct = null). */
 export interface WindowSpan {
@@ -41,6 +51,8 @@ export interface WindowSpan {
 	start: number
 	end: number
 	pct: number | null
+	/** Present once the window was frozen; absent splits by cost share. */
+	split?: FrozenGroupSplit[]
 }
 
 /** Ignore filler fragments shorter than this — boundary slivers between a real
@@ -63,7 +75,7 @@ const MIN_SPAN_MS = 5 * 60 * 1000
  * output (still filling) but still masks the filler grid.
  */
 export function windowSpans(
-	samples: { start: number; pct: number }[],
+	samples: { start: number; pct: number; split?: FrozenGroupSplit[] }[],
 	strideMs: number,
 	origin: Date,
 	now: Date,
@@ -72,11 +84,14 @@ export function windowSpans(
 	// Cluster near-duplicates: reset instants for one real window can jitter by
 	// seconds across reports, and each jittered value is its own DB row.
 	const sorted = samples.toSorted((a, b) => b.start - a.start)
-	const real: { start: number; pct: number }[] = []
+	const real: { start: number; pct: number; split?: FrozenGroupSplit[] }[] = []
 	for (const s of sorted) {
 		const prev = real.at(-1)
 		if (prev && prev.start - s.start < strideMs / 2) {
 			prev.pct = Math.max(prev.pct, s.pct)
+			if (s.split) {
+				prev.split ??= s.split
+			}
 		} else {
 			real.push({ ...s })
 		}
@@ -84,7 +99,7 @@ export function windowSpans(
 
 	const spans: WindowSpan[] = real
 		.filter(s => s.start + strideMs <= now.getTime())
-		.map(s => ({ end: s.start + strideMs, pct: s.pct, start: s.start }))
+		.map(s => ({ ...s, end: s.start + strideMs }))
 
 	// Grid fillers for uncovered time. Extra depth so clipped-away grid windows
 	// don't shrink the reach below `count`.

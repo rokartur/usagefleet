@@ -1,0 +1,1 @@
+ALTER TABLE "limit_sample" ADD COLUMN "split" jsonb;

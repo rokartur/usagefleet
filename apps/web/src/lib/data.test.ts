@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
 	buildPastWindows,
+	frozenSplit,
 	groupBlock,
 	groupBudgetPct,
 	shouldRecordPoint,
@@ -120,6 +121,28 @@ describe(buildPastWindows, () => {
 		const [w] = buildPastWindows(rows, spans, '1h', label, CHEAP_CACHE_READS)
 		expect(w.groups.find(g => g.groupId === 'a')?.accountPct).toBe(57.1)
 		expect(w.groups.find(g => g.groupId === 'b')?.accountPct).toBe(2.9)
+	})
+
+	it('reads a frozen split as recorded, not by cost share or today slices', () => {
+		// Equal cost would say 30/30 and no slice would leave budget = account share;
+		// the split frozen at close says otherwise, and 10 points stayed unexplained.
+		// Group c only uploaded after the freeze, so it holds none of the window.
+		const rows = ['a', 'b', 'c'].map(id => cell(id, 'claude-sonnet-4', 1_000_000))
+		const split = [
+			{ budgetPct: 90, exactPct: 45, groupId: 'a' },
+			{ budgetPct: 10, exactPct: 5, groupId: 'b' },
+		]
+		const [w] = buildPastWindows(
+			rows,
+			[{ end: START.getTime() + STRIDE, pct: 60, split, start: START.getTime() }],
+			'1h',
+			label,
+		)
+		expect(w.groups.map(g => [g.groupId, g.accountPct, g.budgetPct])).toStrictEqual([
+			['a', 45, 90],
+			['b', 5, 10],
+			['c', 0, 0],
+		])
 	})
 })
 
@@ -523,6 +546,22 @@ describe(shouldRecordPoint, () => {
 		// of them; readings too close to attribute apart are merged at read time now,
 		// where a better-calibrated read can still change its mind about them.
 		expect(shouldRecordPoint(prev, 45)).toBeTruthy()
+	})
+})
+
+describe(frozenSplit, () => {
+	it('records each group against the slice it held, watch-only usage off the top', () => {
+		// 60% closed: watch took 20, so a's half slice is of the 80 left; ungrouped holds no slice.
+		const split = new Map([
+			['a', { exactPct: 30 }],
+			['w', { exactPct: 20 }],
+			[null, { exactPct: 10 }],
+		])
+		expect(frozenSplit(split, new Map([['a', 0.5]]), new Set(['w']))).toStrictEqual([
+			{ budgetPct: 75, exactPct: 30, groupId: 'a' },
+			{ budgetPct: 20, exactPct: 20, groupId: 'w' },
+			{ budgetPct: 10, exactPct: 10, groupId: null },
+		])
 	})
 })
 
