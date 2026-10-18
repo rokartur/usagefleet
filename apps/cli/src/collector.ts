@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { dirname, join, sep } from 'node:path'
-import { activeJcodeToken, detectClaudeAccount, tokenOwner } from './claude-account.js'
+import { activeJcodeToken, agentClaudeLogins, detectClaudeAccount, tokenOwner } from './claude-account.js'
 import { detectClaudeCreds, macKeychainDenied } from './claude-creds.js'
 import { fetchLimits } from './claude-limits.js'
 import type { LimitsReport } from './claude-limits.js'
@@ -403,7 +403,7 @@ function planWall(): string {
 	return `device outside your plan's device limit · free a slot or upgrade at ${ENDPOINT}/fleet · nothing is lost, uploads resume once it fits`
 }
 
-/** Report the Claude Code login's limits, then those of any other account jcode or pj has active. */
+/** Report the Claude Code login's limits, then those of every other account jcode, pj or the agent CLI is signed in to. */
 export async function reportLimitsOnce(
 	cfg: Config,
 	log: Log = () => {
@@ -411,25 +411,19 @@ export async function reportLimitsOnce(
 	},
 ): Promise<LimitsReport | null> {
 	const report = await reportClaudeCodeLimits(cfg, log)
-	await reportJcodeLimits(cfg, report?.account?.extId, log)
+	await reportOtherLogins(cfg, report?.account?.extId, log)
 	return report
 }
 
 /**
- * jcode and pj keep their own Anthropic logins, so the account one of them has active
+ * jcode, pj and the agent CLI keep their own Anthropic logins, so the account they use
  * can differ from Claude Code's; with no reading of its own that account's limits go
  * stale on the server and its group stops blocking.
  */
-async function reportJcodeLimits(cfg: Config, reportedExtId: string | undefined, log: Log): Promise<void> {
+async function reportOtherLogins(cfg: Config, reportedExtId: string | undefined, log: Log): Promise<void> {
 	const reported = new Set(reportedExtId ? [reportedExtId] : [])
-	for (const sessionsDir of [cfg.jcodeDir, cfg.pjDir]) {
-		if (!sessionsDir) {
-			continue
-		}
-		// Never refreshed here: rotating the refresh token would sign jcode or pj out.
-		const token = activeJcodeToken(join(dirname(sessionsDir), 'auth.json'))
-		const extId = token ? await tokenOwner(token) : null
-		if (!token || !extId || reported.has(extId)) {
+	for (const { extId, label, token } of await otherLogins(cfg)) {
+		if (reported.has(extId)) {
 			continue
 		}
 		reported.add(extId)
@@ -437,17 +431,36 @@ async function reportJcodeLimits(cfg: Config, reportedExtId: string | undefined,
 		try {
 			report = await fetchLimits({ source: 'sub', token })
 		} catch (error) {
-			log(
-				'warn',
-				`limits fetch failed for the ${tilde(dirname(sessionsDir))} login · ${(error as Error).message}`,
-			)
+			log('warn', `limits fetch failed for the ${label} login · ${(error as Error).message}`)
 			continue
 		}
 		const outcome = await postLimits({ ...report, account: { email: null, extId, org: null } }, cfg)
 		if (outcome !== 'ok') {
-			log('warn', `limits upload failed for the ${tilde(dirname(sessionsDir))} login · ${outcome}`)
+			log('warn', `limits upload failed for the ${label} login · ${outcome}`)
 		}
 	}
+}
+
+// Never refreshed here: rotating a refresh token would sign jcode, pj or the agent out.
+async function otherLogins(cfg: Config): Promise<{ extId: string; label: string; token: string }[]> {
+	const logins = []
+	for (const sessionsDir of [cfg.jcodeDir, cfg.pjDir]) {
+		if (!sessionsDir) {
+			continue
+		}
+		const token = activeJcodeToken(join(dirname(sessionsDir), 'auth.json'))
+		const extId = token ? await tokenOwner(token) : null
+		if (token && extId) {
+			logins.push({ extId, label: tilde(dirname(sessionsDir)), token })
+		}
+	}
+	if (cfg.agentDir) {
+		const accountsPath = join(dirname(cfg.agentDir), 'accounts.json')
+		for (const login of agentClaudeLogins(accountsPath)) {
+			logins.push({ ...login, label: `${tilde(dirname(cfg.agentDir))} ${login.name}` })
+		}
+	}
+	return logins
 }
 
 /**
@@ -543,5 +556,5 @@ async function reportClaudeCodeLimits(cfg: Config, log: Log): Promise<LimitsRepo
 			log,
 		)
 	}
-	return report
+	return { ...report, account }
 }

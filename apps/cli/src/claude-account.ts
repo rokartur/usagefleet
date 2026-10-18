@@ -67,6 +67,44 @@ export function activeJcodeToken(authPath: string): string | null {
 	}
 }
 
+interface AgentAccount {
+	type?: unknown
+	name?: unknown
+	access?: unknown
+	accountId?: unknown
+	expires?: unknown
+}
+
+/** Every Claude subscription login saved in the agent CLI's `accounts.json` whose access
+ *  token has not expired; the agent refreshes a token only when it uses that account. */
+export function agentClaudeLogins(accountsPath: string): { extId: string; name: string; token: string }[] {
+	let accounts: AgentAccount[]
+	try {
+		accounts = (JSON.parse(readFileSync(accountsPath, 'utf-8')) as { anthropic?: AgentAccount[] }).anthropic ?? []
+	} catch {
+		return []
+	}
+	const logins = []
+	for (const { type, name, access, accountId, expires } of accounts) {
+		if (
+			type === 'oauth' &&
+			typeof access === 'string' &&
+			access !== '' &&
+			typeof accountId === 'string' &&
+			accountId !== '' &&
+			typeof expires === 'number' &&
+			expires > Date.now()
+		) {
+			logins.push({
+				extId: accountId.slice(0, 100),
+				name: typeof name === 'string' ? name : accountId,
+				token: access,
+			})
+		}
+	}
+	return logins
+}
+
 /** The accountUuid Anthropic says owns this OAuth token, or null when it cannot
  *  say. Null fails open to the file's identity: the endpoint is undocumented, and
  *  losing it must not stop every collector from reporting limits. */

@@ -380,6 +380,52 @@ describe('reportLimitsOnce account check', () => {
 		])
 	})
 
+	// 2026-10-18: the agent ran on rokartur while Claude Code's login stayed on claudescom,
+	// so rokartur's fleet read two days stale and the dashboard showed the collector offline.
+	it('also reports every Claude login the agent CLI has saved', async () => {
+		const cfg = signedInAs('acc-otter', 'acc-otter')
+		const agentHome = mkdtempSync(join(tmpdir(), 'uf-agent-'))
+		const oauth = (name: string, accountId: string, expires: number) => ({
+			access: `tok-${name}`,
+			accountId,
+			expires,
+			name,
+			refresh: 'r',
+			type: 'oauth',
+		})
+		writeFileSync(
+			join(agentHome, 'accounts.json'),
+			JSON.stringify({
+				anthropic: [
+					{ key: 'sk', name: 'api', type: 'api_key' },
+					oauth('otter', 'acc-otter', Date.now() + 3_600_000),
+					oauth('stale', 'acc-stale', Date.now() - 1000),
+					oauth('fox', 'acc-fox', Date.now() + 3_600_000),
+				],
+			}),
+		)
+		vi.stubGlobal('fetch', async (url: string, init: { headers: Record<string, string> }) => {
+			const fox = init.headers.authorization === 'Bearer tok-fox'
+			return Response.json(
+				url.endsWith('/profile')
+					? { account: { uuid: 'acc-otter' } }
+					: { five_hour: { utilization: fox ? 48 : 6 }, seven_day: { utilization: fox ? 69 : 60 } },
+			)
+		})
+
+		await reportLimitsOnce({ ...cfg, agentDir: join(agentHome, 'sessions'), jcodeDir: null, pjDir: null })
+
+		const posted = postLimits.mock.calls.map(([report]: [LimitsReport]) => [
+			report.account?.extId,
+			report.fiveHourPct,
+			report.sevenDayPct,
+		])
+		expect(posted).toStrictEqual([
+			['acc-otter', 6, 60],
+			['acc-fox', 48, 69],
+		])
+	})
+
 	// Each save rewrites the whole store, ~0.5 MB of offsets, and this runs every minute.
 	it('rewrites the store for an unchanged reading only to refresh its age', async () => {
 		vi.useFakeTimers({ toFake: ['Date'] })
