@@ -126,7 +126,9 @@ function run(cmd: string, args: string[]): Promise<number | null> {
 	return new Promise(resolve => {
 		// shell on Windows: node refuses to spawn a .cmd directly since the 2024
 		// argument-injection fix. Every argument here is a literal or VERSION-checked.
-		const child = spawn(cmd, args, { shell: process.platform === 'win32', stdio: 'ignore', env: pathWithNode() })
+		// cmd.exe splits an unquoted `C:\Program Files\nodejs\npm.cmd` at the space.
+		const shell = process.platform === 'win32'
+		const child = spawn(shell ? `"${cmd}"` : cmd, args, { shell, stdio: 'ignore', env: pathWithNode() })
 		const timer = setTimeout(() => child.kill(), RUN_TIMEOUT_MS)
 		// Node emits 'close' after 'error' for a failed spawn, so both handlers can
 		// run; `settled` makes the first one win. oxlint's promise rule sees the two

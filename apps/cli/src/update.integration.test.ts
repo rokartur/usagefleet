@@ -43,7 +43,8 @@ function stubRegistry(version: unknown) {
  *  is what a non-npm manager leaves at the root of its global directory. */
 function seedInstall(version: string, lockfile?: string): string {
 	// realpath: the updater resolves it too, and on macOS /var is a symlink.
-	const root = realpathSync(mkdtempSync(join(tmpdir(), 'uf-')))
+	// A space in the path: Windows puts npm under `C:\Program Files`.
+	const root = realpathSync(mkdtempSync(join(tmpdir(), 'uf space-')))
 	const pkg = join(root, 'node_modules', '@usagefleet', 'cli')
 	mkdirSync(join(pkg, 'dist'), { recursive: true })
 	writeFileSync(join(pkg, 'package.json'), JSON.stringify({ version }))
@@ -133,6 +134,29 @@ describe('checkForUpdate', () => {
 			join(root, 'bin', 'bun'),
 			['add', '--global', '@usagefleet/cli@9.9.9'],
 			expect.anything(),
+		)
+	})
+
+	// On Windows the command goes through cmd.exe, which stops at the first
+	// space of an unquoted path and exits 1 with "'C:\Program' is not recognized".
+	it('quotes the manager path for the Windows shell', async () => {
+		const root = seedInstall('1.0.1', 'bun.lock')
+		mkdirSync(join(root, 'bin'))
+		writeFileSync(join(root, 'bin', 'bun.cmd'), '')
+		stubRegistry('9.9.9')
+		const platform = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor
+		Object.defineProperty(process, 'platform', { value: 'win32' })
+
+		try {
+			await checkForUpdate(() => {})
+		} finally {
+			Object.defineProperty(process, 'platform', platform)
+		}
+		expect(spawn).toHaveBeenNthCalledWith(
+			1,
+			`"${join(root, 'bin', 'bun.cmd')}"`,
+			['add', '--global', '@usagefleet/cli@9.9.9'],
+			expect.objectContaining({ shell: true }),
 		)
 	})
 
