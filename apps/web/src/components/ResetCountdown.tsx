@@ -39,7 +39,7 @@ function remaining(resetsAt: string | null): string | null {
 
 /** The absolute reset time in the viewer's local timezone (e.g. "04:50"),
  *  prefixed with the weekday once it is more than a day out. */
-function clockLabel(resetsAt: string | null, locale: string): string | null {
+export function clockLabel(resetsAt: string | null, locale: string): string | null {
 	if (!resetsAt) {
 		return null
 	}
@@ -53,7 +53,13 @@ function clockLabel(resetsAt: string | null, locale: string): string | null {
 	return `${day}${time}`
 }
 
-export function ResetCountdown({ resetsAt }: { resetsAt: string | null }) {
+export function ResetCountdown({
+	resetsAt,
+	projection = null,
+}: {
+	resetsAt: string | null
+	projection?: { pct: number; fullAt: string | null } | null
+}) {
 	// Single state bumped each second; both labels recompute from `resetsAt` and
 	// the current time, so the weekday prefix stays correct across the 24h boundary.
 	const [, setTick] = useState(0)
@@ -75,9 +81,32 @@ export function ResetCountdown({ resetsAt }: { resetsAt: string | null }) {
 	}
 	const clock = clockLabel(resetsAt, locale)
 	return (
-		<span>
-			{left === '' ? t('resetting') : t('resetsIn', { left })}
-			{clock && <span className='text-neutral-500'>{t('at', { clock })}</span>}
-		</span>
+		<dl className='grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 tabular-nums'>
+			<dt>{t('reset')}</dt>
+			<dd className='text-right text-foreground'>
+				{left === '' ? (
+					t('resetting')
+				) : (
+					<>
+						{clock}
+						<span className='ml-1.5 text-neutral-500'>{t('in', { left })}</span>
+					</>
+				)}
+			</dd>
+			{projection && (
+				<>
+					<dt>{t('pace')}</dt>
+					{projection.fullAt ? (
+						<dd className='text-right text-(--danger)'>
+							{t('fullAt', { clock: clockLabel(projection.fullAt, locale) ?? '' })}
+						</dd>
+					) : (
+						<dd className='text-right text-foreground'>
+							{t('projected', { pct: Math.round(projection.pct) })}
+						</dd>
+					)}
+				</>
+			)}
+		</dl>
 	)
 }

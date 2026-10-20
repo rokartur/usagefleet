@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { CheckIcon } from 'lucide-react'
@@ -13,8 +13,9 @@ import type { UsageMeterSegment } from '@/components/arc/usage-meter/usage-meter
 import { UsageMeter } from '@/components/arc/usage-meter/usage-meter'
 import { InstallCommand } from '@/components/InstallCommand'
 import { RelativeTime } from '@/components/RelativeTime'
-import { ResetCountdown } from '@/components/ResetCountdown'
+import { clockLabel, ResetCountdown } from '@/components/ResetCountdown'
 import { overrun, Section, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
+import { WindowChart } from '@/components/WindowChart'
 import { useMounted } from '@/hooks/use-mounted'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO } from '@/lib/data'
 import { formatPct, formatPctNumber, formatRelative, formatTokens, formatUsd, roundTenth } from '@/lib/format'
@@ -24,6 +25,28 @@ import { billableTokens, LIMITS_STALE_MS } from '@/lib/usage'
 import { cn } from '@/lib/utils'
 
 const POLL_MS = 5000
+const FIVE_H_MS = 5 * 60 * 60 * 1000
+const SEVEN_D_MS = 7 * 24 * 60 * 60 * 1000
+const VIEW_KEY = 'usagefleet:meter-view'
+
+type MeterView = 'bar' | 'chart'
+
+/** Bar or whole-window chart, remembered per browser. The server cannot know the
+ *  choice, so the first paint is the bar and a stored chart lands after mount. */
+function useMeterView() {
+	const [view, setView] = useState<MeterView>('bar')
+	useEffect(() => {
+		if (localStorage.getItem(VIEW_KEY) === 'chart') {
+			// oxlint-disable-next-line react/react-compiler -- storage is only readable after mount
+			setView('chart')
+		}
+	}, [])
+	const pickView = (next: MeterView) => {
+		setView(next)
+		localStorage.setItem(VIEW_KEY, next)
+	}
+	return { view, pickView }
+}
 
 /** Colored dot used for a group's identity across cards and tables. */
 export function GroupDot({ color }: { color: string }) {
@@ -287,13 +310,61 @@ export function LiveDashboard({
 
 	const pollDown = poll && now - lastOk > 3 * POLL_MS
 	const dash = dashes.find(d => accountKey(d) === selected) ?? dashes[0]
+	const { view, pickView } = useMeterView()
+	const locale = useLocale()
 
 	if (!dash?.connected) {
 		return <SetupRail setup={setup} />
 	}
 
+	const projection = now > 0 ? dash.sessionProjection : null
+	const nextLabel = projection?.next ? `${projection.next.pct}% ${clockLabel(projection.next.at, locale)}` : undefined
+	const fullLabel = projection?.fullAt
+		? t('fullMark', { clock: clockLabel(projection.fullAt, locale) ?? '' })
+		: undefined
+	// Drawn only once the client owns the tree: where "now" sits on the axis is the viewer's clock.
+	const chart = (
+		resetsAt: string | null,
+		windowMs: number,
+		points: DashboardDTO['fiveHourPoints'],
+		pct: number,
+		forecast: boolean,
+	) => {
+		if (view !== 'chart' || now === 0 || !resetsAt) {
+			return null
+		}
+		const end = Date.parse(resetsAt)
+		return (
+			<WindowChart
+				points={points}
+				pct={pct}
+				start={end - windowMs}
+				end={end}
+				now={now}
+				projection={forecast ? projection : null}
+				nextLabel={forecast ? nextLabel : undefined}
+			/>
+		)
+	}
+
 	return (
-		<Section title={t('currentUsage')} actions={<StatusLine dash={dash} now={now} pollDown={pollDown} />}>
+		<Section
+			title={t('currentUsage')}
+			actions={
+				<div className='flex flex-wrap items-center gap-x-4 gap-y-2'>
+					<StatusLine dash={dash} now={now} pollDown={pollDown} />
+					<SegmentedControl
+						label={t('meterView')}
+						value={view}
+						onValueChange={pickView}
+						options={[
+							{ label: t('meterViewBar'), value: 'bar' },
+							{ label: t('meterViewChart'), value: 'chart' },
+						]}
+					/>
+				</div>
+			}
+		>
 			<div className='flex flex-col gap-8'>
 				{dashes.length > 1 && (
 					<AccountSwitcher dashes={dashes} selected={accountKey(dash)} onSelect={onSelect} now={now} />
@@ -302,7 +373,10 @@ export function LiveDashboard({
 					<Meter
 						label={t('fiveHourSession')}
 						pct={dash.fiveHourPct}
-						resets={<ResetCountdown resetsAt={dash.fiveHourResetsAt} />}
+						projected={dash.sessionProjection?.pct}
+						mark={view === 'bar' && projection ? sessionMark(projection, nextLabel, fullLabel) : undefined}
+						chart={chart(dash.fiveHourResetsAt, FIVE_H_MS, dash.fiveHourPoints, dash.fiveHourPct, true)}
+						resets={<ResetCountdown resetsAt={dash.fiveHourResetsAt} projection={dash.sessionProjection} />}
 						segments={dash.groups.map(g => ({
 							color: g.color,
 							id: groupKey(g.groupId),
@@ -313,6 +387,7 @@ export function LiveDashboard({
 					<Meter
 						label={tUsage('weekly')}
 						pct={dash.sevenDayPct}
+						chart={chart(dash.sevenDayResetsAt, SEVEN_D_MS, dash.sevenDayPoints, dash.sevenDayPct, false)}
 						resets={<ResetCountdown resetsAt={dash.sevenDayResetsAt} />}
 						segments={dash.groups.map(g => ({
 							color: g.color,
@@ -338,6 +413,21 @@ export function LiveDashboard({
 		</Section>
 	)
 }
+/** The pill under the session bar: the moment the limit runs out if it comes
+ *  before the reset, otherwise the next full ten on the way. */
+function sessionMark(
+	projection: NonNullable<DashboardDTO['sessionProjection']>,
+	nextLabel: string | undefined,
+	fullLabel: string | undefined,
+) {
+	if (fullLabel) {
+		return { label: fullLabel, over: true, value: 100 }
+	}
+	if (projection.next && nextLabel) {
+		return { label: nextLabel, value: projection.next.pct }
+	}
+}
+
 function AccountSwitcher({
 	dashes,
 	selected,
@@ -382,11 +472,17 @@ function AccountSwitcher({
 export function Meter({
 	label,
 	pct,
+	projected,
+	mark,
+	chart,
 	resets,
 	segments,
 }: {
 	label: string
 	pct: number
+	projected?: number
+	mark?: ComponentProps<typeof UsageMeter>['mark']
+	chart?: ReactNode
 	resets: ReactNode
 	segments: UsageMeterSegment[]
 }) {
@@ -406,6 +502,9 @@ export function Meter({
 				label={label}
 				segments={bars}
 				limit={100}
+				projected={projected}
+				mark={mark}
+				chart={chart}
 				unit='%'
 				locale={locale}
 				legend={false}
@@ -423,7 +522,7 @@ export function Meter({
 					usedOf: used => tMeter('usedOf', { used }),
 				}}
 			/>
-			<p className='text-xs text-muted-foreground'>{resets}</p>
+			<div className='text-xs text-muted-foreground'>{resets}</div>
 		</div>
 	)
 }

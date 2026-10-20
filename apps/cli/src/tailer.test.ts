@@ -59,4 +59,35 @@ describe(tailFile, () => {
 		const fp = piFile([JSON.stringify({ id: 'x', type: 'session' }), message])
 		expect(tailFile(fp, undefined, 'pi')?.segments[0]?.records[0]?.cwd).toBeNull()
 	})
+
+	it('books each agent request on the Claude account that served it, skipping API keys', () => {
+		const usage = (fields: object) =>
+			JSON.stringify({
+				cache_read: 9,
+				cache_write: 2,
+				input: 3,
+				output: 4,
+				timestamp: 1_792_102_157_067,
+				type: 'usage',
+				...fields,
+			})
+		const fp = piFile([
+			JSON.stringify({ cwd: '/repo', id: 'ea1b0a3e', type: 'session' }),
+			usage({ account: 'acc-a', id: 'msg_1', provider: 'anthropic' }),
+			usage({ account: null, id: 'msg_2', provider: 'anthropic' }),
+			usage({ account: 'chatgpt-1', id: 'resp_3', provider: 'openai-codex' }),
+			usage({ model: 'claude-opus-5-5' }),
+			usage({ account: 'acc-b', id: 'msg_4', provider: 'anthropic' }),
+		])
+		const segments = tailFile(fp, undefined, 'agent')?.segments
+		expect(segments?.map(s => [s.accountExtId, s.records.map(r => r.uuid)])).toStrictEqual([
+			['acc-a', ['agent:msg_1']],
+			['acc-b', ['agent:msg_4']],
+		])
+		expect(segments?.[0]?.records[0]).toMatchObject({
+			cacheReadTokens: 9,
+			cwd: '/repo',
+			timestamp: '2026-10-15T22:09:17.067Z',
+		})
+	})
 })

@@ -11,7 +11,8 @@ import { sendNotification } from './notify.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
 import type { DirCache } from './scanner.js'
-import { serviceStatus } from './service.js'
+import { isServiceProcess, serviceStatus } from './service.js'
+import type { ServiceStatus } from './service.js'
 import { readStore, storePath, updateStore } from './store.js'
 import {
 	ago,
@@ -126,7 +127,9 @@ async function cmdWatch(): Promise<void> {
 	const rawUpdate = positiveNumber(process.env.USAGEFLEET_UPDATE_INTERVAL, settings.updateInterval) ?? 6 * 60 * 60
 	const updateInterval = Math.max(60, rawUpdate) * 1000
 	let lastUpdateAt = 0
-	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs].filter((d): d is string => !!d)
+	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs, cfg.jcodeDir, cfg.pjDir, cfg.agentDir].filter(
+		(d): d is string => !!d,
+	)
 	console.log(header(`watching every ${interval / 1000}s`))
 	console.log(hint(`${watching.map(tilde).join(' · ')} → ${host(ENDPOINT)}`))
 	console.log('')
@@ -134,13 +137,14 @@ async function cmdWatch(): Promise<void> {
 	let timer: ReturnType<typeof setTimeout> | null = null
 	let running = false
 	const dirCache: DirCache = new Map()
+	const tokenOwners = new Map<string, string>()
 	const tick = async () => {
 		if (stopping) {
 			return
 		}
 		running = true
 		try {
-			const r = await runOnce(cfg, stream, dirCache)
+			const r = await runOnce(cfg, stream, dirCache, tokenOwners)
 			// Dropped records are real data loss, so they must show up even in a
 			// cycle that uploaded nothing.
 			if (r.sent > 0 || r.dropped > 0) {
@@ -149,7 +153,13 @@ async function cmdWatch(): Promise<void> {
 			const nowMs = Date.now()
 			if (nowMs - lastUpdateAt >= updateInterval) {
 				lastUpdateAt = nowMs
-				await checkForUpdate((level, m) => line(level === 'ok' ? blue('↻') : yellow('!'), m))
+				const updated = await checkForUpdate((level, m) => line(level === 'ok' ? blue('↻') : yellow('!'), m))
+				// `login` restarts only the installed service. Any other watch (a container's command, a terminal)
+				// exits so its supervisor starts the new version; non-zero because `restart: on-failure` ignores 0.
+				if (updated && !isServiceProcess()) {
+					line(blue('↻'), `exiting to restart on ${updated}`)
+					process.exit(75)
+				}
 			}
 			if (nowMs - lastLimitsAt >= limitsInterval) {
 				lastLimitsAt = nowMs
@@ -220,15 +230,7 @@ async function cmdStatus(): Promise<void> {
 	console.log(header())
 	console.log('')
 
-	console.log(
-		svc.state === 'running'
-			? stateLine('ok', 'service', `running${svc.pid ? dim(` · pid ${svc.pid}`) : ''}`)
-			: stateLine(
-					'bad',
-					'service',
-					`${svc.state} ${dim(svc.state === 'stopped' ? '· check the log' : '· run `usagefleet login`')}`,
-				),
-	)
+	console.log(serviceLine(svc))
 	console.log(
 		creds
 			? stateLine(
@@ -251,7 +253,9 @@ async function cmdStatus(): Promise<void> {
 	console.log('')
 	console.log(row('endpoint', host(ENDPOINT)))
 	console.log(row('device', `${state.deviceId} · token ${tokenFor(cfg, detectClaudeAccount()?.extId).slice(0, 8)}…`))
-	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs].filter((d): d is string => !!d)
+	const watching = [cfg.projectsDir, cfg.desktopDir, ...cfg.piDirs, cfg.jcodeDir, cfg.pjDir, cfg.agentDir].filter(
+		(d): d is string => !!d,
+	)
 	for (const [i, dir] of watching.entries()) {
 		console.log(row(i === 0 ? 'watching' : '', tilde(dir)))
 	}
@@ -259,6 +263,20 @@ async function cmdStatus(): Promise<void> {
 		row('tracked', `${tracked} file${tracked === 1 ? '' : 's'} · ${mb} MB read · synced ${ago(state.updatedAt)}`),
 	)
 	console.log(row('config', tilde(cfg.storePath)))
+}
+
+function serviceLine(svc: ServiceStatus): string {
+	if (svc.state === 'running') {
+		return stateLine('ok', 'service', `running${svc.pid ? dim(` · pid ${svc.pid}`) : ''}`)
+	}
+	if (svc.state === 'no autostart') {
+		return stateLine('warn', 'service', `no autostart here ${dim('· keep `usagefleet watch` running yourself')}`)
+	}
+	return stateLine(
+		'bad',
+		'service',
+		`${svc.state} ${dim(svc.state === 'stopped' ? '· check the log' : '· run `usagefleet login`')}`,
+	)
 }
 
 /** Worst of the two windows decides the dot colour. */
@@ -339,6 +357,9 @@ function cmdConfig(): void {
 		['projectsDir', 'USAGEFLEET_PROJECTS', 'override ~/.claude/projects'],
 		['desktopDir', 'USAGEFLEET_DESKTOP', 'override the Claude Desktop dir ("off" disables)'],
 		['piDir', 'USAGEFLEET_PI', 'pi session dirs · string or array; env comma-separated'],
+		['jcodeDir', 'USAGEFLEET_JCODE', 'override ~/.jcode/sessions ("off" disables)'],
+		['pjDir', 'USAGEFLEET_PJ', 'override ~/.pj/sessions ("off" disables)'],
+		['agentDir', 'USAGEFLEET_AGENT', 'override ~/.agents/sessions ("off" disables)'],
 		['interval', 'USAGEFLEET_INTERVAL', 'watch interval seconds (default 15)'],
 		[
 			'limitsInterval',

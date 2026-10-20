@@ -31,7 +31,7 @@ SQL aggregates do the same fold in-database (`loadRecentEvents`,
   0.1×. Prices refresh from LiteLLM's map once a day per process, falling back to
   hardcoded tiers offline. Cache writes are priced by the per-TTL breakdown the
   log carried (`cache_creation_5m/1h_tokens`, reported by the collector) where
-  present; only the untagged remainder (legacy rows, pi rows) falls back to
+  present; only the untagged remainder (legacy rows, pi, jcode, pj and agent rows) falls back to
   `cacheWriteTtl` in `user_settings` — Claude Code writes 5m caches unless
   `ENABLE_PROMPT_CACHING_1H=1`.
 
@@ -232,19 +232,29 @@ each closed window across groups — real recorded utilization on real
 boundaries, not a reconstruction from token counts. Windows nobody sampled
 show tokens only, on grid-guessed (possibly clipped) spans.
 
-This card also splits by **whole-window cost**, not by delta attribution: a
-closed window has one recorded peak, not a series, so there are no rises to
-allocate. The two tables can therefore disagree on the same window — that is
-the method difference, not a bug. The *prices* behind that cost are the same
-ones the live card uses, calibration included: the method may differ, the
-account's price list may not.
+A closed window's split is **frozen** once: `freezeClosedWindows()` runs off
+the back of a limits post, and for every window that closed between 15 minutes
+and a day ago it runs the live card's `splitByShare()` (delta attribution, the
+account's calibration) over that window's events and change points, reads each
+group against the slices held at that moment (`frozenSplit()`), and stores the
+result on `limit_sample.split`. The 15 minutes let every online collector land
+the window's last events; the day bound keeps a window nobody reported after
+from being frozen against slices from long after it. A frozen window therefore
+reads on this card exactly as it read on the live card when it closed, and a
+regroup or the change points ageing out (a week) does not rewrite it. Events a
+machine uploads after the freeze show in the token column, not in the split.
 
-These percentages are **account shares, not budget slices**: the card's group
-rows carry `accountPct`, so a group at half the account reads 50% here while the
-live dashboard shows the same group at 100% of its slice. The budget-slice rule
-above applies to the live cards only. Two tables on one page, two meanings, on
-purpose: a closed window is a record of what happened, not a live budget to
-spend against.
+A window that never got frozen (closed before this existed, or no limits post in
+the day after) falls back to **whole-window cost**: its one recorded peak split
+by each group's cost share, with the account's calibrated prices, against
+today's slices (`slottedGroups()` on the current devices). That fallback can
+disagree with what the live card showed, by method, not bug.
+
+The per-window bars are **account shares** (`accountPct`): a group at half the
+account reads 50% there. Above them, each group's average and worst window are
+read **against its budget slice** (`budgetPct`, same `groupBudgetPct()` and
+watch-only rule as the live cards), so that same group reads 100% when it holds
+half.
 
 ## Usage explorer
 

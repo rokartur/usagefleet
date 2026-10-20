@@ -78,7 +78,9 @@ shell once. `uninstall` removes both again, and self-update keeps them current.
   Desktop agent-mode (Cowork) sessions, and the
   [pi](https://github.com/badlogic/pi-mono) agent (`~/.pi/agent/sessions`,
   `anthropic` and `claude-bridge` provider records only; other providers don't
-  touch Claude limits).
+  touch Claude limits), the jcode agent (`~/.jcode/sessions`) and its pj fork
+  (`~/.pj/sessions`), and the agent CLI (`~/.agents/sessions`), Claude
+  subscription turns only.
   A per-file byte offset in the config file means each line is sent once;
   rotation and truncation are handled and partial lines are never sent. Delivery
   is at-least-once — the server dedups on `uuid`.
@@ -170,6 +172,9 @@ it (`usagefleet config` prints this same table):
 | `projectsDir` | `USAGEFLEET_PROJECTS` | override `~/.claude/projects` |
 | `desktopDir` | `USAGEFLEET_DESKTOP` | override the Claude Desktop sessions dir; `off` to skip it |
 | `piDir` | `USAGEFLEET_PI` | pi sessions dirs — string or array in the file, comma-separated in env; `off` to skip |
+| `jcodeDir` | `USAGEFLEET_JCODE` | override the jcode sessions dir (`~/.jcode/sessions`); `off` to skip it |
+| `pjDir` | `USAGEFLEET_PJ` | override the pj sessions dir (`~/.pj/sessions`); `off` to skip it |
+| `agentDir` | `USAGEFLEET_AGENT` | override the agent CLI sessions dir (`~/.agents/sessions`); `off` to skip it |
 | `interval` | `USAGEFLEET_INTERVAL` | watch poll seconds (default 15) |
 | `limitsInterval` | `USAGEFLEET_LIMITS_INTERVAL` | seconds between limit reports (default 60; 300 on API keys, where each report costs a 1-token ping) |
 | `notifications` | `USAGEFLEET_NOTIFY` | desktop notifications, on by default (`false`/`0` disables) |
@@ -225,6 +230,9 @@ until you re-run `usagefleet login` under the new one.
   it holds your token.
 - **Linux** — a `systemd --user` unit, plus `loginctl enable-linger $USER` so it
   survives logout. If `systemctl` can't be driven it prints the manual steps.
+- **Linux without systemd** (a Docker container, WSL without it) — no service.
+  Run `usagefleet watch` as the container's command or under your own
+  supervisor, with a restart policy such as `restart: unless-stopped`.
 - **Windows** — a Scheduled Task (`usagefleet`) starting at logon, restarting on
   failure, running hidden through a `wscript` launcher in
   `%LOCALAPPDATA%\usagefleet` (which carries the env values set at install
@@ -244,6 +252,10 @@ it runs `npm install -g @usagefleet/cli@<version>` and re-runs `login` to
 restart the service on it. `usagefleet update` does the same on demand. npm is
 called through the absolute path next to the running `node`, because a
 launchd/systemd service gets a minimal PATH.
+
+A `watch` that is not the installed service (a container's command, a
+terminal) exits with code 75 after an update, so whatever runs it starts the
+new version.
 
 Every failure is a no-op — registry unreachable, non-semver version, npm
 missing or exiting non-zero, local `dev` builds — and the service is only

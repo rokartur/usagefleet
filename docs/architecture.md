@@ -6,9 +6,10 @@ file owns each hop.
 ## End-to-end flow
 
 ```
-Claude Code / Desktop / Pi
+Claude Code / Desktop / Pi / jcode / pj / agent
   └─ ~/.claude/projects/**/*.jsonl        one line per streamed segment
-       └─ cli: scanner → tailer → parser  read from stored byte offset
+       └─ cli: scanner → tailer → parser  read from stored byte offset (also ~/.agents/sessions)
+       └─ cli: jcode                      ~/.jcode/sessions + ~/.pj/sessions snapshot + journal, per-session watermark
             └─ POST /api/v1/usage         bearer device token, ≤1000 records
                  └─ usage_event rows      deduped on (userId, uuid)
        └─ cli: claude-limits              oauth/usage (sub, free) or 1-token ping (api)
@@ -87,7 +88,8 @@ Data access is layered so pages stay thin:
   `claude_account`.
 - `limit_sample` — peak utilization per `(claude_account, window, window_start)`.
   Claude only reports the *open* window, so this is the only record of how full a
-  closed one got; the past-windows card reads it instead of guessing.
+  closed one got; the past-windows card reads it instead of guessing. `split`
+  holds the per-group split frozen when the window closed (`freezeClosedWindows`).
 - `usage_event` timestamps are stamped by the reporting machine, so ingest
   shifts each batch onto server time before any window or attribution decision,
   using the minimum `receivedAt - sentAt` over an hour-long window held on

@@ -39,8 +39,10 @@ Break one of these and the product silently reports wrong numbers or leaks acces
   (identified accounts only; readings under a minute apart merge at read time),
   and each rise goes to the groups whose events fall in that interval, weighted
   by cost inside it. Per-model limits get their own series, keyed by model id.
-  Cost share over the whole window is the fallback when an account has no points,
-  and stays the method for the past-windows card. Token counts are display-only.
+  Cost share over the whole window is the fallback when an account has no points.
+  The past-windows card reads the split `freezeClosedWindows` stored when the
+  window closed, and falls back to cost share only for windows never frozen.
+  Token counts are display-only.
 - **List prices are a fallback, not the model.** Where an account has enough
   history, `lib/usage/calibration.ts` fits what Anthropic's meter actually
   charges per token bucket (cache reads move it ~16× less than their price

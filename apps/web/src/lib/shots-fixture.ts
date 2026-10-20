@@ -103,13 +103,30 @@ const liveGroups: LiveGroupUsage[] = [
 
 const spendPeriod = (billable: number, costUsd: number) => ({ costUsd, totals: totals(billable) })
 
+/** Readings given as [units ago, pct], oldest first. */
+const points = (unit: number, readings: [number, number][]) =>
+	readings.map(([ago, pct]) => ({ at: new Date(NOW - ago * unit).toISOString(), pct }))
+
 export const dashboard: DashboardDTO = {
 	accountId: 'shots-account',
 	accountLabel: null,
 	connected: true,
 	fiveHourPct: 41,
+	fiveHourPoints: points(MIN, [
+		[160, 3],
+		[140, 8],
+		[118, 14],
+		[95, 19],
+		[80, 22],
+		[61, 27],
+		[44, 31],
+		[25, 36],
+		[6, 41],
+	]),
 	fiveHourResetsAt: new Date(NOW + 2 * HOUR + 14 * MIN).toISOString(),
 	groups: liveGroups,
+	// 27% an hour ago, 41% now: 50% in about 39 minutes and ~72% by the reset.
+	sessionProjection: { fullAt: null, next: { at: new Date(NOW + 39 * MIN).toISOString(), pct: 50 }, pct: 72 },
 	modelLimits: [
 		{
 			groups: liveGroups.map(g => ({
@@ -131,6 +148,17 @@ export const dashboard: DashboardDTO = {
 	],
 	reportedAt: new Date(NOW - 42_000).toISOString(),
 	sevenDayPct: 44,
+	sevenDayPoints: points(HOUR, [
+		[84, 2],
+		[76, 9],
+		[70, 13],
+		[52, 18],
+		[46, 24],
+		[28, 29],
+		[22, 35],
+		[5, 40],
+		[1, 44],
+	]),
 	sevenDayResetsAt: new Date(NOW + 3 * DAY + 9 * HOUR).toISOString(),
 	source: 'sub',
 	spend: { month: spendPeriod(31_400_000, 128.35), week: spendPeriod(6_980_000, 31.62) },
@@ -143,6 +171,7 @@ function pastWindow(startMs: number, endMs: number, accountPct: number, shares: 
 		end: new Date(endMs).toISOString(),
 		groups: GROUPS.map((g, i) => ({
 			accountPct: Math.round(accountPct * shares[i]),
+			budgetPct: Math.round(accountPct * shares[i] * GROUPS.length),
 			color: g.color,
 			groupId: g.id,
 			name: g.name,

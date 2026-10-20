@@ -13,7 +13,7 @@ interface RawUsage {
 }
 
 /** Only accept genuine strings; ignores numbers/objects that would later break. */
-function str(v: unknown): string | null {
+export function str(v: unknown): string | null {
 	return typeof v === 'string' && v.length > 0 ? v : null
 }
 
@@ -100,6 +100,61 @@ function parsePiLine(o: Record<string, unknown>, sessionCwd: string | null): Usa
 		timestamp: validTimestamp(o.timestamp),
 		uuid,
 		version: null,
+	}
+}
+
+/** agent CLI session line: `{type:"usage", id, provider, account, model, timestamp,
+ *  input, output, cache_read, cache_write}`, one per request, `timestamp` in epoch ms.
+ *  Only provider "anthropic" with an `account` (the Claude account uuid; API keys
+ *  have none) ran on a subscription, and each line books on its own account because
+ *  the agent switches accounts between requests. Lines from agents that predate
+ *  `id` and `account` cannot be told apart from API-key requests and are skipped.
+ *  /clone and /worktree copy these lines into a new session, so `id` (the API's
+ *  response id) is the dedup key, not anything per file. */
+export function parseAgentLine(
+	line: string,
+	sessionCwd: string | null,
+	sessionId: string | null,
+): { accountExtId: string; record: UsageRecord } | null {
+	let parsed: unknown
+	try {
+		parsed = JSON.parse(line)
+	} catch {
+		return null
+	}
+	if (typeof parsed !== 'object' || parsed === null) {
+		return null
+	}
+	const o = parsed as Record<string, unknown>
+	const id = str(o.id)
+	const account = str(o.account)
+	const at = new Date(typeof o.timestamp === 'number' ? o.timestamp : Number.NaN)
+	if (o.type !== 'usage' || o.provider !== 'anthropic' || !id || !account || Number.isNaN(at.getTime())) {
+		return null
+	}
+	const tokens = (v: unknown) => (typeof v === 'number' ? v : 0)
+	return {
+		accountExtId: account,
+		record: {
+			// The agent does not log the cache-write TTL; the server prices it by the user's setting.
+			cacheCreation1h: null,
+			cacheCreation5m: null,
+			cacheCreationTokens: tokens(o.cache_write),
+			cacheReadTokens: tokens(o.cache_read),
+			cwd: sessionCwd,
+			gitBranch: null,
+			inputTokens: tokens(o.input),
+			messageId: id,
+			model: str(o.model),
+			outputTokens: tokens(o.output),
+			requestId: null,
+			serviceTier: null,
+			sessionId,
+			source: 'agent',
+			timestamp: at.toISOString(),
+			uuid: `agent:${id}`,
+			version: null,
+		},
 	}
 }
 

@@ -7,6 +7,7 @@ import { claudeAccounts, devices, groups } from '@/db/schema'
 import { deviceWithinPlan, overPlanLimit } from '@/lib/billing'
 import {
 	dashboardForDevice,
+	freezeClosedWindows,
 	getLiveDashboards,
 	groupBlock,
 	recalibrateAccount,
@@ -241,6 +242,8 @@ async function POST(req: Request) {
 	// nobody waiting on the answer, which makes this the cheapest periodic hook in
 	// the app; a failed refit just leaves the previous weights in place.
 	void recalibrateAccount(account, now).catch(error => console.error('recalibrate failed', error))
+	// Same hook, same reason: a window that closed gets its split recorded once.
+	void freezeClosedWindows(account, now).catch(error => console.error('freeze windows failed', error))
 
 	return Response.json({ ok: true })
 }

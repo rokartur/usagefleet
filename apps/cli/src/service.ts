@@ -145,6 +145,11 @@ function systemdUnitPath(): string {
 	return join(homedir(), '.config', 'systemd', 'user', 'usagefleet.service')
 }
 
+/** sd_booted(3): without systemd as init (a Docker container, WSL without it) a unit would never start. */
+function systemdBooted(): boolean {
+	return existsSync('/run/systemd/system')
+}
+
 /** Env vars that are actually set, for baking into the unit so the service
  *  behaves like the install shell. Derived from the USAGEFLEET_ prefix rather
  *  than a hand-kept allowlist: that list had already drifted, silently dropping
@@ -400,7 +405,7 @@ ${envXml}
 		return collectingNow()
 	}
 
-	if (process.platform === 'linux') {
+	if (process.platform === 'linux' && systemdBooted()) {
 		// systemd: quote values, escape backslash/quote, reject newlines.
 		const envLines = env
 			.filter(([, v]) => !/[\r\n]/.test(v))
@@ -518,7 +523,7 @@ function collectingNow(): void {
 }
 
 export interface ServiceStatus {
-	state: 'running' | 'stopped' | 'not installed'
+	state: 'running' | 'stopped' | 'not installed' | 'no autostart'
 	pid?: number
 }
 
@@ -545,7 +550,7 @@ export function serviceStatus(): ServiceStatus {
 		return pid ? { pid: Number(pid), state: 'running' } : { state: 'stopped' }
 	}
 
-	if (process.platform === 'linux') {
+	if (process.platform === 'linux' && systemdBooted()) {
 		if (!existsSync(systemdUnitPath())) {
 			return { state: 'not installed' }
 		}
@@ -565,7 +570,14 @@ export function serviceStatus(): ServiceStatus {
 		return { state: /Status:\s*Running/i.test(out) ? 'running' : 'stopped' }
 	}
 
-	return { state: 'not installed' }
+	return { state: 'no autostart' }
+}
+
+/** Whether this process is the one the installed service runs, i.e. the one `login` restarts.
+ *  Windows reports no pid, so a running task counts as this process, as it did before. */
+export function isServiceProcess(): boolean {
+	const svc = serviceStatus()
+	return svc.state === 'running' && (svc.pid === undefined || svc.pid === process.pid)
 }
 
 /** Best-effort removal of the ~60 MB binary copy that pre-npm releases parked in

@@ -53,10 +53,12 @@ export function freshWindow(): WindowNotifyState {
 function normalize(raw: Partial<Store>): Store {
 	return {
 		accountTokens: raw.accountTokens,
+		agentDir: raw.agentDir,
 		batch: raw.batch,
 		desktopDir: raw.desktopDir,
 		hook: raw.hook,
 		interval: raw.interval,
+		jcodeDir: raw.jcodeDir,
 		limits: raw.limits,
 		limitsInterval: raw.limitsInterval,
 		notifications: raw.notifications,
@@ -67,10 +69,12 @@ function normalize(raw: Partial<Store>): Store {
 		notifyMode: raw.notifyMode,
 		notifyThresholds: raw.notifyThresholds,
 		piDir: raw.piDir,
+		pjDir: raw.pjDir,
 		projectsDir: raw.projectsDir,
 		state: {
 			deviceId: raw.state?.deviceId || randomUUID(),
 			files: raw.state?.files ?? {},
+			jcode: raw.state?.jcode ?? {},
 			updatedAt: raw.state?.updatedAt ?? new Date().toISOString(),
 		},
 		token: raw.token,

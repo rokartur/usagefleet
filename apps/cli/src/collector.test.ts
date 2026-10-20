@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlink
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { LimitsReport } from './claude-limits.js'
 import { updateStore } from './store.js'
 import type { Config, Store } from './types.js'
 
@@ -39,7 +40,9 @@ function fixture(count: number): { cfg: Config; logPath: string } {
 		cfg: {
 			batchSize: 100,
 			desktopDir: null,
+			jcodeDir: join(dir, 'jcode'),
 			piDirs: [],
+			pjDir: join(dir, 'pj'),
 			projectsDir: projects,
 			storePath: join(dir, 'config.json'),
 			token: 'uf_t',
@@ -209,6 +212,108 @@ describe('runOnce pi account attribution', () => {
 	})
 })
 
+// jcode rewrites its session snapshot whole and folds its journal into it, so there is
+// no append-only offset to keep: each message must still upload exactly once.
+describe('runOnce jcode sessions', () => {
+	const turn = (id: string, ms: number) => ({
+		id,
+		role: 'assistant',
+		timestamp: new Date(ms).toISOString(),
+		token_usage: { input_tokens: 1, output_tokens: 1 },
+	})
+	const journalLine = (...messages: object[]) =>
+		`${JSON.stringify({ append_messages: messages, meta: { model: 'claude-x', provider_key: 'claude' } })}\n`
+
+	it('uploads each turn once across snapshot, journal and later appends', async () => {
+		const { cfg } = fixture(0)
+		const jcodeDir = mkdtempSync(join(tmpdir(), 'uf-jcode-'))
+		const snapshot = join(jcodeDir, 'session_owl_1_a.json')
+		const journal = join(jcodeDir, 'session_owl_1_a.journal.jsonl')
+		const t0 = Date.parse('2026-10-13T10:00:00Z')
+		writeFileSync(
+			snapshot,
+			JSON.stringify({
+				id: 'session_owl_1_a',
+				messages: [turn('m1', t0)],
+				model: 'claude-x',
+				provider_key: 'claude',
+			}),
+		)
+		// An interrupted checkpoint leaves m1 in both files.
+		writeFileSync(journal, journalLine(turn('m1', t0), turn('m2', t0 + 1000)))
+		const sent: string[][] = []
+		uploadBatch.mockImplementation(async (payload: { records: { uuid: string }[] }) => {
+			sent.push(payload.records.map(r => r.uuid))
+			return { accepted: payload.records.length, duplicates: 0, ok: true }
+		})
+
+		await runOnce({ ...cfg, jcodeDir })
+		await runOnce({ ...cfg, jcodeDir })
+		appendFileSync(journal, journalLine(turn('m3', t0 + 2000)))
+		await runOnce({ ...cfg, jcodeDir })
+
+		expect(sent).toStrictEqual([['jcode:m1', 'jcode:m2'], ['jcode:m3']])
+	})
+
+	it('reads pj sessions as their own source', async () => {
+		const { cfg } = fixture(0)
+		const pjDir = mkdtempSync(join(tmpdir(), 'uf-pj-'))
+		writeFileSync(join(pjDir, 'session_owl_1_a.journal.jsonl'), journalLine(turn('m1', Date.now())))
+		writeFileSync(
+			join(pjDir, 'session_owl_1_a.json'),
+			JSON.stringify({ id: 'session_owl_1_a', provider_key: 'claude' }),
+		)
+		const sent: { source?: string; uuid: string }[] = []
+		uploadBatch.mockImplementation(async (payload: { records: { source?: string; uuid: string }[] }) => {
+			sent.push(...payload.records.map(({ source, uuid }) => ({ source, uuid })))
+			return { accepted: payload.records.length, duplicates: 0, ok: true }
+		})
+
+		await runOnce({ ...cfg, pjDir })
+
+		expect(sent).toStrictEqual([{ source: 'pj', uuid: 'pj:m1' }])
+	})
+
+	it('books turns on the login pj marks active, not the Claude Code one', async () => {
+		const { cfg } = fixture(0)
+		const claudeDir = mkdtempSync(join(tmpdir(), 'uf-acc-'))
+		writeFileSync(join(claudeDir, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: 'acc-device' } }))
+		vi.stubEnv('CLAUDE_CONFIG_DIR', claudeDir)
+		const pjHome = mkdtempSync(join(tmpdir(), 'uf-pj-'))
+		const pjDir = join(pjHome, 'sessions')
+		mkdirSync(pjDir)
+		writeFileSync(
+			join(pjHome, 'auth.json'),
+			JSON.stringify({
+				active_anthropic_account: 'claude-fox',
+				anthropic_accounts: [
+					{ access: 'tok-otter', label: 'claude-otter' },
+					{ access: 'tok-fox', label: 'claude-fox' },
+				],
+			}),
+		)
+		vi.stubGlobal('fetch', async (_url: string, init: { headers: Record<string, string> }) =>
+			Response.json({
+				account: { uuid: init.headers.authorization === 'Bearer tok-fox' ? 'acc-fox' : 'acc-otter' },
+			}),
+		)
+		writeFileSync(join(pjDir, 'session_owl_1_a.journal.jsonl'), journalLine(turn('m1', Date.now())))
+		writeFileSync(
+			join(pjDir, 'session_owl_1_a.json'),
+			JSON.stringify({ id: 'session_owl_1_a', provider_key: 'claude' }),
+		)
+		const booked: (string | undefined)[] = []
+		uploadBatch.mockImplementation(async (payload: { accountExtId?: string; records: unknown[] }) => {
+			booked.push(payload.accountExtId)
+			return { accepted: payload.records.length, duplicates: 0, ok: true }
+		})
+
+		await runOnce({ ...cfg, pjDir })
+
+		expect(booked).toStrictEqual(['acc-fox'])
+	})
+})
+
 // 2026-10-06: a Windows login switch posted one account's 75% weekly reading under
 // the other's uuid, and every real rise after it went unrecorded until reset.
 describe('reportLimitsOnce account check', () => {
@@ -239,6 +344,86 @@ describe('reportLimitsOnce account check', () => {
 	it('skips a reading whose token belongs to another account', async () => {
 		await reportLimitsOnce(signedInAs('acc-a', 'acc-b'))
 		expect(postLimits).not.toHaveBeenCalled()
+	})
+
+	// 2026-10-14: pj ran on claude-fox while Claude Code stayed on claude-otter, so fox's
+	// reading went 4h stale and the dashboard showed it offline.
+	it('also reports the login pj has active when it is another account', async () => {
+		const cfg = signedInAs('acc-otter', 'acc-otter')
+		const pjHome = mkdtempSync(join(tmpdir(), 'uf-pj-'))
+		writeFileSync(
+			join(pjHome, 'auth.json'),
+			JSON.stringify({
+				active_anthropic_account: 'claude-fox',
+				anthropic_accounts: [{ access: 'tok-fox', label: 'claude-fox' }],
+			}),
+		)
+		vi.stubGlobal('fetch', async (url: string, init: { headers: Record<string, string> }) => {
+			const fox = init.headers.authorization === 'Bearer tok-fox'
+			return Response.json(
+				url.endsWith('/profile')
+					? { account: { uuid: fox ? 'acc-fox' : 'acc-otter' } }
+					: { five_hour: { utilization: fox ? 48 : 6 }, seven_day: { utilization: fox ? 69 : 60 } },
+			)
+		})
+
+		await reportLimitsOnce({ ...cfg, jcodeDir: null, pjDir: join(pjHome, 'sessions') })
+
+		const posted = postLimits.mock.calls.map(([report]: [LimitsReport]) => [
+			report.account?.extId,
+			report.fiveHourPct,
+			report.sevenDayPct,
+		])
+		expect(posted).toStrictEqual([
+			['acc-otter', 6, 60],
+			['acc-fox', 48, 69],
+		])
+	})
+
+	// 2026-10-18: the agent ran on rokartur while Claude Code's login stayed on claudescom,
+	// so rokartur's fleet read two days stale and the dashboard showed the collector offline.
+	it('also reports every Claude login the agent CLI has saved', async () => {
+		const cfg = signedInAs('acc-otter', 'acc-otter')
+		const agentHome = mkdtempSync(join(tmpdir(), 'uf-agent-'))
+		const oauth = (name: string, accountId: string, expires: number) => ({
+			access: `tok-${name}`,
+			accountId,
+			expires,
+			name,
+			refresh: 'r',
+			type: 'oauth',
+		})
+		writeFileSync(
+			join(agentHome, 'accounts.json'),
+			JSON.stringify({
+				anthropic: [
+					{ key: 'sk', name: 'api', type: 'api_key' },
+					oauth('otter', 'acc-otter', Date.now() + 3_600_000),
+					oauth('stale', 'acc-stale', Date.now() - 1000),
+					oauth('fox', 'acc-fox', Date.now() + 3_600_000),
+				],
+			}),
+		)
+		vi.stubGlobal('fetch', async (url: string, init: { headers: Record<string, string> }) => {
+			const fox = init.headers.authorization === 'Bearer tok-fox'
+			return Response.json(
+				url.endsWith('/profile')
+					? { account: { uuid: 'acc-otter' } }
+					: { five_hour: { utilization: fox ? 48 : 6 }, seven_day: { utilization: fox ? 69 : 60 } },
+			)
+		})
+
+		await reportLimitsOnce({ ...cfg, agentDir: join(agentHome, 'sessions'), jcodeDir: null, pjDir: null })
+
+		const posted = postLimits.mock.calls.map(([report]: [LimitsReport]) => [
+			report.account?.extId,
+			report.fiveHourPct,
+			report.sevenDayPct,
+		])
+		expect(posted).toStrictEqual([
+			['acc-otter', 6, 60],
+			['acc-fox', 48, 69],
+		])
 	})
 
 	// Each save rewrites the whole store, ~0.5 MB of offsets, and this runs every minute.

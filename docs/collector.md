@@ -44,7 +44,12 @@ Every `USAGEFLEET_INTERVAL` seconds (default 15) `runOnce()`:
    account that metered it across a `/login` switch. A pi session pinned to one
    account by a `{"customType":"claude-account","data":{"uuid"}}` line books every
    later record in its file on that uuid instead, so concurrent pi sessions on two
-   accounts stay apart; the file's offset state carries it. The batch goes out with
+   accounts stay apart; the file's offset state carries it. The agent CLI
+   (`~/.agents/sessions/<id>.jsonl`) switches accounts between requests, so each of
+   its `usage` lines names the `provider` and Claude `account` that served it and
+   books on that; lines without an account (API keys, agents before it stamped one)
+   and other providers are skipped. `/clone` copies lines into a new session, so they
+   key on the response `id`. The batch goes out with
    `tokenFor(cfg, accountExtId)`: the token `login` bound to that account in the
    store's `accountTokens`, else the default one. Limits reports and `guard` pick
    their token the same way, so an account in another fleet never reports here.
@@ -57,6 +62,19 @@ Every `USAGEFLEET_INTERVAL` seconds (default 15) `runOnce()`:
    at-least-once delivery and the server-side dedup on `(userId, uuid)`.
 5. Offsets for files that no longer exist are pruned, so a long-lived install
    doesn't grow one state entry per session forever.
+
+jcode sessions don't fit the tailer: `~/.jcode/sessions/session_*.json` is rewritten
+whole, and `*.journal.jsonl` beside it is appended per turn and folded back into the
+snapshot at checkpoints. `jcode.ts` re-reads both when either file's mtime moves,
+keys turns on their message id (an interrupted checkpoint leaves one in both) and
+sends only turns newer than the session's stored `uploadedThrough` timestamp, which
+is committed like an offset. Only `claude`/`claude-oauth` providers count;
+`claude-api` is a billed key. jcode keeps its own Anthropic logins and names none per
+session, so its turns book on the owner of the login active in the `auth.json` beside
+its sessions dir, resolved through the OAuth profile endpoint at upload time; when
+that fails, on the account `~/.claude.json` names.
+pj, a jcode fork, writes the same files under `~/.pj/sessions`; the same reader
+sends them as source `pj`.
 
 A `400`/`422` means the server parsed the request and rejected the *records*, so
 the chunk is split and each half retried: one malformed line costs one record
@@ -202,7 +220,7 @@ reading refreshes its `at` only every 10 minutes while the numbers hold.
 Every knob is a top-level file key (`interval`, `limitsInterval`, `batch`,
 `notifications`, `notifyMode`, `notifyThresholds`, `hook`, `update`, `updateInterval`, plus
 the dirs and `token`) with a matching env var that overrides it:
-`USAGEFLEET_TOKEN`, `_PROJECTS`, `_DESKTOP`, `_PI`, `_BATCH`, `_INTERVAL`,
+`USAGEFLEET_TOKEN`, `_PROJECTS`, `_DESKTOP`, `_PI`, `_JCODE`, `_PJ`, `_BATCH`, `_INTERVAL`,
 `_LIMITS_INTERVAL`, `_UPDATE`, `_UPDATE_INTERVAL`, `_NOTIFY`,
 `_NOTIFY_MODE`, `_NOTIFY_THRESHOLDS`, `_HOOK`. Resolution is env → file → default
 (`positiveNumber`/`flagOff` in `config.ts`); `normalize()` in `store.ts` must
@@ -229,13 +247,17 @@ never spawn it again (`EX_CONFIG`) — the machine then drops off the fleet with
 no error anywhere but `launchctl print`. `uninstall` removes the
 agent/unit/task, the guard hook and the pi guard extension.
 
+Linux without systemd as init (`/run/systemd/system` missing: Docker, WSL
+without it) gets no unit: `login` prints the `watch` command to run instead,
+and `status` reads `no autostart` rather than a stopped service.
+
 ## Self-update
 
 `update.ts` reinstalls `@usagefleet/cli` from the public registry when a newer
 version exists — no server, no token, no GitHub involved.
 `USAGEFLEET_UPDATE=0` opts out.
 
-Upgrading *this* install, rather than some other copy, takes three steps that all
+Upgrading *this* install, rather than some other copy, takes four steps that all
 exist because a failure here is silent and permanent — the collector keeps
 running, keeps reporting, and simply never leaves its version:
 
@@ -251,6 +273,11 @@ running, keeps reporting, and simply never leaves its version:
   somewhere else, so the version is re-read off disk afterwards. Mismatch means
   two copies exist and the wrong one moved: log it and skip the restart, which
   would otherwise bounce the service onto the same old code every 6 hours.
+- **Only the service is restarted.** `login` restarts the installed unit, so a
+  `watch` it does not own (a container's command, a terminal) would run the old
+  code until something killed it. After an install it exits 75 when it is not
+  the service's pid (`isServiceProcess`), non-zero so `restart: on-failure`
+  still brings it back.
 
 **Every push to `main` publishes a new version** (`.github/workflows/release.yml`,
 version = manifest major.minor + run number), so installed collectors pick up CLI

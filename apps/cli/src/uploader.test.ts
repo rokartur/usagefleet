@@ -6,6 +6,8 @@ import { fetchGroupLimits, postLimits, uploadBatch } from './uploader.js'
 const cfg: Config = {
 	batchSize: 100,
 	desktopDir: null,
+	jcodeDir: null,
+	pjDir: null,
 	piDirs: [],
 	projectsDir: '',
 	storePath: '',

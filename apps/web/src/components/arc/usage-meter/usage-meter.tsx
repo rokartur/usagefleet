@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { PointerEvent } from 'react'
+import type { PointerEvent, ReactNode } from 'react'
 import { CircleAlert, TriangleAlert } from 'lucide-react'
 import {
 	AnimatePresence,
@@ -16,6 +16,7 @@ import {
 	useTransform,
 } from 'motion/react'
 import type { AnimationPlaybackControls, MotionValue, Variants } from 'motion/react'
+import { cn } from '@/lib/utils'
 import { motionTokens } from '../lib/motion-tokens'
 
 const swatch =
@@ -45,6 +46,12 @@ const styles = {
 	overTint:
 		'fill-(--danger) opacity-0 transition-opacity duration-(--duration-fast) ease-(--ease-standard) group-data-[highlight=on]/over:opacity-100 motion-reduce:transition-none',
 	limit: 'pointer-events-none absolute inset-y-0 -left-px w-0.5 rounded-[1px] bg-(--foreground)',
+	projected:
+		'pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,var(--danger)_55%,transparent)_0_2px,transparent_2px_5px)]',
+	mark: 'pointer-events-none absolute inset-y-0 w-px -translate-x-1/2 bg-(--foreground) transition-[left,opacity] duration-(--duration-standard) ease-(--ease-standard) motion-reduce:transition-none',
+	markRow: 'relative -mt-2 h-5',
+	markLabel:
+		'absolute top-0 rounded-(--radius-pill) border px-2 text-xs leading-[18px] whitespace-nowrap text-(--foreground) tabular-nums transition-[left,opacity] duration-(--duration-standard) ease-(--ease-standard) motion-reduce:transition-none',
 	legend: '-mx-2 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-0.5',
 	item: 'grid min-w-0 justify-items-start gap-0.5 p-2 transition-opacity duration-(--duration-fast) ease-(--ease-standard) data-[highlight=off]:opacity-45 motion-reduce:transition-none',
 	itemHead: 'flex max-w-full min-w-0 items-center gap-2 text-sm leading-(--leading-body) text-(--text-secondary)',
@@ -109,6 +116,12 @@ export interface UsageMeterProps {
 	segments: UsageMeterSegment[]
 	/** The plan limit, in the same unit as the segments. */
 	limit: number
+	/** Where usage is heading, in the unit of `limit`. Drawn as a hatch from the used end up to it. */
+	projected?: number
+	/** A point ahead of usage, such as when it reaches the next threshold: a tick on the bar, its label under it. */
+	mark?: { value: number; label: string; over?: boolean }
+	/** Takes the bar's place, for example a chart of the window. */
+	chart?: ReactNode
 	unit?: string
 	/** Digits after the decimal point. */
 	decimals?: number
@@ -454,6 +467,9 @@ export function UsageMeter({
 	label,
 	segments,
 	limit,
+	projected,
+	mark,
+	chart,
 	unit = '',
 	decimals = 1,
 	warnAt = 0.9,
@@ -462,6 +478,7 @@ export function UsageMeter({
 	messages: overrides,
 }: UsageMeterProps) {
 	const messages = { ...defaultMessages, ...overrides }
+	const showChart = chart != null
 	const { reduced, hydrated } = useReducedMotionSafe()
 	const root = useRef<HTMLDivElement>(null)
 	const trackRef = useRef<HTMLDivElement>(null)
@@ -523,6 +540,13 @@ export function UsageMeter({
 		}
 	}, [markerOpacity, reduced, shownLimit, used])
 	const overClip = useTransform(() => `inset(0 0 0 ${limitX.get() + GAP}px)`)
+	const shownProjected = useMotionValue(0)
+	const projectedClip = useTransform(() => {
+		const toX = (value: number) => (value / span.get()) * width.get()
+		const from = toX(used.get()) + GAP
+		const to = Math.max(from, toX(shownProjected.get()))
+		return `inset(0 ${width.get() - to}px 0 ${from}px)`
+	})
 
 	useLayoutEffect(() => {
 		const node = trackRef.current
@@ -536,7 +560,8 @@ export function UsageMeter({
 		const observer = new ResizeObserver(() => width.set(node.clientWidth))
 		observer.observe(node)
 		return () => observer.disconnect()
-	}, [width])
+		// The track remounts when a chart gives the bar its place back.
+	}, [width, showChart])
 
 	// Segments grow into place once seen, left to right; later changes re-flow every segment on one spring each.
 	const values = segments.map(segment => `${segment.id}:${segment.value}`).join('|')
@@ -576,6 +601,17 @@ export function UsageMeter({
 		}
 		return soon(() => animate(shownLimit, limit, settle))
 	}, [limit, reduced, shownLimit])
+	useEffect(() => {
+		const target = ready ? (projected ?? 0) : 0
+		if (shownProjected.get() === target) {
+			return
+		}
+		if (reduced) {
+			shownProjected.jump(target)
+			return
+		}
+		return soon(() => animate(shownProjected, target, settle))
+	}, [projected, ready, reduced, shownProjected])
 
 	// Hover only: a pinned highlight outlived the pointer and left the headline showing one group as the total.
 	const [active, setActive] = useState<string | null>(null)
@@ -594,6 +630,7 @@ export function UsageMeter({
 		},
 	]
 	const activeItem = items.find(item => item.id === active) ?? null
+	const markAt = mark ? Math.min(100, (mark.value / Math.max(limit, total)) * 100) : 0
 
 	const idAt = (clientX: number) => {
 		const rect = trackRef.current?.getBoundingClientRect()
@@ -666,56 +703,79 @@ export function UsageMeter({
 					<Swap text={caption} reduced={reduced} />
 				</span>
 			</p>
-			<div className={styles.bar}>
-				<div
-					ref={trackRef}
-					className={styles.track}
-					role='img'
-					aria-label={summary}
-					data-active={active ?? undefined}
-					onPointerMove={onTrackMove}
-					onPointerLeave={() => setActive(null)}
-				>
-					{segments.map((segment, index) => (
-						<Segment
-							key={segment.id}
-							index={index}
-							color={segment.color}
-							amounts={amounts}
-							span={span}
-							width={width}
-							highlight={active ? (active === segment.id ? 'on' : 'off') : undefined}
-						/>
-					))}
-					{/* Past the limit the bar is struck through: the overflow keeps its colours, hatched so it reads as over without colour. */}
-					<motion.svg
-						className={styles.overflow}
-						data-highlight={active ? (active === 'free' ? 'on' : 'off') : undefined}
-						style={{ clipPath: overClip, opacity: markerOpacity }}
-						aria-hidden='true'
-						focusable='false'
-					>
-						<defs>
-							<pattern
-								id={hatchId}
-								width={6}
-								height={6}
-								patternUnits='userSpaceOnUse'
-								patternTransform='rotate(45)'
-							>
-								<rect width={2.5} height={6} className={styles.hatch} />
-							</pattern>
-						</defs>
-						<rect className={styles.overTint} width='100%' height='100%' />
-						<rect width='100%' height='100%' fill={`url(#${hatchId})`} />
-					</motion.svg>
+			{showChart ? (
+				<div role='img' aria-label={summary}>
+					{chart}
 				</div>
-				<motion.span
-					className={styles.limit}
-					style={{ x: limitX, opacity: markerOpacity }}
-					aria-hidden='true'
-				/>
-			</div>
+			) : (
+				<div className={styles.bar}>
+					<div
+						ref={trackRef}
+						className={styles.track}
+						role='img'
+						aria-label={summary}
+						data-active={active ?? undefined}
+						onPointerMove={onTrackMove}
+						onPointerLeave={() => setActive(null)}
+					>
+						{segments.map((segment, index) => (
+							<Segment
+								key={segment.id}
+								index={index}
+								color={segment.color}
+								amounts={amounts}
+								span={span}
+								width={width}
+								highlight={active ? (active === segment.id ? 'on' : 'off') : undefined}
+							/>
+						))}
+						<motion.span
+							className={styles.projected}
+							style={{ clipPath: projectedClip }}
+							aria-hidden='true'
+						/>
+						{/* Past the limit the bar is struck through: the overflow keeps its colours, hatched so it reads as over without colour. */}
+						<motion.svg
+							className={styles.overflow}
+							data-highlight={active ? (active === 'free' ? 'on' : 'off') : undefined}
+							style={{ clipPath: overClip, opacity: markerOpacity }}
+							aria-hidden='true'
+							focusable='false'
+						>
+							<defs>
+								<pattern
+									id={hatchId}
+									width={6}
+									height={6}
+									patternUnits='userSpaceOnUse'
+									patternTransform='rotate(45)'
+								>
+									<rect width={2.5} height={6} className={styles.hatch} />
+								</pattern>
+							</defs>
+							<rect className={styles.overTint} width='100%' height='100%' />
+							<rect width='100%' height='100%' fill={`url(#${hatchId})`} />
+						</motion.svg>
+					</div>
+					<motion.span
+						className={styles.limit}
+						style={{ x: limitX, opacity: markerOpacity }}
+						aria-hidden='true'
+					/>
+					{mark && <span className={styles.mark} style={{ left: `${markAt}%` }} aria-hidden='true' />}
+				</div>
+			)}
+			{mark && !showChart && (
+				<div className={styles.markRow}>
+					{/* Sliding the pill back by its own share of the way keeps it inside the row at either end. */}
+					<span
+						className={cn(styles.markLabel, mark.over && 'border-(--danger) text-(--danger)')}
+						style={{ left: `${markAt}%`, translate: `-${markAt}%` }}
+					>
+						{mark.label}
+					</span>
+				</div>
+			)}
 			{legend && (
 				<div className={styles.legend} role='group' aria-label={messages.byCategory(label)}>
 					{items.map((item, index) => {

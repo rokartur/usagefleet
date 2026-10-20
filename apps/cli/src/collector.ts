@@ -1,11 +1,13 @@
 import { existsSync } from 'node:fs'
 import { hostname } from 'node:os'
-import { sep } from 'node:path'
-import { detectClaudeAccount, tokenOwner } from './claude-account.js'
+import { dirname, join, sep } from 'node:path'
+import { activeJcodeToken, agentClaudeLogins, detectClaudeAccount, tokenOwner } from './claude-account.js'
 import { detectClaudeCreds, macKeychainDenied } from './claude-creds.js'
 import { fetchLimits } from './claude-limits.js'
 import type { LimitsReport } from './claude-limits.js'
 import { ENDPOINT } from './config.js'
+import { listJcodeSessions, readJcodeSession } from './jcode.js'
+import type { JcodeSource } from './jcode.js'
 import { loadNotifyConfig, maybeNotify } from './notifier.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
@@ -14,7 +16,7 @@ import type { DirCache } from './scanner.js'
 import { readStore, updateStore } from './store.js'
 import { tailFile } from './tailer.js'
 import type { AccountSegment } from './tailer.js'
-import type { Config, FileState, UsageRecord, UsageSource } from './types.js'
+import type { Config, FileState, JcodeSessionState, UsageRecord, UsageSource } from './types.js'
 import type { Log } from './ui.js'
 import { tilde } from './ui.js'
 import { fetchGroupLimits, postLimits, uploadBatch } from './uploader.js'
@@ -41,9 +43,10 @@ export interface CycleResult {
 }
 
 /**
- * One full scan: tail every JSONL file from its stored offset, upload new usage
- * records (chunked to batchSize), and commit each file's offset only after all
- * its chunks are acknowledged (at-least-once; the server dedups on uuid).
+ * One full scan: tail every JSONL file from its stored offset and re-read every
+ * changed jcode session, upload new usage records (chunked to batchSize), and commit
+ * each source's progress only after all its chunks are acknowledged (at-least-once;
+ * the server dedups on uuid).
  */
 export async function runOnce(
 	cfg: Config,
@@ -51,6 +54,7 @@ export async function runOnce(
 		/* empty */
 	},
 	dirCache: DirCache = new Map(),
+	tokenOwners = new Map<string, string>(),
 ): Promise<CycleResult> {
 	const { state } = readStore(cfg.storePath)
 
@@ -66,6 +70,9 @@ export async function runOnce(
 	for (const dir of cfg.piDirs) {
 		roots.push({ dir, onlyProjects: false, source: 'pi' })
 	}
+	if (cfg.agentDir) {
+		roots.push({ dir: cfg.agentDir, onlyProjects: false, source: 'agent' })
+	}
 	const files: { fp: string; source: UsageSource }[] = []
 	for (const root of roots) {
 		for (const fp of listJsonlFiles(root.dir, dirCache)) {
@@ -76,12 +83,24 @@ export async function runOnce(
 		}
 	}
 
+	const jcodeSessions = await listJcodeSessionsWithAccount(cfg, tokenOwners)
+
+	// Each source yields its new records and how to commit having sent them, so both
+	// share one upload path: offsets for appended JSONL, a watermark for jcode and pj.
+	const reads = [
+		...files.map(({ fp, source }) => ({ fp, read: () => tailPending(fp, source, state.files) })),
+		...jcodeSessions.map(({ accountExtId, fp, source }) => ({
+			fp,
+			read: () => jcodePending(fp, source, accountExtId, state.jcode),
+		})),
+	]
+
 	const result: CycleResult = {
 		accepted: 0,
 		dropped: 0,
 		duplicates: 0,
 		failed: false,
-		files: files.length,
+		files: reads.length,
 		sent: 0,
 	}
 
@@ -92,29 +111,29 @@ export async function runOnce(
 	// so the cycle reports one count instead of a screenful of identical lines.
 	let transientFiles = 0
 
-	for (const { fp, source } of files) {
-		let tail
+	for (const { fp, read } of reads) {
+		let pending
 		try {
-			tail = tailFile(fp, state.files[fp], source)
+			pending = read()
 		} catch (error) {
 			// One unreadable/oversized file must not abort the whole cycle.
 			log('warn', `skipped ${tilde(fp)} · ${(error as Error).message}`)
 			continue
 		}
-		if (!tail || tail.consumedBytes === 0) {
+		if (!pending) {
 			continue
 		}
 
-		if (tail.segments.length === 0) {
+		if (pending.segments.length === 0) {
 			// Consumed only non-usage lines — safe to advance immediately.
-			state.files[fp] = tail.nextState
+			pending.commit()
 			advanced = true
 			continue
 		}
 
 		// sendChunk absorbs "invalid" by bisecting, so only auth/plan/transient escape.
 		let outcome: 'ok' | UploadFailure = 'ok'
-		for (const chunk of chunks(tail.segments, step)) {
+		for (const chunk of chunks(pending.segments, step)) {
 			outcome = await sendChunk(chunk.records, chunk.accountExtId, cfg, result, log)
 			if (outcome !== 'ok') {
 				break
@@ -122,7 +141,7 @@ export async function runOnce(
 		}
 
 		if (outcome === 'ok') {
-			state.files[fp] = tail.nextState
+			pending.commit()
 			advanced = true
 		} else if (outcome === 'auth') {
 			// Token revoked/expired. The data is valid and must NOT be skipped — keep
@@ -164,9 +183,15 @@ export async function runOnce(
 	// on every save, and a crash mid-cycle only costs a re-upload the server
 	// dedups. Only our own section is replaced, so a token written by a
 	// concurrent `usagefleet login` survives.
-	if (pruneMissingFiles(state, files) || advanced) {
+	const pruned = pruneMissingFiles(state, files)
+	const prunedJcode = pruneGoneSessions(
+		state.jcode,
+		jcodeSessions.map(s => s.fp),
+	)
+	if (pruned || prunedJcode || advanced) {
 		updateStore(cfg.storePath, store => {
 			store.state.files = state.files
+			store.state.jcode = state.jcode
 			store.state.updatedAt = new Date().toISOString()
 		})
 	}
@@ -251,6 +276,103 @@ function chunks(segments: AccountSegment[], step: number): AccountSegment[] {
 	return out
 }
 
+/** New records from one source, and how to record having uploaded them. */
+interface PendingUpload {
+	segments: AccountSegment[]
+	commit: () => void
+}
+
+function tailPending(fp: string, source: UsageSource, files: Record<string, FileState>): PendingUpload | null {
+	const tail = tailFile(fp, files[fp], source)
+	if (!tail || tail.consumedBytes === 0) {
+		return null
+	}
+	return {
+		commit: () => {
+			files[fp] = tail.nextState
+		},
+		segments: tail.segments,
+	}
+}
+
+function jcodePending(
+	fp: string,
+	source: JcodeSource,
+	accountExtId: string | undefined,
+	sessions: Record<string, JcodeSessionState>,
+): PendingUpload | null {
+	const session = readJcodeSession(fp, source, sessions[fp])
+	if (!session) {
+		return null
+	}
+	return {
+		commit: () => {
+			sessions[fp] = session.nextState
+		},
+		segments: session.records.length > 0 ? [{ accountExtId, records: session.records }] : [],
+	}
+}
+
+async function listJcodeSessionsWithAccount(
+	cfg: Config,
+	tokenOwners: Map<string, string>,
+): Promise<{ fp: string; source: JcodeSource; accountExtId: string | undefined }[]> {
+	const roots: { dir: string | null; source: JcodeSource }[] = [
+		{ dir: cfg.jcodeDir, source: 'jcode' },
+		{ dir: cfg.pjDir, source: 'pj' },
+	]
+	const out: { fp: string; source: JcodeSource; accountExtId: string | undefined }[] = []
+	for (const { dir, source } of roots) {
+		const sessions = dir ? listJcodeSessions(dir) : []
+		if (!dir || sessions.length === 0) {
+			continue
+		}
+		const accountExtId = await jcodeAccount(dir, tokenOwners)
+		for (const fp of sessions) {
+			out.push({ accountExtId, fp, source })
+		}
+	}
+	return out
+}
+
+/** The Anthropic account jcode (or pj) is signed into: the owner of the active login in
+ *  the `auth.json` beside its sessions dir. Undefined (the batch then books on the
+ *  Claude Code account) when that file or the profile lookup fails. Owners are cached per
+ *  access token, so the profile call repeats only when jcode refreshes or switches logins.
+ *  shortcut: books a turn on the login active at upload time, so a switch between a turn
+ *  and its upload (or a backfill) books it on the new login; stamp the login per turn in
+ *  jcode if that matters. */
+async function jcodeAccount(sessionsDir: string, owners: Map<string, string>): Promise<string | undefined> {
+	const token = activeJcodeToken(join(dirname(sessionsDir), 'auth.json'))
+	if (!token) {
+		return undefined
+	}
+	const cached = owners.get(token)
+	if (cached) {
+		return cached
+	}
+	const owner = await tokenOwner(token)
+	if (!owner) {
+		return undefined
+	}
+	owners.set(token, owner)
+	return owner
+}
+
+/** Drop the progress of jcode sessions no longer on disk; returns whether anything went. */
+function pruneGoneSessions(sessions: Record<string, JcodeSessionState>, listed: string[]): boolean {
+	const kept = new Set(listed)
+	let removed = false
+	for (const fp of Object.keys(sessions)) {
+		if (!kept.has(fp)) {
+			// oxlint-disable-next-line typescript/no-dynamic-delete -- state.jcode is a JSON blob keyed by path
+			delete sessions[fp]
+			removed = true
+		}
+	}
+	return removed
+}
+
 /**
  * Drop offsets for logs that no longer exist on disk, so a long-lived install
  * does not grow its state file by one entry per Claude session forever. Only
@@ -281,18 +403,73 @@ function planWall(): string {
 	return `device outside your plan's device limit · free a slot or upgrade at ${ENDPOINT}/fleet · nothing is lost, uploads resume once it fits`
 }
 
-/**
- * Auto-detect the local Claude login, read the real 5h/weekly utilization
- * (oauth/usage for subscription logins, rate-limit headers for API keys), and
- * report it to the server. Best-effort — returns null (and logs) when no login
- * is found or the request fails.
- */
+/** Report the Claude Code login's limits, then those of every other account jcode, pj or the agent CLI is signed in to. */
 export async function reportLimitsOnce(
 	cfg: Config,
 	log: Log = () => {
 		/* empty */
 	},
 ): Promise<LimitsReport | null> {
+	const report = await reportClaudeCodeLimits(cfg, log)
+	await reportOtherLogins(cfg, report?.account?.extId, log)
+	return report
+}
+
+/**
+ * jcode, pj and the agent CLI keep their own Anthropic logins, so the account they use
+ * can differ from Claude Code's; with no reading of its own that account's limits go
+ * stale on the server and its group stops blocking.
+ */
+async function reportOtherLogins(cfg: Config, reportedExtId: string | undefined, log: Log): Promise<void> {
+	const reported = new Set(reportedExtId ? [reportedExtId] : [])
+	for (const { extId, label, token } of await otherLogins(cfg)) {
+		if (reported.has(extId)) {
+			continue
+		}
+		reported.add(extId)
+		let report: LimitsReport
+		try {
+			report = await fetchLimits({ source: 'sub', token })
+		} catch (error) {
+			log('warn', `limits fetch failed for the ${label} login · ${(error as Error).message}`)
+			continue
+		}
+		const outcome = await postLimits({ ...report, account: { email: null, extId, org: null } }, cfg)
+		if (outcome !== 'ok') {
+			log('warn', `limits upload failed for the ${label} login · ${outcome}`)
+		}
+	}
+}
+
+// Never refreshed here: rotating a refresh token would sign jcode, pj or the agent out.
+async function otherLogins(cfg: Config): Promise<{ extId: string; label: string; token: string }[]> {
+	const logins = []
+	for (const sessionsDir of [cfg.jcodeDir, cfg.pjDir]) {
+		if (!sessionsDir) {
+			continue
+		}
+		const token = activeJcodeToken(join(dirname(sessionsDir), 'auth.json'))
+		const extId = token ? await tokenOwner(token) : null
+		if (token && extId) {
+			logins.push({ extId, label: tilde(dirname(sessionsDir)), token })
+		}
+	}
+	if (cfg.agentDir) {
+		const accountsPath = join(dirname(cfg.agentDir), 'accounts.json')
+		for (const login of agentClaudeLogins(accountsPath)) {
+			logins.push({ ...login, label: `${tilde(dirname(cfg.agentDir))} ${login.name}` })
+		}
+	}
+	return logins
+}
+
+/**
+ * Auto-detect the local Claude login, read the real 5h/weekly utilization
+ * (oauth/usage for subscription logins, rate-limit headers for API keys), and
+ * report it to the server. Best-effort — returns null (and logs) when no login
+ * is found or the request fails.
+ */
+async function reportClaudeCodeLimits(cfg: Config, log: Log): Promise<LimitsReport | null> {
 	const creds = await detectClaudeCreds()
 	if (!creds) {
 		if (process.platform === 'darwin' && macKeychainDenied()) {
@@ -380,5 +557,5 @@ export async function reportLimitsOnce(
 			log,
 		)
 	}
-	return report
+	return { ...report, account }
 }

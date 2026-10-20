@@ -7,8 +7,12 @@ export type OsName = 'mac' | 'linux' | 'windows' | 'other'
  *  `desktop` = Claude Desktop agent-mode/Cowork sessions (same JSONL format under
  *  the app's `local-agent-mode-sessions/<session>/.claude/projects`);
  *  `pi` = the pi coding agent (`~/.pi/agent/sessions`, its own JSONL format —
- *  only providers "anthropic" and "claude-bridge" count against Claude limits). */
-export type UsageSource = 'cli' | 'desktop' | 'pi'
+ *  only providers "anthropic" and "claude-bridge" count against Claude limits);
+ *  `jcode` = the jcode agent (`~/.jcode/sessions`, JSON snapshot + journal);
+ *  `pj` = the pj fork of jcode (`~/.pj/sessions`, same format);
+ *  `agent` = the agent CLI (`~/.agents/sessions`, one `usage` line per request
+ *  naming the provider and Claude account that served it). */
+export type UsageSource = 'cli' | 'desktop' | 'pi' | 'jcode' | 'pj' | 'agent'
 
 /** Wire record sent to POST /api/v1/usage. Field names match the server's
  *  `RecordSchema` (apps/web/src/routes/api/v1/usage.ts); a mismatch is a 400,
@@ -56,10 +60,19 @@ export interface FileState {
 	accountExtId?: string
 }
 
+/** jcode progress per session snapshot path. The session's newest file mtime when
+ *  last read lets an untouched session skip parsing; `uploadedThrough` (epoch ms of
+ *  the newest uploaded turn) stands in for an offset, since the snapshot is rewritten whole. */
+export interface JcodeSessionState {
+	mtimeMs: number
+	uploadedThrough: number
+}
+
 /** Tail progress: which logs we have read and how far. */
 export interface StateFile {
 	deviceId: string
 	files: Record<string, FileState>
+	jcode: Record<string, JcodeSessionState>
 	updatedAt: string
 }
 
@@ -100,6 +113,9 @@ export interface Store {
 	accountTokens?: Record<string, string>
 	projectsDir?: string
 	desktopDir?: string
+	jcodeDir?: string
+	pjDir?: string
+	agentDir?: string
 	/** One path, or several (pi's session root moves with PI_CODING_AGENT_DIR). */
 	piDir?: string | string[]
 	// Every USAGEFLEET_* knob is also a file key (the matching env var wins);
@@ -140,5 +156,11 @@ export interface Config {
 	desktopDir: string | null
 	/** pi agent sessions roots to also scan (empty to disable). */
 	piDirs: string[]
+	/** jcode's flat sessions dir (`session_*.json` + `.journal.jsonl`), or null to disable. */
+	jcodeDir: string | null
+	/** pj's sessions dir, jcode's format under `~/.pj`, or null to disable. */
+	pjDir: string | null
+	/** The agent CLI's flat sessions dir (`<id>.jsonl`), or null to disable. */
+	agentDir: string | null
 	batchSize: number
 }

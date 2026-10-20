@@ -29,7 +29,7 @@ export const Route = createFileRoute('/_dash/admin_/$userId')({
 
 function AdminUserPage() {
 	const t = useTranslations('dash.admin.user')
-	const { email, accounts, history, projects } = Route.useLoaderData()
+	const { email, accounts, history } = Route.useLoaderData()
 	return (
 		<>
 			<p className='text-sm text-muted-foreground'>
@@ -44,10 +44,8 @@ function AdminUserPage() {
 			<Cockpit
 				accounts={accounts}
 				history={history}
-				projects={projects}
 				setup={null}
 				poll={false}
-				readOnly
 				notConnected={<p className='text-sm text-muted-foreground'>{t('noUsage')}</p>}
 			/>
 		</>

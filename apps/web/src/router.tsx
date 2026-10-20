@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import type { ErrorComponentProps } from '@tanstack/react-router'
 import { createRouter, Link, useRouterState } from '@tanstack/react-router'
 import { TriangleAlertIcon } from 'lucide-react'
 import { useTranslations } from 'use-intl'
@@ -25,11 +26,11 @@ export function getRouter() {
 
 /** A dropped connection surfaces as `TypeError: Failed to fetch` from the
  *  serverFn client, with no status to key off. */
-const isFetchFailure = (error: Error) => error instanceof TypeError && error.message.toLowerCase().includes('fetch')
+const isFetchFailure = (error: unknown) => error instanceof TypeError && error.message.toLowerCase().includes('fetch')
 
 /** One boundary for the whole app: the root shell always renders, so a failed
  *  loader or render lands here instead of on an unstyled error screen. */
-function RouteError({ error, reset }: { error: Error; reset: () => void }) {
+function RouteError({ error, reset }: ErrorComponentProps) {
 	const t = useTranslations('common.error')
 	useEffect(() => {
 		console.error(error)

@@ -1,5 +1,5 @@
 {
-  "id": "0f82163f-8d8c-4bcb-9c77-a25dc1c8de02",
+  "id": "9585695c-4675-4505-aea1-6dc0c7a490d9",
   "prevId": "62b52cdb-d176-4224-9562-9c77cf6388a0",
   "version": "7",
   "dialect": "postgresql",
@@ -203,13 +203,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "notify_mode": {
-          "name": "notify_mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'standard'"
         },
         "os": {
           "name": "os",
@@ -551,6 +544,12 @@
           "type": "real",
           "primaryKey": false,
           "notNull": true
+        },
+        "split": {
+          "name": "split",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",
