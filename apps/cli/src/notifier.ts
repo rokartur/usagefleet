@@ -1,7 +1,6 @@
 import type { LimitsReport } from './claude-limits.js'
 import { flagOff } from './config.js'
 import { sendNotification } from './notify.js'
-import type { Urgency } from './notify.js'
 import { readStore, storePath, updateStore } from './store.js'
 import type { NotifyMode, Store, WindowNotifyState } from './types.js'
 import type { Log } from './ui.js'
@@ -28,6 +27,9 @@ const DEFAULT_MODE: NotifyMode = 'standard'
 
 /** Points under the mark pct must fall before the mark is lowered and re-armed. */
 const REARM_MARGIN = 5
+
+/** Utilization % from which an alert is urgent (`critical` on Linux). */
+const DANGER_ZONE = 95
 
 /** Case-insensitive; anything that is not a mode name is null, so a typo in one
  *  layer falls through to the next instead of silencing every alert. */
@@ -75,7 +77,7 @@ export function evaluateWindow(
 	pct: number | null,
 	resetsAt: string | null,
 	thresholds: number[],
-): { fire: number | null; next: WindowNotifyState } {
+): { fire: number | null; urgent: boolean; next: WindowNotifyState } {
 	const rolledOver = !prev || !sameWindow(prev.resetsAt, resetsAt)
 	const lastBucket = rolledOver ? 0 : prev.lastBucket
 	// Within a window the first resetsAt stays, so the jitter alone never rewrites the store.
@@ -83,7 +85,7 @@ export function evaluateWindow(
 
 	if (pct == null) {
 		// No reading this cycle — keep the mark, just track the (possibly new) window.
-		return { fire: null, next: { lastBucket, resetsAt: windowResetsAt } }
+		return { fire: null, urgent: false, next: { lastBucket, resetsAt: windowResetsAt } }
 	}
 
 	// Highest threshold the current pct has reached (thresholds are ascending).
@@ -95,12 +97,15 @@ export function evaluateWindow(
 	}
 
 	if (top > lastBucket) {
-		return { fire: top, next: { lastBucket: top, resetsAt: windowResetsAt } }
+		// `critical` is sticky on most Linux daemons, so only entering the danger zone and
+		// the wall get it; a dense tail (99.1, 99.2, ...) must not pile up.
+		const urgent = (lastBucket < DANGER_ZONE && top >= DANGER_ZONE) || top >= 100
+		return { fire: top, urgent, next: { lastBucket: top, resetsAt: windowResetsAt } }
 	}
 	// top <= lastBucket: nothing fires. The mark holds through a wobble and follows
 	// pct down only on a real drop.
 	const mark = pct < lastBucket - REARM_MARGIN ? top : lastBucket
-	return { fire: null, next: { lastBucket: mark, resetsAt: windowResetsAt } }
+	return { fire: null, urgent: false, next: { lastBucket: mark, resetsAt: windowResetsAt } }
 }
 
 // oauth/usage jitters resets_at by milliseconds per request; a real rollover moves it by hours.
@@ -129,12 +134,6 @@ function resetSuffix(resetsAt: string | null): string {
 		return ` · resets in ${h}h`
 	}
 	return ` · resets in ${Math.round(h / 24)}d`
-}
-
-/** `critical` is sticky on most Linux daemons, so only the first alert in the danger
- *  zone and the wall itself get it; a dense tail (99.1, 99.2, ...) must not pile up. */
-function urgencyFor(bucket: number, thresholds: number[]): Urgency {
-	return bucket === thresholds.find(t => t >= 95) || bucket >= 100 ? 'critical' : 'normal'
 }
 
 /**
@@ -168,7 +167,7 @@ export function maybeNotify(
 			sendNotification(
 				'Claude usage · 5-hour limit',
 				`${fivePct}% of your 5-hour limit used${resetSuffix(report.fiveHourResetsAt)}.`,
-				{ urgency: urgencyFor(five.fire, cfg.thresholds) },
+				{ urgency: five.urgent ? 'critical' : 'normal' },
 			)
 			log('ok', `notified · 5h at ${fivePct}% · crossed ${five.fire}%`)
 		}
@@ -176,7 +175,7 @@ export function maybeNotify(
 			sendNotification(
 				'Claude usage · weekly limit',
 				`${sevenPct}% of your weekly limit used${resetSuffix(report.sevenDayResetsAt)}.`,
-				{ urgency: urgencyFor(seven.fire, cfg.thresholds) },
+				{ urgency: seven.urgent ? 'critical' : 'normal' },
 			)
 			log('ok', `notified · weekly at ${sevenPct}% · crossed ${seven.fire}%`)
 		}

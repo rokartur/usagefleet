@@ -167,8 +167,9 @@ time that moves by under a minute is the same window: oauth/usage jitters
 follows pct down by more than `REARM_MARGIN` (5 points): a group's slice is
 derived and wobbles between readings, and a mark that tracked every dip would
 re-alert each time pct straddled a threshold. `critical` urgency (sticky on most
-Linux daemons) goes only to the first alert at or above 95 and to 100, so the
-dense tail does not pile up unread notifications.
+Linux daemons) goes only to the alert that crosses into 95+ from below (even one
+that jumps straight to 97) and to 100, so the dense tail does not pile up unread
+notifications.
 
 On macOS the npm package carries `dist/UsageFleet.app`, a small Swift app
 (`apps/cli/macos/`, built in `release.yml`) that posts through

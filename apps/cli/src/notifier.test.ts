@@ -171,6 +171,14 @@ describe(evaluateWindow, () => {
 		expect(fired).toStrictEqual([99, null, 99.1, 99.3, 99.9, 100])
 	})
 
+	it('marks urgent only the alert that enters the danger zone, and the wall', () => {
+		const th = NOTIFY_MODES.critical
+		expect(evaluateWindow({ lastBucket: 80, resetsAt: reset }, 97.2, reset, th).urgent).toBeTruthy()
+		expect(evaluateWindow({ lastBucket: 96, resetsAt: reset }, 97.2, reset, th).urgent).toBeFalsy()
+		expect(evaluateWindow({ lastBucket: 99.9, resetsAt: reset }, 100, reset, th).urgent).toBeTruthy()
+		expect(evaluateWindow(undefined, 82, reset, th).urgent).toBeFalsy()
+	})
+
 	it('keeps the mark and tracks the window when pct is null', () => {
 		const prev = { lastBucket: 80, resetsAt: reset }
 		const r = evaluateWindow(prev, null, reset, TH)
