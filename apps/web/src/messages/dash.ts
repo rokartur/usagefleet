@@ -80,6 +80,16 @@ const en = {
 		namePlaceholder: 'e.g. work-macbook',
 		noneInGroup: 'No devices in this group. Move one here with the group picker on any row.',
 		notBlocked: '{name} exempt from blocking',
+		// Desktop alert presets, keyed by NOTIFY_MODES[]; the numbers are the % of a window that fire an alert.
+		notify: {
+			critical: 'Critical · 80, 90, 95–99, then every 0.1',
+			off: 'Alerts off',
+			quiet: 'Quiet · 95, 100',
+			standard: 'Standard · 80, 95',
+			steady: 'Steady · every 10 from 50, 95, 100',
+		},
+		notifyLabel: 'Desktop alerts for {name}',
+		notifySet: 'Alerts on {name}: {mode}',
 		overLimit: 'over plan limit',
 		registered: '{name} is registered',
 		registeredHint: 'One command left. The token inside it is shown once.',
@@ -501,6 +511,16 @@ const pl: typeof en = {
 		namePlaceholder: 'np. work-macbook',
 		noneInGroup: 'Brak urządzeń w tej grupie. Przenieś tu jedno wybierakiem grupy w dowolnym wierszu.',
 		notBlocked: '{name} zwolnione z blokowania',
+		// Presety alertów na pulpicie, wg NOTIFY_MODES[]; liczby to % okna, przy których pojawia się alert.
+		notify: {
+			critical: 'Krytyczny · 80, 90, 95–99, potem co 0,1',
+			off: 'Alerty wyłączone',
+			quiet: 'Cichy · 95, 100',
+			standard: 'Standardowy · 80, 95',
+			steady: 'Stopniowy · co 10 od 50, 95, 100',
+		},
+		notifyLabel: 'Alerty na pulpicie dla {name}',
+		notifySet: 'Alerty na {name}: {mode}',
 		overLimit: 'ponad limit planu',
 		registered: 'Zarejestrowano {name}',
 		registeredHint: 'Zostało jedno polecenie. Token w środku pokazujemy tylko raz.',

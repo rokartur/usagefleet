@@ -1,9 +1,8 @@
 import type { LimitsReport } from './claude-limits.js'
 import { flagOff } from './config.js'
 import { sendNotification } from './notify.js'
-import type { Urgency } from './notify.js'
 import { readStore, storePath, updateStore } from './store.js'
-import type { Store, WindowNotifyState } from './types.js'
+import type { NotifyMode, Store, WindowNotifyState } from './types.js'
 import type { Log } from './ui.js'
 
 export interface NotifyConfig {
@@ -13,22 +12,52 @@ export interface NotifyConfig {
 	thresholds: number[]
 }
 
-const DEFAULT_THRESHOLDS = [80, 95]
+/** Thresholds per mode. `critical` thins out near the wall on purpose: the last
+ *  few points are where a window is actually lost, so they get a tenth-of-a-point
+ *  step. Mirrored by the Devices page (apps/web/src/lib/notify-modes.ts). */
+export const NOTIFY_MODES: Record<NotifyMode, number[]> = {
+	critical: [80, 90, 95, 96, 97, 98, 99, 99.1, 99.2, 99.3, 99.4, 99.5, 99.6, 99.7, 99.8, 99.9, 100],
+	off: [],
+	quiet: [95, 100],
+	standard: [80, 95],
+	steady: [50, 60, 70, 80, 90, 95, 100],
+}
+
+const DEFAULT_MODE: NotifyMode = 'standard'
+
+/** Points under the mark pct must fall before the mark is lowered and re-armed. */
+const REARM_MARGIN = 5
+
+/** Utilization % from which an alert is urgent (`critical` on Linux). */
+const DANGER_ZONE = 95
+
+/** Case-insensitive; anything that is not a mode name is null, so a typo in one
+ *  layer falls through to the next instead of silencing every alert. */
+export function parseNotifyMode(value: unknown): NotifyMode | null {
+	const mode = typeof value === 'string' ? value.trim().toLowerCase() : ''
+	return Object.hasOwn(NOTIFY_MODES, mode) ? (mode as NotifyMode) : null
+}
 
 /** Resolve notify config, env first then the config file. Enabled by default;
  *  disable with USAGEFLEET_NOTIFY=0 (also: false/off/no) or `"notifications":
- *  false`. Thresholds from USAGEFLEET_NOTIFY_THRESHOLDS as a comma list
- *  (e.g. "50,80,95") or a `notifyThresholds` array. */
+ *  false`. The preset comes from USAGEFLEET_NOTIFY_MODE, the `notifyMode` file
+ *  key, then `serverMode` (the one set for this device on the Devices page);
+ *  an explicit list from USAGEFLEET_NOTIFY_THRESHOLDS (comma list, e.g.
+ *  "50,80,95") or a `notifyThresholds` array replaces the preset's thresholds. */
 export function loadNotifyConfig(
 	env: Record<string, string | undefined> = process.env,
-	file: Pick<Store, 'notifications' | 'notifyThresholds'> = readStore(),
+	file: Pick<Store, 'notifications' | 'notifyMode' | 'notifyThresholds'> = readStore(),
+	serverMode: NotifyMode | null = null,
 ): NotifyConfig {
-	const enabled = !flagOff(env.USAGEFLEET_NOTIFY, file.notifications)
+	const mode =
+		parseNotifyMode(env.USAGEFLEET_NOTIFY_MODE) ?? parseNotifyMode(file.notifyMode) ?? serverMode ?? DEFAULT_MODE
+	const enabled = !flagOff(env.USAGEFLEET_NOTIFY, file.notifications) && mode !== 'off'
 
 	const raw = env.USAGEFLEET_NOTIFY_THRESHOLDS
 	const candidates = raw?.trim() ? raw.split(',').map(s => Number(s.trim())) : (file.notifyThresholds ?? [])
-	const parsed = candidates.map(Math.round).filter(n => Number.isFinite(n) && n > 0 && n <= 100)
-	const thresholds = parsed.length > 0 ? [...new Set(parsed)].toSorted((a, b) => a - b) : DEFAULT_THRESHOLDS
+	// One decimal, like the readings themselves: 99.1 must stay 99.1.
+	const parsed = candidates.map(n => Math.round(n * 10) / 10).filter(n => Number.isFinite(n) && n > 0 && n <= 100)
+	const thresholds = parsed.length > 0 ? [...new Set(parsed)].toSorted((a, b) => a - b) : NOTIFY_MODES[mode]
 	return { enabled, thresholds }
 }
 
@@ -38,15 +67,17 @@ export function loadNotifyConfig(
  *
  * A window rollover (resetsAt moves) resets the high-water mark first, so the
  * first crossing in a new window always re-notifies. If utilization later drops
- * below the mark within the SAME window (e.g. a server correction), the mark is
- * lowered so a subsequent re-cross notifies again.
+ * well below the mark within the SAME window (e.g. a server correction), the mark
+ * is lowered so a subsequent re-cross notifies again. A small dip does not move
+ * it: a group's slice is derived and wobbles between readings, and a mark that
+ * followed every wobble would re-alert each time pct straddled a threshold.
  */
 export function evaluateWindow(
 	prev: WindowNotifyState | undefined,
 	pct: number | null,
 	resetsAt: string | null,
 	thresholds: number[],
-): { fire: number | null; next: WindowNotifyState } {
+): { fire: number | null; urgent: boolean; next: WindowNotifyState } {
 	const rolledOver = !prev || !sameWindow(prev.resetsAt, resetsAt)
 	const lastBucket = rolledOver ? 0 : prev.lastBucket
 	// Within a window the first resetsAt stays, so the jitter alone never rewrites the store.
@@ -54,7 +85,7 @@ export function evaluateWindow(
 
 	if (pct == null) {
 		// No reading this cycle — keep the mark, just track the (possibly new) window.
-		return { fire: null, next: { lastBucket, resetsAt: windowResetsAt } }
+		return { fire: null, urgent: false, next: { lastBucket, resetsAt: windowResetsAt } }
 	}
 
 	// Highest threshold the current pct has reached (thresholds are ascending).
@@ -66,10 +97,15 @@ export function evaluateWindow(
 	}
 
 	if (top > lastBucket) {
-		return { fire: top, next: { lastBucket: top, resetsAt: windowResetsAt } }
+		// `critical` is sticky on most Linux daemons, so only entering the danger zone and
+		// the wall get it; a dense tail (99.1, 99.2, ...) must not pile up.
+		const urgent = (lastBucket < DANGER_ZONE && top >= DANGER_ZONE) || top >= 100
+		return { fire: top, urgent, next: { lastBucket: top, resetsAt: windowResetsAt } }
 	}
-	// top <= lastBucket: the mark follows pct down (or holds); nothing fires.
-	return { fire: null, next: { lastBucket: top, resetsAt: windowResetsAt } }
+	// top <= lastBucket: nothing fires. The mark holds through a wobble and follows
+	// pct down only on a real drop.
+	const mark = pct < lastBucket - REARM_MARGIN ? top : lastBucket
+	return { fire: null, urgent: false, next: { lastBucket: mark, resetsAt: windowResetsAt } }
 }
 
 // oauth/usage jitters resets_at by milliseconds per request; a real rollover moves it by hours.
@@ -98,10 +134,6 @@ function resetSuffix(resetsAt: string | null): string {
 		return ` · resets in ${h}h`
 	}
 	return ` · resets in ${Math.round(h / 24)}d`
-}
-
-function urgencyFor(bucket: number): Urgency {
-	return bucket >= 95 ? 'critical' : 'normal'
 }
 
 /**
@@ -135,7 +167,7 @@ export function maybeNotify(
 			sendNotification(
 				'Claude usage · 5-hour limit',
 				`${fivePct}% of your 5-hour limit used${resetSuffix(report.fiveHourResetsAt)}.`,
-				{ urgency: urgencyFor(five.fire) },
+				{ urgency: five.urgent ? 'critical' : 'normal' },
 			)
 			log('ok', `notified · 5h at ${fivePct}% · crossed ${five.fire}%`)
 		}
@@ -143,7 +175,7 @@ export function maybeNotify(
 			sendNotification(
 				'Claude usage · weekly limit',
 				`${sevenPct}% of your weekly limit used${resetSuffix(report.sevenDayResetsAt)}.`,
-				{ urgency: urgencyFor(seven.fire) },
+				{ urgency: seven.urgent ? 'critical' : 'normal' },
 			)
 			log('ok', `notified · weekly at ${sevenPct}% · crossed ${seven.fire}%`)
 		}

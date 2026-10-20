@@ -14,6 +14,7 @@ import {
 	unique,
 	uniqueIndex,
 } from 'drizzle-orm/pg-core'
+import type { NotifyMode } from '@/lib/notify-modes'
 import type { Calibration } from '@/lib/usage/calibration'
 import type { FrozenGroupSplit } from '@/lib/usage/window'
 import { user } from './auth-schema'
@@ -134,6 +135,9 @@ export const devices = pgTable(
 		id: text('id').primaryKey(),
 		lastSeenAt: timestamp('last_seen_at'),
 		name: text('name').notNull(),
+		// How loud this machine's desktop alerts are. The collector reads it from
+		// GET /api/v1/limits unless the machine pins its own mode locally.
+		notifyMode: text('notify_mode').$type<NotifyMode>().notNull().default('standard'),
 		os: osEnum('os'),
 		revoked: boolean('revoked').notNull().default(false),
 		tokenHash: text('token_hash').notNull().unique(),

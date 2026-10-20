@@ -232,6 +232,13 @@
       "when": 1792315722882,
       "tag": "0032_limit_sample_split",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792487900394,
+      "tag": "0033_device_notify_mode",
+      "breakpoints": true
     }
   ]
 }

@@ -115,6 +115,8 @@ async function GET(req: Request) {
 			blockedModel: block?.model ?? null,
 			blockedPct: block?.pct ?? null,
 			blockedUntil: block?.resetsAt?.toISOString() ?? null,
+			// Which alert preset the collector fires desktop notifications by.
+			notifyMode: device.notifyMode,
 			// Null until a collector reports real utilization; the percentages above
 			// are meaningless (0) until then, and stale once this stops moving.
 			reportedAt: dash.connected ? (dash.reportedAt?.toISOString() ?? null) : null,

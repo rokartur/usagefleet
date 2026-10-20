@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateWindow, loadNotifyConfig } from './notifier.js'
+import { NOTIFY_MODES, evaluateWindow, loadNotifyConfig, parseNotifyMode } from './notifier.js'
 
 describe(loadNotifyConfig, () => {
 	it('defaults to enabled with 80/95 thresholds', () => {
@@ -35,12 +35,59 @@ describe(loadNotifyConfig, () => {
 		])
 	})
 
+	it('keeps one decimal, so the 99.x tail is expressible', () => {
+		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: '99.1, 99.14, 99' }, {}).thresholds).toStrictEqual([
+			99, 99.1,
+		])
+	})
+
+	it('picks the preset: env, then file, then the server, then standard', () => {
+		const th = (...args: Parameters<typeof loadNotifyConfig>) => loadNotifyConfig(...args).thresholds
+		expect(th({}, {}, 'critical')).toStrictEqual(NOTIFY_MODES.critical)
+		expect(th({}, { notifyMode: 'quiet' }, 'critical')).toStrictEqual(NOTIFY_MODES.quiet)
+		expect(th({ USAGEFLEET_NOTIFY_MODE: ' Steady ' }, { notifyMode: 'quiet' }, 'critical')).toStrictEqual(
+			NOTIFY_MODES.steady,
+		)
+		// A typo in one layer falls through instead of silencing alerts.
+		expect(th({ USAGEFLEET_NOTIFY_MODE: 'loud' }, {}, 'critical')).toStrictEqual(NOTIFY_MODES.critical)
+		expect(th({}, {}, null)).toStrictEqual(NOTIFY_MODES.standard)
+	})
+
+	it('an explicit list replaces the preset', () => {
+		expect(loadNotifyConfig({}, { notifyThresholds: [70] }, 'critical').thresholds).toStrictEqual([70])
+	})
+
+	it('mode off disables, whatever else is set', () => {
+		expect(loadNotifyConfig({}, {}, 'off').enabled).toBeFalsy()
+		expect(
+			loadNotifyConfig({ USAGEFLEET_NOTIFY_MODE: 'off' }, { notifyThresholds: [70] }, 'critical').enabled,
+		).toBeFalsy()
+		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_MODE: 'quiet' }, {}, 'off').enabled).toBeTruthy()
+	})
+
 	it('drops out-of-range / non-numeric entries and falls back when empty', () => {
 		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: '0,101,-5,abc' }, {}).thresholds).toStrictEqual([
 			80, 95,
 		])
 		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_THRESHOLDS: '  ' }, {}).thresholds).toStrictEqual([80, 95])
 		expect(loadNotifyConfig({}, { notifyThresholds: [0, 200] }).thresholds).toStrictEqual([80, 95])
+	})
+})
+
+describe(parseNotifyMode, () => {
+	it('knows the five modes and nothing else', () => {
+		expect(Object.keys(NOTIFY_MODES).toSorted()).toStrictEqual(['critical', 'off', 'quiet', 'standard', 'steady'])
+		expect(parseNotifyMode('CRITICAL')).toBe('critical')
+		expect(parseNotifyMode('toString')).toBeNull()
+		expect(parseNotifyMode(null)).toBeNull()
+		expect(parseNotifyMode(3)).toBeNull()
+	})
+
+	it('every preset is ascending, unique and within (0, 100]', () => {
+		for (const list of Object.values(NOTIFY_MODES)) {
+			expect(list).toStrictEqual([...new Set(list)].toSorted((a, b) => a - b))
+			expect(list.every(n => n > 0 && n <= 100)).toBeTruthy()
+		}
 	})
 })
 
@@ -98,6 +145,38 @@ describe(evaluateWindow, () => {
 		// a later re-cross then notifies again
 		const again = evaluateWindow(r.next, 82, reset, TH)
 		expect(again.fire).toBe(80)
+	})
+
+	it('does not re-alert when pct wobbles across a threshold', () => {
+		// A group slice is derived, so 99.0 / 99.2 / 99.0 / 99.2 can be one steady climb.
+		const th = NOTIFY_MODES.critical
+		let state = evaluateWindow(undefined, 99.2, reset, th)
+		expect(state.fire).toBe(99.2)
+		const fired: (number | null)[] = []
+		for (const pct of [99, 99.2, 99, 99.2, 98.6, 99.2]) {
+			state = evaluateWindow(state.next, pct, reset, th)
+			fired.push(state.fire)
+		}
+		expect(fired).toStrictEqual([null, null, null, null, null, null])
+	})
+
+	it('still climbs through the 99.x tail one step at a time', () => {
+		const th = NOTIFY_MODES.critical
+		const fired: (number | null)[] = []
+		let state = evaluateWindow(undefined, 98.5, reset, th)
+		for (const pct of [99, 99.05, 99.1, 99.34, 99.9, 100]) {
+			state = evaluateWindow(state.next, pct, reset, th)
+			fired.push(state.fire)
+		}
+		expect(fired).toStrictEqual([99, null, 99.1, 99.3, 99.9, 100])
+	})
+
+	it('marks urgent only the alert that enters the danger zone, and the wall', () => {
+		const th = NOTIFY_MODES.critical
+		expect(evaluateWindow({ lastBucket: 80, resetsAt: reset }, 97.2, reset, th).urgent).toBeTruthy()
+		expect(evaluateWindow({ lastBucket: 96, resetsAt: reset }, 97.2, reset, th).urgent).toBeFalsy()
+		expect(evaluateWindow({ lastBucket: 99.9, resetsAt: reset }, 100, reset, th).urgent).toBeTruthy()
+		expect(evaluateWindow(undefined, 82, reset, th).urgent).toBeFalsy()
 	})
 
 	it('keeps the mark and tracks the window when pct is null', () => {

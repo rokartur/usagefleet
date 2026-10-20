@@ -1,0 +1,1 @@
+ALTER TABLE "devices" ADD COLUMN "notify_mode" text DEFAULT 'standard' NOT NULL;

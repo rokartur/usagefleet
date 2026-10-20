@@ -5,7 +5,9 @@ import { ActionForm } from '@/components/ActionForm'
 import { Select } from '@/components/arc/select/select'
 import { Switch } from '@/components/arc/switch/switch'
 import { ConfirmAction } from '@/components/ConfirmAction'
-import { assignDeviceGroup, revokeDevice, setDeviceBlocking } from '@/lib/actions'
+import { assignDeviceGroup, revokeDevice, setDeviceBlocking, setDeviceNotifyMode } from '@/lib/actions'
+import { NOTIFY_MODES } from '@/lib/notify-modes'
+import type { NotifyMode } from '@/lib/notify-modes'
 
 /** Moves a device between groups on change — no separate Save button. */
 export function DeviceGroupSelect({
@@ -95,6 +97,50 @@ export function DeviceBlockingToggle({
 					aria-label={t('blockingLabel', { name: deviceName })}
 				/>
 			</span>
+		</ActionForm>
+	)
+}
+
+/** How often this machine's desktop alerts fire as a window fills. Saves on change,
+ *  like the group select. */
+export function DeviceNotifySelect({
+	deviceId,
+	deviceName,
+	mode,
+}: {
+	deviceId: string
+	deviceName: string
+	mode: NotifyMode
+}) {
+	const t = useTranslations('dash.devices')
+	const form = useRef<HTMLFormElement>(null)
+	const [selected, setSelected] = useState(mode)
+
+	// Submit once the pick has landed in the select's hidden input.
+	useEffect(() => {
+		if (selected !== mode) {
+			form.current?.requestSubmit()
+		}
+	}, [selected, mode])
+
+	return (
+		<ActionForm
+			ref={form}
+			action={setDeviceNotifyMode}
+			loadingMessage={t('updating', { name: deviceName })}
+			successMessage={t('notifySet', { name: deviceName, mode: t(`notify.${selected}`) })}
+			errorMessage={t('updateFailed', { name: deviceName })}
+		>
+			<input type='hidden' name='deviceId' value={deviceId} />
+			<div className='[&_label]:sr-only'>
+				<Select
+					label={t('notifyLabel', { name: deviceName })}
+					name='notifyMode'
+					value={selected}
+					onValueChange={setSelected}
+					options={NOTIFY_MODES.map(m => ({ label: t(`notify.${m}`), value: m }))}
+				/>
+			</div>
 		</ActionForm>
 	)
 }

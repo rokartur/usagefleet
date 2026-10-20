@@ -97,15 +97,28 @@ directory, git branch. Prompts, responses and file contents are never read.
 
 ## Desktop notifications
 
-The first time a window crosses a threshold (default `80` and `95`) you get a
-desktop notification — once per threshold per window, re-armed when the window
-resets. macOS shows it from a small bundled UsageFleet app (allow it once when
+The first time a window crosses a threshold you get a desktop notification —
+once per threshold per window, re-armed when the window resets or usage falls
+5 points under the last alert. Which thresholds is the alert **mode**:
+
+| Mode | Alerts at (% of the window) |
+|------|-----------------------------|
+| `off` | never |
+| `quiet` | 95, 100 |
+| `standard` (default) | 80, 95 |
+| `steady` | 50, 60, 70, 80, 90, 95, 100 |
+| `critical` | 80, 90, 95, 96, 97, 98, 99, then every 0.1 (99.1, 99.2 … 99.9), 100 |
+
+Pick one per device on the **Devices** page, or pin it on the machine with
+`USAGEFLEET_NOTIFY_MODE=critical` / `"notifyMode": "critical"` in the config
+file (the local value wins over the Devices page). macOS shows it from a small bundled UsageFleet app (allow it once when
 macOS asks; a click opens the dashboard), Linux uses `notify-send` (falling back to
 `kdialog --passivepopup`; install `libnotify-bin` if neither exists), Windows a
 WinRT toast via `powershell.exe`.
 
-`usagefleet notify-test` confirms it works. Tune with
-`USAGEFLEET_NOTIFY_THRESHOLDS="50,80,95"`, disable with `USAGEFLEET_NOTIFY=0`.
+`usagefleet notify-test` confirms it works and prints the thresholds in effect.
+For a list of your own use `USAGEFLEET_NOTIFY_THRESHOLDS="50,80,99.5"` (it
+replaces the mode's list), disable everything with `USAGEFLEET_NOTIFY=0`.
 
 ## Blocking prompts over the limit
 
@@ -165,7 +178,8 @@ it (`usagefleet config` prints this same table):
 | `interval` | `USAGEFLEET_INTERVAL` | watch poll seconds (default 15) |
 | `limitsInterval` | `USAGEFLEET_LIMITS_INTERVAL` | seconds between limit reports (default 60; 300 on API keys, where each report costs a 1-token ping) |
 | `notifications` | `USAGEFLEET_NOTIFY` | desktop notifications, on by default (`false`/`0` disables) |
-| `notifyThresholds` | `USAGEFLEET_NOTIFY_THRESHOLDS` | utilization % that trigger an alert — array in the file, comma list in env (default `80,95`) |
+| `notifyMode` | `USAGEFLEET_NOTIFY_MODE` | alert preset: `off`, `quiet`, `standard`, `steady`, `critical` (default: the Devices page value, else `standard`) |
+| `notifyThresholds` | `USAGEFLEET_NOTIFY_THRESHOLDS` | utilization % that trigger an alert, replacing the mode's list — array in the file, comma list in env, one decimal kept |
 | `batch` | `USAGEFLEET_BATCH` | records per upload (default 100, server caps at 1000) |
 | `update` | `USAGEFLEET_UPDATE` | `false`/`0` turns the self-update check off |
 | `updateInterval` | `USAGEFLEET_UPDATE_INTERVAL` | seconds between update checks (default `21600` = 6h) |

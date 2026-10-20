@@ -149,11 +149,27 @@ service. A second `login` rewrites the first one's definition; the second
 account has to be run by hand.
 
 `notifier.ts` compares each window's utilization against ascending thresholds
-(`USAGEFLEET_NOTIFY_THRESHOLDS`, default 80/95) and fires one desktop
-notification per threshold per window via `notify.ts` (UsageFleet.app / notify-send /
-PowerShell toast). The per-window marks live in the store, so a new window
-re-arms them. A reset time that moves by under a minute is the same window:
-oauth/usage jitters `resets_at` by milliseconds between requests.
+and fires one desktop notification per threshold per window via `notify.ts`
+(UsageFleet.app / notify-send / PowerShell toast). The thresholds come from a
+mode (`NOTIFY_MODES`): `off`, `quiet` (95, 100), `standard` (80, 95, the default),
+`steady` (every 10 from 50, then 95, 100) and `critical` (80, 90, 95..99, then
+every 0.1 up to 100). The mode is resolved env (`USAGEFLEET_NOTIFY_MODE`) → file
+(`notifyMode`) → the one set for this device on the Devices page → `standard`;
+the server's pick rides back on the `GET /api/v1/limits` the collector already
+makes for the group slice, so it costs no extra request. An explicit
+`USAGEFLEET_NOTIFY_THRESHOLDS` / `notifyThresholds` list replaces the mode's
+thresholds (one decimal kept, so 99.1 is expressible); `off` and
+`USAGEFLEET_NOTIFY=0` beat everything.
+
+The per-window marks live in the store, so a new window re-arms them. A reset
+time that moves by under a minute is the same window: oauth/usage jitters
+`resets_at` by milliseconds between requests. Within a window the mark only
+follows pct down by more than `REARM_MARGIN` (5 points): a group's slice is
+derived and wobbles between readings, and a mark that tracked every dip would
+re-alert each time pct straddled a threshold. `critical` urgency (sticky on most
+Linux daemons) goes only to the alert that crosses into 95+ from below (even one
+that jumps straight to 97) and to 100, so the dense tail does not pile up unread
+notifications.
 
 On macOS the npm package carries `dist/UsageFleet.app`, a small Swift app
 (`apps/cli/macos/`, built in `release.yml`) that posts through
@@ -203,11 +219,11 @@ keep a window's first `resetsAt` through the jitter, and the cached limits
 reading refreshes its `at` only every 10 minutes while the numbers hold.
 
 Every knob is a top-level file key (`interval`, `limitsInterval`, `batch`,
-`notifications`, `notifyThresholds`, `hook`, `update`, `updateInterval`, plus
+`notifications`, `notifyMode`, `notifyThresholds`, `hook`, `update`, `updateInterval`, plus
 the dirs and `token`) with a matching env var that overrides it:
 `USAGEFLEET_TOKEN`, `_PROJECTS`, `_DESKTOP`, `_PI`, `_JCODE`, `_PJ`, `_BATCH`, `_INTERVAL`,
 `_LIMITS_INTERVAL`, `_UPDATE`, `_UPDATE_INTERVAL`, `_NOTIFY`,
-`_NOTIFY_THRESHOLDS`, `_HOOK`. Resolution is env → file → default
+`_NOTIFY_MODE`, `_NOTIFY_THRESHOLDS`, `_HOOK`. Resolution is env → file → default
 (`positiveNumber`/`flagOff` in `config.ts`); `normalize()` in `store.ts` must
 list each key or the next rewrite drops it (tripwire test in `store.test.ts`).
 

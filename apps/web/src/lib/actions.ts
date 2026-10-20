@@ -9,6 +9,7 @@ import { accountPlan } from '@/lib/billing'
 import { ensureDefaultGroup, ensureSettings } from '@/lib/data'
 import { generateDeviceToken } from '@/lib/device-token'
 import { detectLocale } from '@/lib/i18n'
+import { isNotifyMode } from '@/lib/notify-modes'
 import { requireUser } from '@/lib/session'
 import { MESSAGES } from '@/messages'
 
@@ -220,6 +221,22 @@ export const setDeviceBlocking = createServerFn({ method: 'POST' })
 			.update(devices)
 			.set({ blockingEnabled: formData.get('enabled') === 'on' })
 			.where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
+	})
+
+/** Per-device desktop alert preset. The collector picks it up from its next limits
+ *  read; a mode pinned in the machine's own config still wins. */
+export const setDeviceNotifyMode = createServerFn({ method: 'POST' })
+	.inputValidator((formData: FormData) => formData)
+	.handler(async ({ data: formData }) => {
+		const user = await requireUser()
+		const notifyMode = formData.get('notifyMode')
+		if (!isNotifyMode(notifyMode)) {
+			throw new TypeError('Unknown alert mode')
+		}
+		await db
+			.update(devices)
+			.set({ notifyMode })
+			.where(and(eq(devices.id, String(formData.get('deviceId'))), eq(devices.userId, user.id)))
 	})
 
 /** Creates a device + its API token. Returns the plaintext token ONCE. */
