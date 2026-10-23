@@ -4,9 +4,9 @@ import { type } from 'arktype'
 import { and, asc, eq, ne, sql } from 'drizzle-orm'
 import { createTranslator } from 'use-intl'
 import { db } from '@/db'
-import { devices, groups, projectMerges, userSettings } from '@/db/schema'
+import { devices, groups, projectMerges } from '@/db/schema'
 import { accountPlan } from '@/lib/billing'
-import { ensureDefaultGroup, ensureSettings } from '@/lib/data'
+import { ensureDefaultGroup } from '@/lib/data'
 import { generateDeviceToken } from '@/lib/device-token'
 import { detectLocale } from '@/lib/i18n'
 import { isNotifyMode } from '@/lib/notify-modes'
@@ -65,16 +65,6 @@ async function groupCount(userId: string): Promise<number> {
 		.where(eq(groups.ownerId, userId))
 	return rows[0]?.n ?? 0
 }
-
-/** Set the cache-write TTL used for pricing ('5m' | '1h'). */
-export const updateCacheTtl = createServerFn({ method: 'POST' })
-	.inputValidator((formData: FormData) => formData)
-	.handler(async ({ data: formData }) => {
-		const user = await requireUser()
-		const ttl = formData.get('cacheWriteTtl') === '1h' ? '1h' : '5m'
-		await ensureSettings(user.id)
-		await db.update(userSettings).set({ cacheWriteTtl: ttl }).where(eq(userSettings.userId, user.id))
-	})
 
 export const createGroup = createServerFn({ method: 'POST' })
 	.inputValidator((formData: FormData) => formData)

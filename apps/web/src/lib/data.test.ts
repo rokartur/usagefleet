@@ -56,7 +56,7 @@ const label = (id: string | null) => ({
 	watchOnly: false,
 })
 const build = (rows: WindowAggRow[], pct: number | null) =>
-	buildPastWindows(rows, [{ end: START.getTime() + STRIDE, pct, start: START.getTime() }], '1h', label)
+	buildPastWindows(rows, [{ end: START.getTime() + STRIDE, pct, start: START.getTime() }], label)
 
 describe(buildPastWindows, () => {
 	it("splits the window's reported utilization across groups by cost share", () => {
@@ -104,7 +104,6 @@ describe(buildPastWindows, () => {
 		const [w] = buildPastWindows(
 			rows,
 			[{ end: START.getTime() + STRIDE, pct: 60, start: START.getTime() }],
-			'1h',
 			groupOf,
 		)
 		expect(Object.fromEntries(w.groups.map(g => [g.groupId, g.budgetPct]))).toStrictEqual({ a: 50, b: 50, w: 20 })
@@ -117,8 +116,8 @@ describe(buildPastWindows, () => {
 		// the live card sitting above it on the same window.
 		const rows = [bucketCell('a', { outputTokens: 1_000_000 }), bucketCell('b', { cacheReadTokens: 50_000_000 })]
 		const spans = [{ end: START.getTime() + STRIDE, pct: 60, start: START.getTime() }]
-		expect(buildPastWindows(rows, spans, '1h', label)[0].groups.map(g => g.accountPct)).toStrictEqual([30, 30])
-		const [w] = buildPastWindows(rows, spans, '1h', label, CHEAP_CACHE_READS)
+		expect(buildPastWindows(rows, spans, label)[0].groups.map(g => g.accountPct)).toStrictEqual([30, 30])
+		const [w] = buildPastWindows(rows, spans, label, CHEAP_CACHE_READS)
 		expect(w.groups.find(g => g.groupId === 'a')?.accountPct).toBe(57.1)
 		expect(w.groups.find(g => g.groupId === 'b')?.accountPct).toBe(2.9)
 	})
@@ -135,7 +134,6 @@ describe(buildPastWindows, () => {
 		const [w] = buildPastWindows(
 			rows,
 			[{ end: START.getTime() + STRIDE, pct: 60, split, start: START.getTime() }],
-			'1h',
 			label,
 		)
 		expect(w.groups.map(g => [g.groupId, g.accountPct, g.budgetPct])).toStrictEqual([
@@ -168,7 +166,7 @@ const ev = (groupId: string | null, model: string, inputTokens: number, at = new
 	} satisfies UsageRecord
 }
 
-const split = (events: UsageRecord[], officialPct: number) => splitByShare(events, WIN_START, NOW, officialPct, '5m')
+const split = (events: UsageRecord[], officialPct: number) => splitByShare(events, WIN_START, NOW, officialPct)
 
 describe(splitByShare, () => {
 	it('weighs each group by cost, not by token count', () => {
@@ -247,7 +245,6 @@ describe(splitByShare, () => {
 			WIN_START,
 			NOW,
 			50,
-			'5m',
 			[pt('2026-06-18T11:00:00Z', 30), pt('2026-06-18T14:00:00Z', 50)],
 		)
 		expect(s.get('a')?.exactPct).toBeCloseTo(30, 6)
@@ -263,7 +260,6 @@ describe(splitByShare, () => {
 			WIN_START,
 			NOW,
 			50,
-			'5m',
 			[pt('2026-06-18T11:00:00Z', 30), pt('2026-06-18T14:00:00Z', 50)],
 			undefined,
 			event => (event.model?.includes('fable') ? 'fable' : null),
@@ -285,7 +281,6 @@ describe(splitByShare, () => {
 			WIN_START,
 			NOW,
 			50,
-			'5m',
 			[pt('2026-06-18T11:00:00Z', 40)],
 		)
 		expect(s.get('a')?.exactPct).toBeCloseTo(7.5, 6)
@@ -300,7 +295,6 @@ describe(splitByShare, () => {
 			WIN_START,
 			NOW,
 			12,
-			'5m',
 			[pt('2026-06-18T12:00:00Z', 11), pt('2026-06-18T13:40:00Z', 12)],
 		)
 		expect(s.get('a')?.exactPct).toBeCloseTo(1, 6)
@@ -313,7 +307,6 @@ describe(splitByShare, () => {
 			WIN_START,
 			NOW,
 			12,
-			'5m',
 			[pt('2026-06-18T12:00:00Z', 12)],
 		)
 		expect(s.get('a')?.exactPct).toBe(0)
@@ -327,7 +320,6 @@ describe(splitByShare, () => {
 			WIN_START,
 			NOW,
 			60,
-			'5m',
 			[],
 		)
 		expect(s.get('a')?.exactPct).toBeCloseTo(50, 6)
@@ -347,7 +339,6 @@ describe(splitByShare, () => {
 			WIN_START,
 			NOW,
 			20,
-			'5m',
 			[
 				pt('2026-06-18T10:30:00Z', 5),
 				pt('2026-06-18T10:30:20Z', 10),
@@ -371,7 +362,6 @@ describe(splitByShare, () => {
 			WIN_START,
 			NOW,
 			20,
-			'5m',
 			[
 				pt('2026-06-18T10:30:00Z', 5),
 				pt('2026-06-18T10:31:00Z', 10),
@@ -396,7 +386,6 @@ describe(splitByShare, () => {
 			WIN_START,
 			NOW,
 			30,
-			'5m',
 			[pt('2026-06-18T11:00:00Z', 40), pt('2026-06-18T12:00:00Z', 10), pt('2026-06-18T13:00:00Z', 30)],
 		)
 		expect(s.get('a')?.exactPct).toBeCloseTo(20, 6)
@@ -412,8 +401,8 @@ describe(splitByShare, () => {
 			{ ...ev('a', 'claude-sonnet-4', 0), outputTokens: 1_000_000 },
 			{ ...ev('b', 'claude-sonnet-4', 0), cacheReadTokens: 50_000_000 },
 		]
-		expect(splitByShare(events, WIN_START, NOW, 60, '5m').get('b')?.exactPct).toBeCloseTo(30, 6)
-		const s = splitByShare(events, WIN_START, NOW, 60, '5m', undefined, calibrated())
+		expect(splitByShare(events, WIN_START, NOW, 60).get('b')?.exactPct).toBeCloseTo(30, 6)
+		const s = splitByShare(events, WIN_START, NOW, 60, undefined, calibrated())
 		expect(s.get('a')?.exactPct).toBeCloseTo((60 * 15) / 15.75, 6)
 		expect(s.get('b')?.exactPct).toBeCloseTo((60 * 0.75) / 15.75, 6)
 	})
@@ -428,9 +417,9 @@ describe(splitByShare, () => {
 			ev('b', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T11:01:00Z')),
 		]
 		const points = [pt('2026-06-18T11:00:00Z', 0), pt('2026-06-18T11:02:00Z', 20)]
-		const noLag = splitByShare(events, WIN_START, NOW, 20, '5m', points)
+		const noLag = splitByShare(events, WIN_START, NOW, 20, points)
 		expect(noLag.get('b')?.exactPct).toBeCloseTo(20, 6)
-		const lagged = splitByShare(events, WIN_START, NOW, 20, '5m', points, calibrated({ lagMs: 120_000 }))
+		const lagged = splitByShare(events, WIN_START, NOW, 20, points, calibrated({ lagMs: 120_000 }))
 		expect(lagged.get('a')?.exactPct).toBeCloseTo(20, 6)
 		expect(lagged.get('b')?.exactPct).toBe(0)
 	})
@@ -449,8 +438,8 @@ describe(splitByShare, () => {
 			ev('b', 'claude-sonnet-4', 1000, new Date('2026-06-18T10:59:00Z')),
 		]
 		const points = [pt('2026-06-18T10:57:00Z', 0), pt('2026-06-18T11:00:00Z', 20)]
-		expect(splitByShare(events, WIN_START, NOW, 20, '5m', points).get('b')?.exactPct).toBeCloseTo(20, 6)
-		const s = splitByShare(events, WIN_START, NOW, 20, '5m', points, calibrated({ anchor: 'start' }))
+		expect(splitByShare(events, WIN_START, NOW, 20, points).get('b')?.exactPct).toBeCloseTo(20, 6)
+		const s = splitByShare(events, WIN_START, NOW, 20, points, calibrated({ anchor: 'start' }))
 		expect(s.get('a')?.exactPct).toBeCloseTo((20 * 1_000_000) / 1_001_000, 6)
 		expect(s.get('b')?.exactPct).toBeCloseTo((20 * 1000) / 1_001_000, 6)
 	})
@@ -464,10 +453,10 @@ describe(splitByShare, () => {
 			ev('late', 'claude-sonnet-4', 9_000_000, new Date('2026-06-18T10:30:00Z')),
 			ev('live', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T13:30:00Z')),
 		]
-		const byCost = splitByShare(events, WIN_START, NOW, 50, '5m')
+		const byCost = splitByShare(events, WIN_START, NOW, 50)
 		expect(byCost.get('late')?.exactPct).toBeCloseTo(45, 6)
 
-		const byRise = splitByShare(events, WIN_START, NOW, 50, '5m', [
+		const byRise = splitByShare(events, WIN_START, NOW, 50, [
 			pt('2026-06-18T11:00:00Z', 10),
 			pt('2026-06-18T14:00:00Z', 50),
 		])

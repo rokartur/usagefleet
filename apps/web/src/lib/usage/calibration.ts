@@ -1,6 +1,6 @@
 import { mergePoints } from './limits'
 import { costBuckets } from './pricing'
-import type { CacheTtl, CostBuckets } from './pricing'
+import type { CostBuckets } from './pricing'
 import type { UsageRecord } from './types'
 
 /** Multiplier per token bucket, on top of API list prices, converting a
@@ -200,7 +200,6 @@ function samplesFor(points: { at: Date; pct: number }[], priced: { b: CostBucket
 export function fitCalibration(
 	points: { at: Date; pct: number }[],
 	events: UsageRecord[],
-	ttl: CacheTtl,
 	now = new Date(),
 ): Calibration | null {
 	// The same merge the split applies, so the error measured here is the error
@@ -209,7 +208,7 @@ export function fitCalibration(
 	const merged = mergePoints(points)
 	// Priced once, outside the search: the anchor and the lag move where an event
 	// sits, not what it costs.
-	const priced = events.map(e => ({ b: costBuckets(e, e.model, ttl), e }))
+	const priced = events.map(e => ({ b: costBuckets(e, e.model), e }))
 	let best: Calibration | null = null
 	// Each candidate scores on its own held-out slice, so candidates are ranked by
 	// their gain over list prices rather than by raw error; seeding the best gain

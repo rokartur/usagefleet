@@ -313,12 +313,6 @@ const en = {
 	settings: {
 		appearance: 'Appearance',
 		appearanceDescription: 'Light or dark palette, this browser only.',
-		cacheTtl: 'Cache-write TTL',
-		cacheTtlDescription:
-			'Rate for cache writes whose log does not name their TTL, from older collector sources. Claude Code writes 5m caches unless you set ENABLE_PROMPT_CACHING_1H=1.',
-		// Multipliers on the model's input price, so only the word "input" translates.
-		cacheTtl1h: '1h (2× input)',
-		cacheTtl5m: '5m (1.25× input)',
 		connect: 'Connect',
 		connected: 'Connected',
 		delete: {
@@ -345,11 +339,6 @@ const en = {
 		password: 'Password',
 		passwordChange: 'Change',
 		passwordSet: 'Set password',
-		pricing: 'Pricing',
-		pricingDescription:
-			"Assumptions used to estimate cost at public API list prices, which also decides how each group's share of a limit is split.",
-		saved: 'Pricing settings saved',
-		saving: 'Saving pricing settings…',
 		set: 'Set',
 		signInMethods: 'Sign-in methods',
 		signInMethodsDescription:
@@ -747,11 +736,6 @@ const pl: typeof en = {
 	settings: {
 		appearance: 'Wygląd',
 		appearanceDescription: 'Jasna albo ciemna paleta, tylko w tej przeglądarce.',
-		cacheTtl: 'TTL zapisu cache',
-		cacheTtlDescription:
-			'Stawka dla zapisów cache, których log nie podaje TTL (starsze źródła kolektora). Claude Code zapisuje cache 5m, chyba że ustawisz ENABLE_PROMPT_CACHING_1H=1.',
-		cacheTtl1h: '1h (2× wejście)',
-		cacheTtl5m: '5m (1,25× wejście)',
 		connect: 'Połącz',
 		connected: 'Połączone',
 		delete: {
@@ -778,11 +762,6 @@ const pl: typeof en = {
 		password: 'Hasło',
 		passwordChange: 'Zmień',
 		passwordSet: 'Ustaw hasło',
-		pricing: 'Wycena',
-		pricingDescription:
-			'Założenia używane do szacowania kosztu wg publicznych cen API, które decydują też o podziale udziału każdej grupy w limicie.',
-		saved: 'Zapisano ustawienia wyceny',
-		saving: 'Zapisywanie ustawień wyceny…',
 		set: 'Ustawione',
 		signInMethods: 'Metody logowania',
 		signInMethodsDescription:

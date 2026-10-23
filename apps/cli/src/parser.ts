@@ -91,7 +91,7 @@ function parsePiLine(o: Record<string, unknown>, sessionCwd: string | null): Usa
 		return null
 	}
 	return {
-		// Older pi lines lack cacheWrite1h; the server prices those by the user's TTL setting.
+		// Older pi lines lack cacheWrite1h; the server prices those at 5m.
 		...cacheSplit(u.cacheWrite ?? 0, u.cacheWrite1h),
 		cacheCreationTokens: u.cacheWrite ?? 0,
 		cacheReadTokens: u.cacheRead ?? 0,
@@ -144,7 +144,7 @@ export function parseAgentLine(
 	return {
 		accountExtId: account,
 		record: {
-			// Lines from agents before cache_write_1h are priced by the user's TTL setting.
+			// Lines from agents before cache_write_1h are priced at 5m by the server.
 			...cacheSplit(tokens(o.cache_write), o.cache_write_1h),
 			cacheCreationTokens: tokens(o.cache_write),
 			cacheReadTokens: tokens(o.cache_read),

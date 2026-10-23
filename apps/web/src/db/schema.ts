@@ -182,8 +182,8 @@ export const usageEvents = pgTable(
 		cacheCreationTokens: integer('cache_creation_tokens').notNull().default(0),
 		// Per-TTL split of cacheCreationTokens: 5m writes cost 1.25× input, 1h
 		// writes 2×, and the cost-weighted group split cares. NULL means the
-		// collector (or the log line) predates the breakdown — pricing then falls
-		// back to the user's cacheWriteTtl setting. Distinct from a real 0.
+		// collector (or the log line) predates the breakdown. Pricing reads only the
+		// 1h part and prices the rest of cacheCreationTokens at 5m. Distinct from a real 0.
 		cacheCreation5mTokens: integer('cache_creation_5m_tokens'),
 		cacheCreation1hTokens: integer('cache_creation_1h_tokens'),
 		cacheReadTokens: integer('cache_read_tokens').notNull().default(0),
@@ -216,8 +216,9 @@ export interface StoredModelLimit {
 	resetsAt: string | null
 }
 
-// Per-user dashboard configuration. `weekResetWeekday`/`weekResetHourUtc` and
-// the cache-TTL column are live. The `limit_*`/`*_pct`/`model_limits` columns
+// Per-user dashboard configuration. `weekResetWeekday`/`weekResetHourUtc` are
+// live. `cacheWriteTtl` is not: collectors report the cache-write TTL per row now,
+// so nothing reads it. The `limit_*`/`*_pct`/`model_limits` columns
 // are not: limits moved to `claude_account` when one user gained the ability to
 // hold several Anthropic subscriptions. `plan`, `sessionLimitTokens` and
 // `weeklyLimitTokens` are not either: they backed a local estimate of Anthropic's
@@ -240,8 +241,6 @@ export const userSettings = pgTable('user_settings', {
 	// without a subscription (null = the catalog's FREE_DEVICES). Only ever set
 	// from the admin panel, never from Settings.
 	freeDeviceLimit: integer('free_device_limit'),
-	// Cache-write TTL used for pricing ('5m' | '1h'). Claude Code writes 5m caches
-	// unless the user sets ENABLE_PROMPT_CACHING_1H=1.
 	cacheWriteTtl: text('cache_write_ttl').notNull().default('5m'),
 	// Deprecated (manual sessionKey flow, replaced by collector-reported limits).
 	// Kept as nullable no-op columns to avoid a destructive migration.

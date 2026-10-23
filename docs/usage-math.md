@@ -34,9 +34,8 @@ SQL aggregates do the same fold in-database (`loadRecentEvents`,
   present: Claude Code's `cache_creation`, pi's `cacheWrite1h`, the agent's
   `cache_write_1h`, and for jcode/pj the `anthropic_cache_ttl_1h` key of their
   `config.toml` (default on; today's value applies to past turns too). Only the
-  untagged remainder (legacy rows, lines from older pi and agent builds) falls back
-  to `cacheWriteTtl` in `user_settings` — Claude Code writes 5m caches unless
-  `ENABLE_PROMPT_CACHING_1H=1`.
+  untagged remainder (legacy rows, lines from older pi and agent builds) prices
+  at 5m, the API default when a request names no TTL. There is no user setting.
 
 Cost is an estimate for a subscription account. It exists because Anthropic's
 limits are cost-shaped, not token-shaped, so it is the least wrong weight for

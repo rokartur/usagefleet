@@ -83,7 +83,7 @@ Data access is layered so pages stay thin:
   `(user_id, ts)` and `(device_id, ts)`. Never aggregate without folding.
 - `user_settings` — plan preset, token limits, week reset weekday/hour (a grid
   fallback for the past-windows card only — the live weekly window anchors on
-  Anthropic's reported reset), cache TTL, admin free-device grant. Its `*_pct` /
+  Anthropic's reported reset), admin free-device grant. Its `*_pct` /
   `model_limits` columns are dead as of migration 0017, which moved them to
   `claude_account`.
 - `limit_sample` — peak utilization per `(claude_account, window, window_start)`.

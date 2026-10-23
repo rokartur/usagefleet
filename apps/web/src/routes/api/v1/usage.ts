@@ -23,7 +23,7 @@ const LABEL = 512
 // its first operand (keep that cast — rows predating this cap are still out there).
 const TOKENS = `0 <= number.integer <= 500000000 = 0` as const
 // Same bound without the `= 0` default: for the cache-TTL breakdown, absent
-// means "unknown, price by the user's TTL setting", not zero.
+// means "unknown, price as 5m", not zero.
 const TOKENS_OPT = `0 <= number.integer <= 500000000 | null` as const
 
 const RecordSchema = type({

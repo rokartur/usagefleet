@@ -1,5 +1,4 @@
 import { billableTokens, foldEvents, sumTokens } from './fold'
-import type { CacheTtl } from './pricing'
 import { costUsd, versionParts } from './pricing'
 import type { TokenTotals, UsageRecord } from './types'
 
@@ -56,7 +55,7 @@ export interface ModelUsage {
  * per logical message), then groups the folded rows by model and sums each.
  * Sorted by billable tokens desc, with total tokens as a tiebreaker.
  */
-export function modelBreakdown(events: UsageRecord[], ttl: CacheTtl = '5m'): ModelUsage[] {
+export function modelBreakdown(events: UsageRecord[]): ModelUsage[] {
 	// Key by the raw id ("unknown" when absent), but keep the original (possibly
 	// null) model so the label reads "Unknown" rather than the literal key.
 	const byModel = new Map<string, { model: string | null; evs: UsageRecord[] }>()
@@ -79,7 +78,7 @@ export function modelBreakdown(events: UsageRecord[], ttl: CacheTtl = '5m'): Mod
 		}
 		out.push({
 			billableTokens: billableTokens(totals),
-			costUsd: evs.reduce((sum, e) => sum + costUsd(e, ttl), 0),
+			costUsd: evs.reduce((sum, e) => sum + costUsd(e), 0),
 			label: modelLabel(model),
 			model: key,
 			requests: evs.length,

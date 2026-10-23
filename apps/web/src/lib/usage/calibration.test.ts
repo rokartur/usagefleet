@@ -42,7 +42,7 @@ function history(truth: BucketWeights, intervals = 60, strideMs = 10 * 60_000, e
 			outputTokens: Math.round(20_000 + (1 - r) * 150_000),
 		})
 		events.push(e)
-		pct += weightedCost(costBuckets(e, e.model, '5m'), truth)
+		pct += weightedCost(costBuckets(e, e.model), truth)
 		points.push({ at: new Date(T0 + (i + 1) * strideMs), pct })
 	}
 	return { events, points }
@@ -70,7 +70,7 @@ describe(fitCalibration, () => {
 		// a fit that only half-recovers it still fails the assertion.
 		const truth: BucketWeights = { cacheRead: 0.02, cacheWrite: 0.5, input: 1, output: 1.4 }
 		const { events, points } = history(truth)
-		const fit = fitCalibration(points, events, '5m')
+		const fit = fitCalibration(points, events)
 		expect(fit).not.toBeNull()
 		// Only ratios between buckets reach the split, so that is what has to land —
 		// and only to within a band: the two buckets are close enough to collinear
@@ -93,7 +93,7 @@ describe(fitCalibration, () => {
 		// it and ends one interval later. The meter moved at the start, so pairing
 		// rises with ends (at any non-negative lag) misreads every interval.
 		const long = events.map(e => ({ ...e, startedAt: e.ts, ts: new Date(e.ts.getTime() + stride) }))
-		const fit = fitCalibration(points, long, '5m')
+		const fit = fitCalibration(points, long)
 		expect(fit).not.toBeNull()
 		expect(fit!.anchor).toBe('start')
 		expect(fit!.lagMs).toBe(0)
@@ -108,12 +108,12 @@ describe(fitCalibration, () => {
 		// rises no longer follow what the fleet did.
 		let pct = 0
 		const noisy = points.map((p, i) => ({ at: p.at, pct: i === 0 ? 0 : (pct += 1 + 8 * ((i * 7919) % 13)) }))
-		expect(fitCalibration(noisy, events, '5m')).toBeNull()
+		expect(fitCalibration(noisy, events)).toBeNull()
 	})
 
 	it('needs enough history before it claims to know anything', () => {
 		const { events, points } = history({ cacheRead: 0.02, cacheWrite: 0.5, input: 1, output: 1.4 }, 8)
-		expect(fitCalibration(points, events, '5m')).toBeNull()
+		expect(fitCalibration(points, events)).toBeNull()
 	})
 
 	it('finds the meter delay when work lands one interval before the rise it caused', () => {
@@ -122,7 +122,7 @@ describe(fitCalibration, () => {
 		// each rise is paired with the previous interval's event, whose bucket mix is
 		// unrelated, so only a shifted fit can recover the weights at all.
 		const { events, points } = history(truth, 60, 90_000, -45_000)
-		const fit = fitCalibration(points, events, '5m')
+		const fit = fitCalibration(points, events)
 		expect(fit).not.toBeNull()
 		expect(fit?.lagMs).toBeGreaterThan(0)
 		const recovered = fit!.weights.output / fit!.weights.cacheRead

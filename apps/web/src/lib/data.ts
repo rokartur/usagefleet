@@ -40,7 +40,6 @@ import {
 } from '@/lib/usage'
 import type {
 	BucketWeights,
-	CacheTtl,
 	Calibration,
 	DailyAggRow,
 	FrozenGroupSplit,
@@ -73,7 +72,6 @@ const ROW_TOTAL = sql`(${usageEvents.inputTokens}::bigint + ${usageEvents.output
  *  `freeDeviceLimit` is absent on purpose: billing.ts and the admin panel read it
  *  with their own narrow selects. */
 const SETTINGS_COLS = {
-	cacheWriteTtl: userSettings.cacheWriteTtl,
 	userId: userSettings.userId,
 	weekResetHourUtc: userSettings.weekResetHourUtc,
 	weekResetWeekday: userSettings.weekResetWeekday,
@@ -169,7 +167,7 @@ export async function loadRecentEvents(
 		cache_read_tokens: number
 	}[]
 	// Null TTL breakdown → 0: pricing treats the untagged remainder (total minus
-	// tagged) as "price by the user's TTL setting", so 0 means exactly "legacy row".
+	// tagged) as 5m writes, so 0 means exactly "legacy row".
 	return rows.map(r => ({
 		cacheCreation1hTokens: r.cache_creation_1h ?? 0,
 		cacheCreation5mTokens: r.cache_creation_5m ?? 0,
@@ -644,7 +642,6 @@ export function splitByShare(
 	windowStart: Date,
 	now: Date,
 	officialPct: number,
-	ttl: CacheTtl,
 	points?: PctPoint[],
 	calibration?: Calibration | null,
 	keyOf?: (event: UsageRecord) => string | null,
@@ -678,14 +675,14 @@ export function splitByShare(
 		totalByKey.set(k, totals.totalTokens)
 		let cost = 0
 		for (const e of folded) {
-			const c = calibration ? weightedCost(costBuckets(e, e.model, ttl), calibration.weights) : costUsd(e, ttl)
+			const c = calibration ? weightedCost(costBuckets(e, e.model), calibration.weights) : costUsd(e)
 			cost += c
 			timeline.push({ cost: c, key: k, ts: anchorTs(e, calibration?.anchor) })
 		}
 		costByKey.set(k, cost)
 		// `folded`, not `evs`: modelBreakdown folds internally anyway, so handing it
 		// the raw list just refolds what the line above already did.
-		modelsByKey.set(k, modelBreakdown(folded, ttl))
+		modelsByKey.set(k, modelBreakdown(folded))
 		totalCost += cost
 	}
 	const target = Math.max(0, officialPct)
@@ -796,9 +793,7 @@ async function loadLiveDashboard(
 	now: Date,
 	shared: () => ReturnType<typeof loadSharedRows>,
 ): Promise<LiveDashboard> {
-	const { userId } = view
 	const acct = view.account
-	const settings = await ensureSettings(userId)
 	const hasLimits = acct != null && (acct.fiveHourPct !== null || acct.sevenDayPct !== null)
 
 	const clampPct = (v: number | null | undefined) => Math.min(100, Math.max(0, v ?? 0))
@@ -876,10 +871,9 @@ async function loadLiveDashboard(
 	// watch-only rows claim no slice and read against the whole account instead.
 	const watchOnly = new Set(groupRows.filter(g => g.watchOnly).map(g => g.id))
 	const slotted = slottedGroups(myDevices, groupRows)
-	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	const calibration = acct?.calibration ?? null
-	const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, ttl, pointsFor('5h'), calibration)
-	const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct, ttl, pointsFor('7d'), calibration)
+	const sessionSplit = splitByShare(events, fiveStart, now, base.fiveHourPct, pointsFor('5h'), calibration)
+	const weeklySplit = splitByShare(events, weekStart, now, base.sevenDayPct, pointsFor('7d'), calibration)
 
 	const keys = new Set<string | null>([...sessionSplit.keys(), ...weeklySplit.keys()])
 	const isWatchOnly = (id: string | null) => id !== null && watchOnly.has(id)
@@ -967,7 +961,6 @@ async function loadLiveDashboard(
 			start,
 			now,
 			entry.pct,
-			ttl,
 			pointsFor(entry.window, entry.model),
 			calibration,
 		)
@@ -978,7 +971,6 @@ async function loadLiveDashboard(
 			weekStart,
 			now,
 			base.sevenDayPct,
-			ttl,
 			pointsFor('7d'),
 			calibration,
 			event => (isFamilyEvent(event) ? entry.model : null),
@@ -1016,11 +1008,11 @@ async function loadLiveDashboard(
 	const monthRows = aggRows.filter(r => r.day.startsWith(monthK))
 	const spend: Spend = {
 		month: {
-			costUsd: monthRows.reduce((s, r) => s + costForTokens(r, r.model, ttl), 0),
+			costUsd: monthRows.reduce((s, r) => s + costForTokens(r, r.model), 0),
 			totals: sumTokens(monthRows),
 		},
 		week: {
-			costUsd: weeklyFolded.reduce((s, e) => s + costUsd(e, ttl), 0),
+			costUsd: weeklyFolded.reduce((s, e) => s + costUsd(e), 0),
 			totals: sumTokens(weeklyFolded),
 		},
 	}
@@ -1461,8 +1453,7 @@ export async function recalibrateAccount(
 	// The 5h series' full reach: points may be retained longer for per-model
 	// windows, but the fit only reads the account-wide 5h series.
 	const cutoff = new Date(now.getTime() - SEVEN_D_MS - 24 * HOUR_MS)
-	const [settings, points, events] = await Promise.all([
-		ensureSettings(account.userId),
+	const [points, events] = await Promise.all([
 		db
 			.select({ at: limitChangePoints.at, pct: limitChangePoints.pct })
 			.from(limitChangePoints)
@@ -1483,10 +1474,9 @@ export async function recalibrateAccount(
 		// weights and then apply them against another.
 		refreshPrices(),
 	])
-	const ttl: CacheTtl = settings?.cacheWriteTtl === '1h' ? '1h' : '5m'
 	// Null on a failed fit is a result, not an error: it clears a calibration that
 	// used to hold and no longer does.
-	const fit = fitCalibration(points, foldEvents(events), ttl, now)
+	const fit = fitCalibration(points, foldEvents(events), now)
 	await db.update(claudeAccounts).set({ calibration: fit }).where(eq(claudeAccounts.id, account.id))
 }
 
@@ -1551,8 +1541,7 @@ export async function freezeClosedWindows(
 	const views = await listAccountViews(account.userId)
 	const absorbsUnstamped = views.some(v => v.account?.id === account.id && v.absorbsUnstamped)
 	const view = { absorbsUnstamped, account }
-	const [settings, groupRows, deviceRows, points, events] = await Promise.all([
-		ensureSettings(account.userId),
+	const [groupRows, deviceRows, points, events] = await Promise.all([
 		db.select().from(groups).where(eq(groups.ownerId, account.userId)),
 		db
 			.select({ claudeAccountId: devices.claudeAccountId, groupId: devices.groupId, revoked: devices.revoked })
@@ -1572,7 +1561,6 @@ export async function freezeClosedWindows(
 		loadRecentEvents(account.userId, earliest, view),
 		refreshPrices(),
 	])
-	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	const slices = slottedGroups(
 		deviceRows.filter(d => inAccount(view, d.claudeAccountId)),
 		groupRows,
@@ -1585,7 +1573,6 @@ export async function freezeClosedWindows(
 			r.windowStart,
 			end,
 			r.peakPct,
-			ttl,
 			points.filter(p => p.window === r.window),
 			account.calibration,
 		)
@@ -1648,7 +1635,6 @@ async function loadWindowSamples(
 export function buildPastWindows(
 	rows: WindowAggRow[],
 	spans: WindowSpan[],
-	ttl: CacheTtl,
 	groupOf: (id: string | null) => { name: string; color: string; slice: number | undefined; watchOnly: boolean },
 	weights?: BucketWeights,
 ): PastWindow[] {
@@ -1671,8 +1657,8 @@ export function buildPastWindows(
 			for (const c of cells) {
 				const cur = byGroup.get(c.groupId) ?? { cost: 0, tokens: 0 }
 				const cost = weights
-					? weightedCost(costBuckets(c.totals, c.model, ttl), weights)
-					: costForTokens(c.totals, c.model, ttl)
+					? weightedCost(costBuckets(c.totals, c.model), weights)
+					: costForTokens(c.totals, c.model)
 				cur.tokens += billableTokens(c.totals)
 				cur.cost += cost
 				totalCost += cost
@@ -1784,13 +1770,12 @@ export async function getWindowHistory(view: AccountView, now: Date): Promise<Wi
 		}
 	}
 
-	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	// The same weights the live card splits by, so one window cannot read two ways
 	// depending on which card shows it.
 	const weights = view.account?.calibration?.weights
 	return {
-		sessions: buildPastWindows(sessionRows, sessionSpans, ttl, groupOf, weights),
-		weeks: buildPastWindows(weekRows, weekSpans, ttl, groupOf, weights),
+		sessions: buildPastWindows(sessionRows, sessionSpans, groupOf, weights),
+		weeks: buildPastWindows(weekRows, weekSpans, groupOf, weights),
 	}
 }
 
@@ -1826,8 +1811,7 @@ const cachedDailyRows = createPromiseCache(60_000, (userId: string) => loadDaily
 
 export async function getHistory(userId: string): Promise<HistoryDTO> {
 	await refreshPrices()
-	const [settings, rows, groupRows, deviceRows] = await Promise.all([
-		ensureSettings(userId),
+	const [rows, groupRows, deviceRows] = await Promise.all([
 		cachedDailyRows(userId),
 		db.select().from(groups).where(eq(groups.ownerId, userId)),
 		db
@@ -1835,11 +1819,10 @@ export async function getHistory(userId: string): Promise<HistoryDTO> {
 			.from(devices)
 			.where(eq(devices.userId, userId)),
 	])
-	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	return {
 		devices: deviceRows,
 		groups: groupRows.map(g => ({ color: g.color, id: g.id, name: g.name })),
-		rows: rows.map(r => ({ ...r, costUsd: costForTokens(r, r.model, ttl) })),
+		rows: rows.map(r => ({ ...r, costUsd: costForTokens(r, r.model) })),
 	}
 }
 
@@ -1878,8 +1861,7 @@ export interface ProjectUsage {
 export async function getProjectUsage(userId: string, now = new Date()): Promise<ProjectUsage[]> {
 	const since = new Date(now.getTime() - 2 * PROJECT_DAYS * 24 * 60 * 60 * 1000)
 	await refreshPrices()
-	const [settings, groupRows, mergeRows] = await Promise.all([
-		ensureSettings(userId),
+	const [groupRows, mergeRows] = await Promise.all([
 		db.select().from(groups).where(eq(groups.ownerId, userId)),
 		db.select().from(projectMerges).where(eq(projectMerges.userId, userId)),
 	])
@@ -1936,7 +1918,6 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
 		cache_creation_1h: string
 		cache_read: string
 	}[]
-	const ttl: CacheTtl = settings.cacheWriteTtl === '1h' ? '1h' : '5m'
 	const byPath = new Map<string, ProjectUsage>()
 	const groupCost = new Map<string, Map<string | null, number>>()
 	const prevCost = new Map<string, number>()
@@ -1952,7 +1933,7 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
 		}
 		const lastActive = new Date(r.last_ts).toISOString()
 		const key = r.cwd ?? ''
-		const cost = costForTokens(totals, r.model, ttl)
+		const cost = costForTokens(totals, r.model)
 		if (r.days_ago >= PROJECT_DAYS) {
 			prevCost.set(key, (prevCost.get(key) ?? 0) + cost)
 			continue

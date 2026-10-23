@@ -201,17 +201,13 @@ describe('pricing', () => {
 		// Haiku 4.5 ($1/$5) vs Haiku 3.5 legacy ($0.80/$4).
 		expect(costForTokens(mtok({ inputTokens: 1_000_000 }), 'claude-haiku-4-5')).toBeCloseTo(1)
 		expect(costForTokens(mtok({ inputTokens: 1_000_000 }), 'claude-3-5-haiku')).toBeCloseTo(0.8)
-		// Sonnet flat $3 in / $15 out; cache read 0.1x. Cache writes default to the
-		// 5m rate (1.25x) because that is what Claude Code writes unless
-		// ENABLE_PROMPT_CACHING_1H is set; 1h is 2x.
+		// Sonnet flat $3 in / $15 out; cache read 0.1x, cache write 1.25x (5m).
 		expect(costForTokens(mtok({ inputTokens: 1_000_000 }), 'claude-sonnet-4-6')).toBeCloseTo(3)
 		expect(costForTokens(mtok({ cacheCreationTokens: 1_000_000 }), 'claude-sonnet-4-6')).toBeCloseTo(3.75)
-		expect(costForTokens(mtok({ cacheCreationTokens: 1_000_000 }), 'claude-sonnet-4-6', '1h')).toBeCloseTo(6)
 		expect(costForTokens(mtok({ cacheReadTokens: 1_000_000 }), 'claude-sonnet-4-6')).toBeCloseTo(0.3)
 	})
 
-	it('prices cache writes by their per-TTL breakdown when the row carries it', () => {
-		// 1M tagged 5m + 1M tagged 1h: 3.75 + 6 — the ttl setting is ignored.
+	it('prices the 1h part of a cache write at 2x and the rest, tagged or not, at 5m', () => {
 		const tagged = {
 			cacheCreation1hTokens: 1_000_000,
 			cacheCreation5mTokens: 1_000_000,
@@ -220,11 +216,9 @@ describe('pricing', () => {
 			inputTokens: 0,
 			outputTokens: 0,
 		}
-		expect(costForTokens(tagged, 'claude-sonnet-4-6', '5m')).toBeCloseTo(9.75)
-		expect(costForTokens(tagged, 'claude-sonnet-4-6', '1h')).toBeCloseTo(9.75)
-		// Mixed: 1M tagged 1h + 1M untagged remainder priced by the ttl setting.
-		const mixed = { ...tagged, cacheCreation5mTokens: 0 }
-		expect(costForTokens(mixed, 'claude-sonnet-4-6', '5m')).toBeCloseTo(6 + 3.75)
+		expect(costForTokens(tagged, 'claude-sonnet-4-6')).toBeCloseTo(6 + 3.75)
+		const untaggedRest = { ...tagged, cacheCreation5mTokens: undefined }
+		expect(costForTokens(untaggedRest, 'claude-sonnet-4-6')).toBeCloseTo(6 + 3.75)
 	})
 
 	it('prices fable at the frontier tier ($10/$50, cache 20/1)', () => {

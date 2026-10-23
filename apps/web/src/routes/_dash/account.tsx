@@ -4,11 +4,9 @@ import { createServerFn } from '@tanstack/react-start'
 import { eq } from 'drizzle-orm'
 import { KeyRound } from 'lucide-react'
 import { useTranslations } from 'use-intl'
-import { ActionForm } from '@/components/ActionForm'
 import { Alert } from '@/components/arc/alert/alert'
 import { Button } from '@/components/arc/button/button'
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/arc/dialog/dialog'
-import { Select } from '@/components/arc/select/select'
 import { useToast } from '@/components/arc/toast-stack/toast-stack'
 import { DevPlanPanel, PlanSection } from '@/components/billing/PlanSection'
 import { PROVIDERS, ProviderMark } from '@/components/OAuthSignIn'
@@ -16,10 +14,9 @@ import type { ProviderId } from '@/components/OAuthSignIn'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { db } from '@/db'
 import { account } from '@/db/schema'
-import { updateCacheTtl } from '@/lib/actions'
 import { authClient } from '@/lib/auth-client'
 import { accountPlan } from '@/lib/billing'
-import { ensureSettings, listDevices } from '@/lib/data'
+import { listDevices } from '@/lib/data'
 import { isAdminEmail } from '@/lib/flags'
 import { detectLocale, LOCALE_CURRENCY } from '@/lib/i18n'
 import { isPaidPlan } from '@/lib/plans'
@@ -29,15 +26,13 @@ import { planPrices } from '@/lib/stripe-prices'
 
 const accountData = createServerFn().handler(async () => {
 	const user = await requireUser()
-	const [settings, linked, plan, devices, prices] = await Promise.all([
-		ensureSettings(user.id),
+	const [linked, plan, devices, prices] = await Promise.all([
 		db.select({ id: account.id, providerId: account.providerId }).from(account).where(eq(account.userId, user.id)),
 		accountPlan(user.id),
 		listDevices(user.id),
 		planPrices(LOCALE_CURRENCY[detectLocale()]),
 	])
 	return {
-		settings,
 		email: user.email,
 		connected: linked,
 		plan,
@@ -71,13 +66,8 @@ export const Route = createFileRoute('/_dash/account')({
 function AccountPage() {
 	const t = useTranslations('dash.settings')
 	const tBilling = useTranslations('billing')
-	const tActions = useTranslations('dash.actions')
-	const { settings, email, connected, plan, prices, activeDevices, isAdmin } = Route.useLoaderData()
+	const { email, connected, plan, prices, activeDevices, isAdmin } = Route.useLoaderData()
 	const { plan: preselected, error } = Route.useSearch()
-	const ttls = [
-		{ value: '5m', label: t('cacheTtl5m') },
-		{ value: '1h', label: t('cacheTtl1h') },
-	]
 
 	return (
 		<div className='flex flex-col gap-10'>
@@ -90,24 +80,6 @@ function AccountPage() {
 					<DevPlanPanel plan={plan} />
 				</Section>
 			)}
-
-			<Section title={t('pricing')} description={t('pricingDescription')}>
-				<ActionForm action={updateCacheTtl} loadingMessage={t('saving')} successMessage={t('saved')}>
-					<div className='flex flex-wrap items-end gap-3'>
-						<Select
-							key={settings.cacheWriteTtl}
-							label={t('cacheTtl')}
-							description={t('cacheTtlDescription')}
-							name='cacheWriteTtl'
-							defaultValue={settings.cacheWriteTtl}
-							options={ttls}
-						/>
-						<Button type='submit' variant='secondary'>
-							{tActions('save')}
-						</Button>
-					</div>
-				</ActionForm>
-			</Section>
 
 			<Section title={t('appearance')} description={t('appearanceDescription')}>
 				<ThemeToggle />

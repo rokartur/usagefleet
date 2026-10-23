@@ -159,42 +159,32 @@ export function priceFor(model: string | null | undefined): Price {
 	return SONNET
 }
 
-/** Cache-write TTL the user's tool writes: prices differ (5m = 1.25× input,
- *  1h = 2× input). Claude Code writes 5m caches unless ENABLE_PROMPT_CACHING_1H
- *  is set, so 5m is the default. Only a fallback: rows whose log carried the
- *  per-TTL breakdown are priced by it exactly. */
-export type CacheTtl = '5m' | '1h'
-
 /** USD list-price cost of a set of token counts, split by token bucket.
  *  Anthropic's limit meter does not weigh the four buckets the way its price
  *  list does (measurably: cache reads cost ~50× less than output but barely
  *  move the limit at all), so calibration fits a multiplier per bucket — which
  *  only works if the buckets it fits are exactly the ones the total is made of.
  *  Hence one decomposition, summed by {@link costForTokens}. */
-export function costBuckets(t: TokenCounts, model: string | null, ttl: CacheTtl = '5m'): CostBuckets {
+export function costBuckets(t: TokenCounts, model: string | null): CostBuckets {
 	const p = priceFor(model)
-	const write5m = p.input * 1.25
-	const five = t.cacheCreation5mTokens ?? 0
 	const oneHour = t.cacheCreation1hTokens ?? 0
-	const untagged = Math.max(0, t.cacheCreationTokens - five - oneHour)
+	// The rest is 5m: the API's TTL when a request names none, and what rows from logs without the split mostly were.
+	const fiveMinute = Math.max(0, t.cacheCreationTokens - oneHour)
 	return {
 		cacheRead: (t.cacheReadTokens * p.cacheRead) / 1_000_000,
-		cacheWrite:
-			(five * write5m + oneHour * p.cacheWrite + untagged * (ttl === '5m' ? write5m : p.cacheWrite)) / 1_000_000,
+		cacheWrite: (fiveMinute * p.input * 1.25 + oneHour * p.cacheWrite) / 1_000_000,
 		input: (t.inputTokens * p.input) / 1_000_000,
 		output: (t.outputTokens * p.output) / 1_000_000,
 	}
 }
 
-/** USD cost of a set of token counts under one model's list price.
- *  Cache writes use the per-TTL breakdown where the row carries it; only the
- *  untagged remainder (legacy rows, pi rows) is priced by the `ttl` setting. */
-export function costForTokens(t: TokenCounts, model: string | null, ttl: CacheTtl = '5m'): number {
-	const b = costBuckets(t, model, ttl)
+/** USD cost of a set of token counts under one model's list price. */
+export function costForTokens(t: TokenCounts, model: string | null): number {
+	const b = costBuckets(t, model)
 	return b.input + b.output + b.cacheWrite + b.cacheRead
 }
 
 /** Cost of one record in USD. */
-export function costUsd(e: UsageRecord, ttl: CacheTtl = '5m'): number {
-	return costForTokens(e, e.model, ttl)
+export function costUsd(e: UsageRecord): number {
+	return costForTokens(e, e.model)
 }
