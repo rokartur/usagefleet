@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseLine } from './parser.js'
+import { parseAgentLine, parseLine } from './parser.js'
 
 const assistantLine = JSON.stringify({
 	cwd: '/Users/artur/Developer/x',
@@ -104,6 +104,26 @@ describe(parseLine, () => {
 		expect(parseLine(assistantLine, 'pi')).toBeNull()
 	})
 
+	it('splits a pi cache write by its cacheWrite1h part, unknown without it', () => {
+		const line = (usage: object) =>
+			JSON.stringify({
+				id: '0f442440',
+				message: {
+					model: 'claude-opus-5',
+					provider: 'anthropic',
+					responseId: 'msg_1',
+					role: 'assistant',
+					usage,
+				},
+				timestamp: '2026-07-19T14:03:18.826Z',
+				type: 'message',
+			})
+		const split = parseLine(line({ cacheWrite: 50, cacheWrite1h: 30 }), 'pi')!
+		expect([split.cacheCreation5m, split.cacheCreation1h]).toStrictEqual([20, 30])
+		const unknown = parseLine(line({ cacheWrite: 50 }), 'pi')!
+		expect([unknown.cacheCreation5m, unknown.cacheCreation1h]).toStrictEqual([null, null])
+	})
+
 	it('falls back to id+timestamp for the pi uuid when responseId is missing', () => {
 		const line = JSON.stringify({
 			id: 'abcd1234',
@@ -138,5 +158,29 @@ describe(parseLine, () => {
 			expect(() => parseLine(line, 'pi')).not.toThrow()
 			expect(parseLine(line, 'pi')).toBeNull()
 		}
+	})
+})
+
+describe(parseAgentLine, () => {
+	const line = (extra: object) =>
+		JSON.stringify({
+			account: 'acct-1',
+			cache_read: 40,
+			cache_write: 300,
+			id: 'msg_1',
+			input: 10,
+			model: 'claude-opus-5-5',
+			output: 20,
+			provider: 'anthropic',
+			timestamp: 1_792_000_000_000,
+			type: 'usage',
+			...extra,
+		})
+
+	it('splits the cache write by cache_write_1h, unknown without it', () => {
+		const split = parseAgentLine(line({ cache_write_1h: 300 }), null, null)!.record
+		expect([split.cacheCreation5m, split.cacheCreation1h]).toStrictEqual([0, 300])
+		const unknown = parseAgentLine(line({}), null, null)!.record
+		expect([unknown.cacheCreation5m, unknown.cacheCreation1h]).toStrictEqual([null, null])
 	})
 })

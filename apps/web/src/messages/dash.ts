@@ -315,7 +315,7 @@ const en = {
 		appearanceDescription: 'Light or dark palette, this browser only.',
 		cacheTtl: 'Cache-write TTL',
 		cacheTtlDescription:
-			'Rate used to price cache writes. Claude Code writes 5m caches unless you set ENABLE_PROMPT_CACHING_1H=1.',
+			'Rate for cache writes whose log does not name their TTL, from older collector sources. Claude Code writes 5m caches unless you set ENABLE_PROMPT_CACHING_1H=1.',
 		// Multipliers on the model's input price, so only the word "input" translates.
 		cacheTtl1h: '1h (2× input)',
 		cacheTtl5m: '5m (1.25× input)',
@@ -749,7 +749,7 @@ const pl: typeof en = {
 		appearanceDescription: 'Jasna albo ciemna paleta, tylko w tej przeglądarce.',
 		cacheTtl: 'TTL zapisu cache',
 		cacheTtlDescription:
-			'Stawka używana do wyceny zapisów cache. Claude Code zapisuje cache 5m, chyba że ustawisz ENABLE_PROMPT_CACHING_1H=1.',
+			'Stawka dla zapisów cache, których log nie podaje TTL (starsze źródła kolektora). Claude Code zapisuje cache 5m, chyba że ustawisz ENABLE_PROMPT_CACHING_1H=1.',
 		cacheTtl1h: '1h (2× wejście)',
 		cacheTtl5m: '5m (1,25× wejście)',
 		connect: 'Połącz',

@@ -31,8 +31,11 @@ SQL aggregates do the same fold in-database (`loadRecentEvents`,
   0.1×. Prices refresh from LiteLLM's map once a day per process, falling back to
   hardcoded tiers offline. Cache writes are priced by the per-TTL breakdown the
   log carried (`cache_creation_5m/1h_tokens`, reported by the collector) where
-  present; only the untagged remainder (legacy rows, pi, jcode, pj and agent rows) falls back to
-  `cacheWriteTtl` in `user_settings` — Claude Code writes 5m caches unless
+  present: Claude Code's `cache_creation`, pi's `cacheWrite1h`, the agent's
+  `cache_write_1h`, and for jcode/pj the `anthropic_cache_ttl_1h` key of their
+  `config.toml` (default on; today's value applies to past turns too). Only the
+  untagged remainder (legacy rows, lines from older pi and agent builds) falls back
+  to `cacheWriteTtl` in `user_settings` — Claude Code writes 5m caches unless
   `ENABLE_PROMPT_CACHING_1H=1`.
 
 Cost is an estimate for a subscription account. It exists because Anthropic's

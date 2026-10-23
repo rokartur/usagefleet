@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
-import { str } from './parser.js'
+import { dirname, join } from 'node:path'
+import { cacheSplit, str } from './parser.js'
 import type { JcodeSessionState, UsageRecord, UsageSource } from './types.js'
 
 /** pj is a jcode fork writing the same session files under its own dir. */
@@ -65,6 +65,7 @@ export function readJcodeSession(
 		return null
 	}
 
+	const cacheTtl1h = readsCacheTtl1h(join(dirname(dirname(snapshotPath)), 'config.toml'))
 	const snapshot = JSON.parse(readFileSync(snapshotPath, 'utf-8')) as JcodeMeta & {
 		id?: unknown
 		messages?: JcodeMessage[]
@@ -83,7 +84,7 @@ export function readJcodeSession(
 	const seen = new Set<string>()
 	const records: UsageRecord[] = []
 	for (const [message, meta] of turns) {
-		const record = toRecord(message, meta, str(snapshot.id), source)
+		const record = toRecord(message, meta, str(snapshot.id), source, cacheTtl1h)
 		if (!record || seen.has(record.uuid) || Date.parse(record.timestamp) <= uploadedThrough) {
 			continue
 		}
@@ -112,8 +113,23 @@ function readJournal(path: string): JournalLine[] {
 	return lines
 }
 
+/** jcode caches every breakpoint with one TTL: `[provider] anthropic_cache_ttl_1h`, default true, which its
+ *  /cache command rewrites. shortcut: past turns take today's setting, exact once jcode logs the split per turn. */
+function readsCacheTtl1h(configPath: string): boolean {
+	if (!existsSync(configPath)) {
+		return true
+	}
+	return !/^\s*anthropic_cache_ttl_1h\s*=\s*false\b/m.test(readFileSync(configPath, 'utf-8'))
+}
+
 /** jcode's `token_usage` is Anthropic's usage block (`prompt_tokens` is their sum, left out). */
-function toRecord(m: JcodeMessage, meta: JcodeMeta, sessionId: string | null, source: JcodeSource): UsageRecord | null {
+function toRecord(
+	m: JcodeMessage,
+	meta: JcodeMeta,
+	sessionId: string | null,
+	source: JcodeSource,
+	cacheTtl1h: boolean,
+): UsageRecord | null {
 	const u = m.token_usage
 	const id = str(m.id)
 	const timestamp = str(m.timestamp)
@@ -127,11 +143,10 @@ function toRecord(m: JcodeMessage, meta: JcodeMeta, sessionId: string | null, so
 	) {
 		return null
 	}
+	const cacheWrite = u.cache_creation_input_tokens ?? 0
 	return {
-		// jcode does not log the cache-write TTL; the server prices it by the user's setting.
-		cacheCreation1h: null,
-		cacheCreation5m: null,
-		cacheCreationTokens: u.cache_creation_input_tokens ?? 0,
+		...cacheSplit(cacheWrite, cacheTtl1h ? cacheWrite : 0),
+		cacheCreationTokens: cacheWrite,
 		cacheReadTokens: u.cache_read_input_tokens ?? 0,
 		cwd: str(meta.working_dir),
 		gitBranch: null,

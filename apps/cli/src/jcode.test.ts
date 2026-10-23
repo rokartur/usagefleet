@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -35,8 +35,8 @@ describe(readJcodeSession, () => {
 
 		expect(readJcodeSession(snapshot, 'jcode')?.records).toStrictEqual([
 			{
-				cacheCreation1h: null,
-				cacheCreation5m: null,
+				cacheCreation1h: 30,
+				cacheCreation5m: 0,
 				cacheCreationTokens: 30,
 				cacheReadTokens: 40,
 				cwd: '/work',
@@ -54,5 +54,22 @@ describe(readJcodeSession, () => {
 				version: null,
 			},
 		])
+	})
+
+	it('prices cache writes 5m when jcode config turns the 1h TTL off', () => {
+		const home = mkdtempSync(join(tmpdir(), 'uf-jcode-'))
+		mkdirSync(join(home, 'sessions'))
+		writeFileSync(join(home, 'config.toml'), '[provider]\nanthropic_cache_ttl_1h = false\n')
+		const snapshot = join(home, 'sessions', 'session_owl_2_a.json')
+		const message = {
+			id: 'message_1',
+			role: 'assistant',
+			timestamp: '2026-10-13T10:00:01.000Z',
+			token_usage: usage,
+		}
+		writeFileSync(snapshot, JSON.stringify({ id: 'session_owl_2_a', messages: [message], provider_key: 'claude' }))
+
+		const [record] = readJcodeSession(snapshot, 'jcode')!.records
+		expect([record.cacheCreation5m, record.cacheCreation1h]).toStrictEqual([30, 0])
 	})
 })

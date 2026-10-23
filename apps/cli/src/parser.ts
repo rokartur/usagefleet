@@ -37,8 +37,17 @@ function cacheCreation(u: RawUsage): { total: number; five: number | null; oneHo
 	return { five, oneHour, total }
 }
 
+/** The 5m/1h split of a cache write for logs that name only its 1h part; unknown when they do not. */
+export function cacheSplit(total: number, oneHour: unknown): Pick<UsageRecord, 'cacheCreation1h' | 'cacheCreation5m'> {
+	if (typeof oneHour !== 'number') {
+		return { cacheCreation1h: null, cacheCreation5m: null }
+	}
+	const capped = Math.min(Math.max(oneHour, 0), total)
+	return { cacheCreation1h: capped, cacheCreation5m: total - capped }
+}
+
 /** pi agent session line: `{type:"message", id, timestamp, message:{role:"assistant",
- *  provider, model, responseId, usage:{input, output, cacheRead, cacheWrite}}}`.
+ *  provider, model, responseId, usage:{input, output, cacheRead, cacheWrite, cacheWrite1h?}}}`.
  *  Only requests that land on the user's Claude subscription count: provider
  *  "anthropic" (pi's own client) and "claude-bridge" (the extension that routes
  *  through Claude Code's OAuth login, so it burns the same limits — and writes no
@@ -62,6 +71,7 @@ function parsePiLine(o: Record<string, unknown>, sessionCwd: string | null): Usa
 					output?: number
 					cacheRead?: number
 					cacheWrite?: number
+					cacheWrite1h?: number
 				}
 		  }
 		| undefined
@@ -81,10 +91,8 @@ function parsePiLine(o: Record<string, unknown>, sessionCwd: string | null): Usa
 		return null
 	}
 	return {
-		// pi's usage line does not say which TTL the cache write used — leave the
-		// breakdown unknown so the server prices it by the user's TTL setting.
-		cacheCreation1h: null,
-		cacheCreation5m: null,
+		// Older pi lines lack cacheWrite1h; the server prices those by the user's TTL setting.
+		...cacheSplit(u.cacheWrite ?? 0, u.cacheWrite1h),
 		cacheCreationTokens: u.cacheWrite ?? 0,
 		cacheReadTokens: u.cacheRead ?? 0,
 		cwd: sessionCwd,
@@ -104,7 +112,7 @@ function parsePiLine(o: Record<string, unknown>, sessionCwd: string | null): Usa
 }
 
 /** agent CLI session line: `{type:"usage", id, provider, account, model, timestamp,
- *  input, output, cache_read, cache_write}`, one per request, `timestamp` in epoch ms.
+ *  input, output, cache_read, cache_write, cache_write_1h?}`, one per request, `timestamp` in epoch ms.
  *  Only provider "anthropic" with an `account` (the Claude account uuid; API keys
  *  have none) ran on a subscription, and each line books on its own account because
  *  the agent switches accounts between requests. Lines from agents that predate
@@ -136,9 +144,8 @@ export function parseAgentLine(
 	return {
 		accountExtId: account,
 		record: {
-			// The agent does not log the cache-write TTL; the server prices it by the user's setting.
-			cacheCreation1h: null,
-			cacheCreation5m: null,
+			// Lines from agents before cache_write_1h are priced by the user's TTL setting.
+			...cacheSplit(tokens(o.cache_write), o.cache_write_1h),
 			cacheCreationTokens: tokens(o.cache_write),
 			cacheReadTokens: tokens(o.cache_read),
 			cwd: sessionCwd,
