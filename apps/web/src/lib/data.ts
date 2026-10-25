@@ -341,6 +341,8 @@ export interface LiveModelLimitGroup {
 	watchOnly: boolean
 	/** Against the group's budget slice, like sessionBudgetPct. */
 	budgetPct: number
+	/** Points of the model limit itself, like weeklyAccountPct. */
+	accountPct: number
 	/** Billable tokens of this model family in the limit's window. */
 	tokens: number
 }
@@ -978,6 +980,7 @@ async function loadLiveDashboard(
 		const weeklyContributionPct = weeklyShare?.exactPct ?? 0
 		const weeklyCostPct = weeklyShare?.costPct ?? 0
 		const groupRowsFor: LiveModelLimitGroup[] = [...split.entries()].map(([id, s]) => ({
+			accountPct: s.exactPct,
 			budgetPct: budgetPctFor(id, split, exactPctOf),
 			groupId: id,
 			...labelFor(id),

@@ -396,14 +396,18 @@ export function LiveDashboard({
 							value: g.weeklyAccountPct,
 						}))}
 					/>
-					{/* No per-group account split exists for a model limit, so it reads as one bar. */}
 					{dash.modelLimits.map(limit => (
 						<Meter
 							key={limit.model}
 							label={limit.label}
 							pct={limit.pct}
 							resets={<ResetCountdown resetsAt={limit.resetsAt} />}
-							segments={[{ id: limit.model, label: limit.label, value: limit.pct }]}
+							segments={limit.groups.map(g => ({
+								color: g.color,
+								id: groupKey(g.groupId),
+								label: g.name,
+								value: g.accountPct,
+							}))}
 						/>
 					))}
 					<Spend dash={dash} />

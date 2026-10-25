@@ -130,6 +130,7 @@ export const dashboard: DashboardDTO = {
 	modelLimits: [
 		{
 			groups: liveGroups.map(g => ({
+				accountPct: 52 / liveGroups.length,
 				budgetPct: g.weeklyBudgetPct,
 				color: g.color,
 				groupId: g.groupId,
