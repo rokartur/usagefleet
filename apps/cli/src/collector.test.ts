@@ -426,6 +426,76 @@ describe('reportLimitsOnce account check', () => {
 		])
 	})
 
+	it('also reports the login pi keeps in its auth.json, unless it has expired', async () => {
+		const cfg = signedInAs('acc-otter', 'acc-otter')
+		const piFresh = mkdtempSync(join(tmpdir(), 'uf-pi-'))
+		const piStale = mkdtempSync(join(tmpdir(), 'uf-pi-'))
+		const auth = (access: string, expires: number) =>
+			JSON.stringify({ anthropic: { access, expires, refresh: 'r', type: 'oauth' } })
+		writeFileSync(join(piFresh, 'auth.json'), auth('tok-fox', Date.now() + 3_600_000))
+		writeFileSync(join(piStale, 'auth.json'), auth('tok-stale', Date.now() - 1000))
+		vi.stubGlobal('fetch', async (url: string, init: { headers: Record<string, string> }) => {
+			const fox = init.headers.authorization === 'Bearer tok-fox'
+			return Response.json(
+				url.endsWith('/profile')
+					? { account: { uuid: fox ? 'acc-fox' : 'acc-otter' } }
+					: { five_hour: { utilization: fox ? 48 : 6 }, seven_day: { utilization: fox ? 69 : 60 } },
+			)
+		})
+
+		await reportLimitsOnce({
+			...cfg,
+			jcodeDir: null,
+			piDirs: [join(piFresh, 'sessions'), join(piStale, 'sessions')],
+			pjDir: null,
+		})
+
+		const posted = postLimits.mock.calls.map(([report]: [LimitsReport]) => [
+			report.account?.extId,
+			report.fiveHourPct,
+			report.sevenDayPct,
+		])
+		expect(posted).toStrictEqual([
+			['acc-otter', 6, 60],
+			['acc-fox', 48, 69],
+		])
+	})
+
+	// 2026-10-28: a Mac Studio running only the agent warned every cycle about a long-dead Claude Code login.
+	it('does not warn about a missing Claude Code login when another login reports', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'uf-lim-'))
+		vi.stubEnv('CLAUDE_CONFIG_DIR', dir)
+		vi.stubEnv('ANTHROPIC_API_KEY', '')
+		const agentHome = mkdtempSync(join(tmpdir(), 'uf-agent-'))
+		writeFileSync(
+			join(agentHome, 'accounts.json'),
+			JSON.stringify({
+				anthropic: [
+					{ access: 'tok-fox', accountId: 'acc-fox', expires: Date.now() + 3_600_000, type: 'oauth' },
+				],
+			}),
+		)
+		vi.stubGlobal('fetch', async () =>
+			Response.json({ five_hour: { utilization: 48 }, seven_day: { utilization: 69 } }),
+		)
+		postLimits.mockResolvedValue('ok')
+		const log = vi.fn()
+
+		await reportLimitsOnce(
+			{
+				...fixture(0).cfg,
+				agentDir: join(agentHome, 'sessions'),
+				jcodeDir: null,
+				pjDir: null,
+				storePath: join(dir, 'c.json'),
+			},
+			log,
+		)
+
+		expect(log).not.toHaveBeenCalled()
+		expect(postLimits).toHaveBeenCalledOnce()
+	})
+
 	// Each save rewrites the whole store, ~0.5 MB of offsets, and this runs every minute.
 	it('rewrites the store for an unchanged reading only to refresh its age', async () => {
 		vi.useFakeTimers({ toFake: ['Date'] })

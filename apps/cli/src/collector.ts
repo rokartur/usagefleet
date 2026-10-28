@@ -1,7 +1,13 @@
 import { existsSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { dirname, join, sep } from 'node:path'
-import { activeJcodeToken, agentClaudeLogins, detectClaudeAccount, tokenOwner } from './claude-account.js'
+import {
+	activeJcodeToken,
+	agentClaudeLogins,
+	detectClaudeAccount,
+	piClaudeToken,
+	tokenOwner,
+} from './claude-account.js'
 import { detectClaudeCreds, macKeychainDenied } from './claude-creds.js'
 import { fetchLimits } from './claude-limits.js'
 import type { LimitsReport } from './claude-limits.js'
@@ -403,26 +409,32 @@ function planWall(): string {
 	return `device outside your plan's device limit · free a slot or upgrade at ${ENDPOINT}/fleet · nothing is lost, uploads resume once it fits`
 }
 
-/** Report the Claude Code login's limits, then those of every other account jcode, pj or the agent CLI is signed in to. */
+/** Report the Claude Code login's limits, then those of every other account jcode, pj, pi or the agent CLI is signed in to. */
 export async function reportLimitsOnce(
 	cfg: Config,
 	log: Log = () => {
 		/* empty */
 	},
 ): Promise<LimitsReport | null> {
-	const report = await reportClaudeCodeLimits(cfg, log)
-	await reportOtherLogins(cfg, report?.account?.extId, log)
+	const others = await otherLogins(cfg)
+	const report = await reportClaudeCodeLimits(cfg, others.length > 0, log)
+	await reportOtherLogins(cfg, others, report?.account?.extId, log)
 	return report
 }
 
 /**
- * jcode, pj and the agent CLI keep their own Anthropic logins, so the account they use
+ * jcode, pj, pi and the agent CLI keep their own Anthropic logins, so the account they use
  * can differ from Claude Code's; with no reading of its own that account's limits go
  * stale on the server and its group stops blocking.
  */
-async function reportOtherLogins(cfg: Config, reportedExtId: string | undefined, log: Log): Promise<void> {
+async function reportOtherLogins(
+	cfg: Config,
+	logins: OtherLogin[],
+	reportedExtId: string | undefined,
+	log: Log,
+): Promise<void> {
 	const reported = new Set(reportedExtId ? [reportedExtId] : [])
-	for (const { extId, label, token } of await otherLogins(cfg)) {
+	for (const { extId, label, token } of logins) {
 		if (reported.has(extId)) {
 			continue
 		}
@@ -441,9 +453,15 @@ async function reportOtherLogins(cfg: Config, reportedExtId: string | undefined,
 	}
 }
 
-// Never refreshed here: rotating a refresh token would sign jcode, pj or the agent out.
-async function otherLogins(cfg: Config): Promise<{ extId: string; label: string; token: string }[]> {
-	const logins = []
+interface OtherLogin {
+	extId: string
+	label: string
+	token: string
+}
+
+// Never refreshed here: rotating a refresh token would sign jcode, pj, pi or the agent out.
+async function otherLogins(cfg: Config): Promise<OtherLogin[]> {
+	const logins: OtherLogin[] = []
 	for (const sessionsDir of [cfg.jcodeDir, cfg.pjDir]) {
 		if (!sessionsDir) {
 			continue
@@ -452,6 +470,13 @@ async function otherLogins(cfg: Config): Promise<{ extId: string; label: string;
 		const extId = token ? await tokenOwner(token) : null
 		if (token && extId) {
 			logins.push({ extId, label: tilde(dirname(sessionsDir)), token })
+		}
+	}
+	for (const piDir of new Set(cfg.piDirs.map(dir => dirname(dir)))) {
+		const token = piClaudeToken(join(piDir, 'auth.json'))
+		const extId = token ? await tokenOwner(token) : null
+		if (token && extId) {
+			logins.push({ extId, label: tilde(piDir), token })
 		}
 	}
 	if (cfg.agentDir) {
@@ -469,9 +494,13 @@ async function otherLogins(cfg: Config): Promise<{ extId: string; label: string;
  * report it to the server. Best-effort — returns null (and logs) when no login
  * is found or the request fails.
  */
-async function reportClaudeCodeLimits(cfg: Config, log: Log): Promise<LimitsReport | null> {
+async function reportClaudeCodeLimits(cfg: Config, hasOtherLogin: boolean, log: Log): Promise<LimitsReport | null> {
 	const creds = await detectClaudeCreds()
 	if (!creds) {
+		// A machine running only jcode, pj, pi or the agent has no Claude Code login to fix.
+		if (hasOtherLogin) {
+			return null
+		}
 		if (process.platform === 'darwin' && macKeychainDenied()) {
 			// "Works by hand, broken as a service" signature: a launchd agent can be
 			// denied the login-Keychain read. Make it diagnosable instead of silent.

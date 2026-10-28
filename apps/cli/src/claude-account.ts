@@ -67,6 +67,21 @@ export function activeJcodeToken(authPath: string): string | null {
 	}
 }
 
+/** pi's Anthropic OAuth access token from its `auth.json` (`{ anthropic: { type, access, expires } }`),
+ *  or null when missing or expired; pi refreshes it only when it runs. */
+export function piClaudeToken(authPath: string): string | null {
+	try {
+		const { anthropic } = JSON.parse(readFileSync(authPath, 'utf-8')) as {
+			anthropic?: { type?: unknown; access?: unknown; expires?: unknown }
+		}
+		const fresh =
+			anthropic?.type === 'oauth' && typeof anthropic.expires === 'number' && anthropic.expires > Date.now()
+		return fresh && typeof anthropic.access === 'string' && anthropic.access !== '' ? anthropic.access : null
+	} catch {
+		return null
+	}
+}
+
 interface AgentAccount {
 	type?: unknown
 	name?: unknown
