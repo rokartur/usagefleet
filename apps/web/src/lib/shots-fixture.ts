@@ -112,6 +112,7 @@ export const dashboard: DashboardDTO = {
 	accountLabel: null,
 	connected: true,
 	fiveHourPct: 41,
+	hasFiveHour: true,
 	fiveHourPoints: points(MIN, [
 		[160, 3],
 		[140, 8],

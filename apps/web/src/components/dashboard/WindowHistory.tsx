@@ -84,10 +84,19 @@ function groupsOf(windows: PastWindow[]) {
  * `account` names the subscription the windows belong to, and is passed only
  * when the fleet reports on more than one.
  */
-export function WindowHistory({ history, account }: { history: WindowHistoryDTO; account?: string }) {
+export function WindowHistory({
+	history,
+	account,
+	hasFiveHour,
+}: {
+	history: WindowHistoryDTO
+	account?: string
+	hasFiveHour: boolean
+}) {
 	const t = useTranslations('dash.overview')
 	const windowLabel = useWindowLabel()
-	const [kind, setKind] = useState<Kind>('sessions')
+	const [picked, setKind] = useState<Kind>('sessions')
+	const kind = hasFiveHour ? picked : 'weeks'
 	const [count, setCount] = useState<WindowCount>('8')
 	const windows = history[kind].slice(0, Number(count))
 	const measured = windows.flatMap(w => (w.accountPct === null ? [] : [w.accountPct]))
@@ -99,12 +108,14 @@ export function WindowHistory({ history, account }: { history: WindowHistoryDTO;
 			title={account ? t('pastWindowsFor', { account }) : t('pastWindows')}
 			actions={
 				<div className='flex flex-wrap items-center gap-3'>
-					<SegmentedControl
-						label={t('window')}
-						value={kind}
-						onValueChange={setKind}
-						options={KINDS.map(k => ({ label: kindLabel[k], value: k }))}
-					/>
+					{hasFiveHour && (
+						<SegmentedControl
+							label={t('window')}
+							value={kind}
+							onValueChange={setKind}
+							options={KINDS.map(k => ({ label: kindLabel[k], value: k }))}
+						/>
+					)}
 					<SegmentedControl
 						label={t('windowCount')}
 						value={count}

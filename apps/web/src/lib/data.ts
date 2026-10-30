@@ -378,6 +378,8 @@ export interface LiveDashboard {
 	source: 'sub' | 'api' | null
 	reportedAt: Date | null
 	fiveHourPct: number
+	/** False for plans without a 5h window (Ultra): fiveHourPct then reads 0 and means nothing. */
+	hasFiveHour: boolean
 	sevenDayPct: number
 	fiveHourResetsAt: Date | null
 	sevenDayResetsAt: Date | null
@@ -812,6 +814,7 @@ async function loadLiveDashboard(
 		accountLabel: acct?.email ?? acct?.orgName ?? null,
 		fiveHourPct: livePct(acct?.fiveHourPct, fiveHourResetsAt),
 		fiveHourResetsAt,
+		hasFiveHour: acct?.fiveHourPct != null,
 		reportedAt: acct?.limitsReportedAt ? new Date(acct.limitsReportedAt) : null,
 		sevenDayPct: livePct(acct?.sevenDayPct, sevenDayResetsAt),
 		sevenDayResetsAt,
@@ -1991,6 +1994,7 @@ export interface DashboardDTO {
 	source: 'sub' | 'api' | null
 	reportedAt: string | null
 	fiveHourPct: number
+	hasFiveHour: boolean
 	sevenDayPct: number
 	fiveHourResetsAt: string | null
 	sevenDayResetsAt: string | null
@@ -2015,6 +2019,7 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
 		fiveHourPoints: d.fiveHourPoints.map(p => ({ at: p.at.toISOString(), pct: p.pct })),
 		fiveHourResetsAt: d.fiveHourResetsAt?.toISOString() ?? null,
 		groups: d.groups,
+		hasFiveHour: d.hasFiveHour,
 		modelLimits: d.modelLimits.map(m => ({
 			...m,
 			resetsAt: m.resetsAt?.toISOString() ?? null,

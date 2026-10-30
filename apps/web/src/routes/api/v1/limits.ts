@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createFileRoute } from '@tanstack/react-router'
 import { type } from 'arktype'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { claudeAccounts, devices, groups } from '@/db/schema'
 import { deviceWithinPlan, overPlanLimit } from '@/lib/billing'
@@ -36,6 +36,8 @@ const LimitsSchema = type({
 	'sevenDayPct?': PCT,
 	'fiveHourResetsAt?': 'string | null',
 	'sevenDayResetsAt?': 'string | null',
+	// The plan has no 5h window at all (Ultra), not just a payload that dropped it.
+	'noFiveHourWindow?': 'boolean',
 	// Per-model limits from the dynamic rate-limit headers (e.g. Fable weekly).
 	// Keys are constrained to header-safe charsets so junk can't land in jsonb.
 	// Note arktype keeps undeclared keys rather than stripping them, so what
@@ -201,6 +203,12 @@ async function POST(req: Request) {
 				...set,
 				...(identity?.email ? { email: identity.email } : {}),
 				...(identity?.org ? { orgName: identity.org } : {}),
+				// Cleared only once the stored 5h window is over, so one odd payload mid-window
+				// cannot hide a Max account's live session meter.
+				...(b.noFiveHourWindow && {
+					fiveHourPct: sql`CASE WHEN ${claudeAccounts.fiveHourResetsAt} > now() THEN ${claudeAccounts.fiveHourPct} END`,
+					fiveHourResetsAt: sql`CASE WHEN ${claudeAccounts.fiveHourResetsAt} > now() THEN ${claudeAccounts.fiveHourResetsAt} END`,
+				}),
 			},
 		})
 		.returning({
