@@ -62,7 +62,9 @@ function limitsSummary(limits: {
 	modelLimits: { model: string; window: string; pct: number | null }[]
 }): string {
 	const models = limits.modelLimits.map(m => ` · ${m.model}(${m.window}) ${bar(m.pct, 6)} ${pct(m.pct)}`).join('')
-	return `5h ${bar(limits.fiveHourPct)} ${pct(limits.fiveHourPct)} · weekly ${bar(limits.sevenDayPct)} ${pct(limits.sevenDayPct)}${models}`
+	// Ultra plans have no 5h window, so oauth/usage reports none.
+	const five = limits.fiveHourPct === null ? '' : `5h ${bar(limits.fiveHourPct)} ${pct(limits.fiveHourPct)} · `
+	return `${five}weekly ${bar(limits.sevenDayPct)} ${pct(limits.sevenDayPct)}${models}`
 }
 
 /** Every message the collector, notifier and self-update emit, as a stream
@@ -245,7 +247,7 @@ async function cmdStatus(): Promise<void> {
 			? stateLine(
 					limitHealth(limits.fiveHourPct, limits.sevenDayPct),
 					'limits',
-					`5h ${bar(limits.fiveHourPct)} ${pct(limits.fiveHourPct)} · weekly ${bar(limits.sevenDayPct)} ${pct(limits.sevenDayPct)} ${dim(ago(limits.at))}`,
+					`${limitsSummary({ ...limits, modelLimits: [] })} ${dim(ago(limits.at))}`,
 				)
 			: stateLine('warn', 'limits', `no reading yet ${dim('· run `usagefleet limits`')}`),
 	)
