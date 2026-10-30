@@ -27,6 +27,9 @@ export interface LimitsReport {
 	sevenDayResetsAt: string | null
 	/** Per-model limits, in header order. Empty when the account has none. */
 	modelLimits: ModelLimit[]
+	/** Set only when the plan has no 5h window at all (Ultra), as opposed to a
+	 *  payload that merely dropped it this cycle. */
+	noFiveHourWindow?: true
 }
 
 export function parsePct(v: string | null): number | null {
@@ -255,7 +258,19 @@ export function oauthLimitsReport(body: unknown): LimitsReport | null {
 	if (account.fiveHourPct == null && account.sevenDayPct == null) {
 		return null
 	}
-	return { ...account, modelLimits: parseOauthUsage(body), source: 'sub' }
+	const report: LimitsReport = { ...account, modelLimits: parseOauthUsage(body), source: 'sub' }
+	return account.fiveHourPct == null && listsNoSessionLimit(body) ? { ...report, noFiveHourWindow: true } : report
+}
+
+// Ultra plans have no 5h window. Max lists a `kind: "session"` entry in limits[];
+// a payload without limits[] says nothing either way.
+function listsNoSessionLimit(body: unknown): boolean {
+	const limits = (body as { limits?: unknown } | null)?.limits
+	return (
+		Array.isArray(limits) &&
+		limits.length > 0 &&
+		!limits.some(l => typeof l === 'object' && l !== null && (l as { kind?: unknown }).kind === 'session')
+	)
 }
 
 /**

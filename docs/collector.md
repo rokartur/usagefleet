@@ -97,6 +97,15 @@ free (no billable ping), returns the exact account-wide 5h/7d percentages that
 screen shows, and is the source of the per-model caps ("Fable · 24% used").
 When it answers, that IS the report and nothing else is sent to Anthropic.
 
+Ultra plans have no 5h window. When `five_hour` carries no utilization and
+`limits[]` is non-empty but lists no `kind: "session"` entry, the report sets
+`noFiveHourWindow: true`. A missing `limits[]`, or one that still lists a
+session limit, reads as a dropped window instead, and the flag stays off. The
+server clears the account's 5h columns only after the stored 5h window has
+reset, so one odd payload in the middle of a Max session changes nothing. The
+dashboard then hides the 5h meter, the 5h group bars and the 5h past windows
+(`hasFiveHour`), and `status` and `limits` print only the weekly window.
+
 Before posting, the collector asks `api/oauth/profile` who owns the token and
 skips the cycle if that is not the account `~/.claude.json` names. Claude Code
 writes the two files separately, so during `/login` they can disagree, and a

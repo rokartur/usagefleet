@@ -370,20 +370,26 @@ export function LiveDashboard({
 					<AccountSwitcher dashes={dashes} selected={accountKey(dash)} onSelect={onSelect} now={now} />
 				)}
 				<div className='grid grid-cols-[repeat(auto-fit,minmax(15rem,1fr))] gap-x-8 gap-y-6'>
-					<Meter
-						label={t('fiveHourSession')}
-						pct={dash.fiveHourPct}
-						projected={dash.sessionProjection?.pct}
-						mark={view === 'bar' && projection ? sessionMark(projection, nextLabel, fullLabel) : undefined}
-						chart={chart(dash.fiveHourResetsAt, FIVE_H_MS, dash.fiveHourPoints, dash.fiveHourPct, true)}
-						resets={<ResetCountdown resetsAt={dash.fiveHourResetsAt} projection={dash.sessionProjection} />}
-						segments={dash.groups.map(g => ({
-							color: g.color,
-							id: groupKey(g.groupId),
-							label: g.name,
-							value: g.sessionAccountPct,
-						}))}
-					/>
+					{dash.hasFiveHour && (
+						<Meter
+							label={t('fiveHourSession')}
+							pct={dash.fiveHourPct}
+							projected={dash.sessionProjection?.pct}
+							mark={
+								view === 'bar' && projection ? sessionMark(projection, nextLabel, fullLabel) : undefined
+							}
+							chart={chart(dash.fiveHourResetsAt, FIVE_H_MS, dash.fiveHourPoints, dash.fiveHourPct, true)}
+							resets={
+								<ResetCountdown resetsAt={dash.fiveHourResetsAt} projection={dash.sessionProjection} />
+							}
+							segments={dash.groups.map(g => ({
+								color: g.color,
+								id: groupKey(g.groupId),
+								label: g.name,
+								value: g.sessionAccountPct,
+							}))}
+						/>
+					)}
 					<Meter
 						label={tUsage('weekly')}
 						pct={dash.sevenDayPct}
@@ -453,10 +459,11 @@ function AccountSwitcher({
 			options={dashes.map(d => {
 				const stale = now > 0 && d.reportedAt !== null && now - Date.parse(d.reportedAt) > LIMITS_STALE_MS
 				const moved = d.groups.filter(movedAway).length
+				const pct = d.hasFiveHour ? d.fiveHourPct : d.sevenDayPct
 				return {
 					accessory: (
 						<span className='ml-2 inline-flex items-center gap-2 text-xs font-normal text-muted-foreground tabular-nums'>
-							<span className={overrun(d.fiveHourPct)}>{formatPct(d.fiveHourPct)}</span>
+							<span className={overrun(pct)}>{formatPct(pct)}</span>
 							{moved > 0 && <span>{t('movedBadge', { count: moved })}</span>}
 							{stale && <span className='size-1.5 rounded-full bg-warning' aria-hidden />}
 						</span>
@@ -556,6 +563,7 @@ function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[
 						<GroupSummary
 							group={g}
 							modelLimits={dash.modelLimits}
+							hasFiveHour={dash.hasFiveHour}
 							movedTo={movedAway(g) ? movedTo(g) : null}
 						/>
 					</li>
@@ -577,10 +585,12 @@ function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[
 function GroupSummary({
 	group: g,
 	modelLimits,
+	hasFiveHour,
 	movedTo,
 }: {
 	group: LiveGroupUsage
 	modelLimits: ModelLimitDTO[]
+	hasFiveHour: boolean
 	movedTo: string | null
 }) {
 	const t = useTranslations('dash.overview')
@@ -597,7 +607,7 @@ function GroupSummary({
 				</span>
 			</div>
 			<div className={cn('flex flex-col gap-2', moved && 'opacity-60')}>
-				<SliceBar label='5h' pct={g.sessionBudgetPct} color={g.color} />
+				{hasFiveHour && <SliceBar label='5h' pct={g.sessionBudgetPct} color={g.color} />}
 				<SliceBar label={t('week')} pct={g.weeklyBudgetPct} color={g.color} />
 				{modelLimits.map(limit => (
 					<SliceBar

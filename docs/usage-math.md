@@ -48,6 +48,10 @@ apportioning a percentage.
   instant. There is no local block-boundary reconstruction from event
   timestamps — an earlier ccusage-style implementation was deleted once the
   collector began reporting the real numbers.
+  Ultra plans have none: the collector flags it (`noFiveHourWindow`), the
+  account's 5h columns go null after the last window resets, and
+  `hasFiveHour: false` hides every 5h view. The session split then reads 0 and
+  can never block a prompt.
 - **Weekly window**: Anthropic's too — anchored on the reported `resets_at`
   minus 7 days, clamped to at most 7 days ending now so a stale reset can't
   widen the split window. A reset more than one whole window ahead is discarded

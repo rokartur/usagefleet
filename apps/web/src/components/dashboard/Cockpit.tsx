@@ -42,9 +42,10 @@ export function Cockpit({
 		<>
 			{history.rows.length > 0 && <UsageExplorer history={history} />}
 			{/* Past windows only show up once the account has closed one. */}
-			{windows && (windows.sessions.length > 0 || windows.weeks.length > 0) && (
+			{windows && ((current.dash.hasFiveHour && windows.sessions.length > 0) || windows.weeks.length > 0) && (
 				<WindowHistory
 					history={windows}
+					hasFiveHour={current.dash.hasFiveHour}
 					account={accounts.length > 1 ? (current.dash.accountLabel ?? t('unidentifiedAccount')) : undefined}
 				/>
 			)}

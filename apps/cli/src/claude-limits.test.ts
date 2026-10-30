@@ -151,6 +151,27 @@ describe(oauthLimitsReport, () => {
 		expect(oauthLimitsReport(null)).toBeNull()
 		expect(oauthLimitsReport({ limits: [] })).toBeNull()
 	})
+
+	it('flags an account with no 5h window when limits[] lists none and five_hour is empty', () => {
+		const weekly = {
+			group: 'weekly',
+			kind: 'weekly_all',
+			percent: 38,
+			resets_at: '2026-10-31T00:00:00Z',
+			scope: null,
+		}
+		const seven_day = { resets_at: '2026-10-31T00:00:00Z', utilization: 38 }
+		expect(oauthLimitsReport({ five_hour: null, limits: [weekly], seven_day })).toMatchObject({
+			fiveHourPct: null,
+			noFiveHourWindow: true,
+		})
+		// A dropped five_hour beside a listed session limit is a hiccup, not a plan without the window.
+		const session = { ...weekly, group: 'session', kind: 'session' }
+		expect(oauthLimitsReport({ five_hour: null, limits: [session, weekly], seven_day })).not.toHaveProperty(
+			'noFiveHourWindow',
+		)
+		expect(oauthLimitsReport({ five_hour: null, seven_day })).not.toHaveProperty('noFiveHourWindow')
+	})
 })
 
 describe(parseOauthUsage, () => {
