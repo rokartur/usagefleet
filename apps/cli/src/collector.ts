@@ -6,8 +6,9 @@ import {
 	agentClaudeLogins,
 	detectClaudeAccount,
 	piClaudeToken,
-	tokenOwner,
+	tokenAccount,
 } from './claude-account.js'
+import type { ClaudeAccount } from './claude-account.js'
 import { detectClaudeCreds, macKeychainDenied } from './claude-creds.js'
 import { fetchLimits } from './claude-limits.js'
 import type { LimitsReport } from './claude-limits.js'
@@ -357,7 +358,7 @@ async function jcodeAccount(sessionsDir: string, owners: Map<string, string>): P
 	if (cached) {
 		return cached
 	}
-	const owner = await tokenOwner(token)
+	const owner = (await tokenAccount(token))?.extId
 	if (!owner) {
 		return undefined
 	}
@@ -434,11 +435,11 @@ async function reportOtherLogins(
 	log: Log,
 ): Promise<void> {
 	const reported = new Set(reportedExtId ? [reportedExtId] : [])
-	for (const { extId, label, token } of logins) {
-		if (reported.has(extId)) {
+	for (const { account, label, token } of logins) {
+		if (reported.has(account.extId)) {
 			continue
 		}
-		reported.add(extId)
+		reported.add(account.extId)
 		let report: LimitsReport
 		try {
 			report = await fetchLimits({ source: 'sub', token })
@@ -446,7 +447,7 @@ async function reportOtherLogins(
 			log('warn', `limits fetch failed for the ${label} login · ${(error as Error).message}`)
 			continue
 		}
-		const outcome = await postLimits({ ...report, account: { email: null, extId, org: null } }, cfg)
+		const outcome = await postLimits({ ...report, account }, cfg)
 		if (outcome !== 'ok') {
 			log('warn', `limits upload failed for the ${label} login · ${outcome}`)
 		}
@@ -454,7 +455,7 @@ async function reportOtherLogins(
 }
 
 interface OtherLogin {
-	extId: string
+	account: ClaudeAccount
 	label: string
 	token: string
 }
@@ -467,22 +468,25 @@ async function otherLogins(cfg: Config): Promise<OtherLogin[]> {
 			continue
 		}
 		const token = activeJcodeToken(join(dirname(sessionsDir), 'auth.json'))
-		const extId = token ? await tokenOwner(token) : null
-		if (token && extId) {
-			logins.push({ extId, label: tilde(dirname(sessionsDir)), token })
+		const account = token ? await tokenAccount(token) : null
+		if (token && account) {
+			logins.push({ account, label: tilde(dirname(sessionsDir)), token })
 		}
 	}
 	for (const piDir of new Set(cfg.piDirs.map(dir => dirname(dir)))) {
 		const token = piClaudeToken(join(piDir, 'auth.json'))
-		const extId = token ? await tokenOwner(token) : null
-		if (token && extId) {
-			logins.push({ extId, label: tilde(piDir), token })
+		const account = token ? await tokenAccount(token) : null
+		if (token && account) {
+			logins.push({ account, label: tilde(piDir), token })
 		}
 	}
 	if (cfg.agentDir) {
 		const accountsPath = join(dirname(cfg.agentDir), 'accounts.json')
-		for (const login of agentClaudeLogins(accountsPath)) {
-			logins.push({ ...login, label: `${tilde(dirname(cfg.agentDir))} ${login.name}` })
+		for (const { extId, name, token } of agentClaudeLogins(accountsPath)) {
+			// accounts.json has no email; the profile adds it when it agrees on the account.
+			const profile = await tokenAccount(token)
+			const account = profile?.extId === extId ? profile : { email: null, extId, org: null }
+			logins.push({ account, label: `${tilde(dirname(cfg.agentDir))} ${name}`, token })
 		}
 	}
 	return logins
@@ -534,7 +538,7 @@ async function reportClaudeCodeLimits(cfg: Config, hasOtherLogin: boolean, log: 
 	const account = report.source === 'sub' ? detectClaudeAccount() : null
 	// Mid-/login the token and ~/.claude.json name two accounts; see docs/collector.md.
 	// ponytail: one profile call per limits cycle, cache it per token if Anthropic starts 429ing.
-	const owner = account ? await tokenOwner(creds.token) : null
+	const owner = account ? ((await tokenAccount(creds.token))?.extId ?? null) : null
 	if (account && owner !== null && owner !== account.extId) {
 		log('warn', 'limits skipped · claude login is mid-switch between accounts · retrying next cycle')
 		return null
