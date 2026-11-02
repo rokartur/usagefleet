@@ -450,29 +450,80 @@ function AccountSwitcher({
 	now: number
 }) {
 	const t = useTranslations('dash.overview')
+	const tUsage = useTranslations('dash.usage')
 	const accountName = useAccountName()
+	const anyFiveHour = dashes.some(d => d.hasFiveHour)
 	return (
-		<SegmentedControl
-			label={t('accountSwitcher')}
-			value={selected}
-			onValueChange={onSelect}
-			options={dashes.map(d => {
-				const stale = now > 0 && d.reportedAt !== null && now - Date.parse(d.reportedAt) > LIMITS_STALE_MS
-				const moved = d.groups.filter(movedAway).length
-				const pct = d.hasFiveHour ? d.fiveHourPct : d.sevenDayPct
-				return {
-					accessory: (
-						<span className='ml-2 inline-flex items-center gap-2 text-xs font-normal text-muted-foreground tabular-nums'>
-							<span className={overrun(pct)}>{formatPct(pct)}</span>
-							{moved > 0 && <span>{t('movedBadge', { count: moved })}</span>}
-							{stale && <span className='size-1.5 rounded-full bg-warning' aria-hidden />}
-						</span>
-					),
-					label: accountName(d),
-					value: accountKey(d),
-				}
-			})}
-		/>
+		<div className='overflow-x-auto'>
+			<table className='w-full min-w-[36rem] text-sm tabular-nums'>
+				<thead>
+					<tr className='border-b border-border text-left text-xs text-muted-foreground'>
+						<th className='px-3 pb-2 font-medium'>{t('accountSwitcher')}</th>
+						{anyFiveHour && <th className='px-3 pb-2 font-medium'>{t('fiveHourSession')}</th>}
+						<th className='px-3 pb-2 font-medium'>{tUsage('weekly')}</th>
+						<th className='px-3 pb-2 text-right font-medium'>{t('devices')}</th>
+					</tr>
+				</thead>
+				<tbody>
+					{dashes.map(d => {
+						const key = accountKey(d)
+						const on = key === selected
+						const stale =
+							now > 0 && d.reportedAt !== null && now - Date.parse(d.reportedAt) > LIMITS_STALE_MS
+						const moved = d.groups.filter(movedAway).length
+						const devices = d.groups.reduce((sum, g) => sum + g.devices.length, 0)
+						return (
+							<tr
+								key={key}
+								className={cn(
+									'relative border-b border-(--border-subtle) align-top last:border-0 hover:bg-muted/60',
+									on && 'bg-muted shadow-[inset_3px_0_0_var(--accent)]',
+								)}
+							>
+								<td className='px-3 py-3'>
+									{/* The stretched button makes the whole row the switcher, keyboard included. */}
+									<button
+										type='button'
+										aria-pressed={on}
+										onClick={() => onSelect(key)}
+										className='text-left font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring'
+									>
+										{accountName(d)}
+									</button>
+									<span className='ml-2 inline-flex items-center gap-2 text-xs text-muted-foreground'>
+										{moved > 0 && <span>{t('movedBadge', { count: moved })}</span>}
+										{stale && <span className='size-1.5 rounded-full bg-warning' aria-hidden />}
+									</span>
+								</td>
+								{anyFiveHour && (
+									<td className='px-3 py-3'>
+										{d.hasFiveHour && (
+											<AccountWindow pct={d.fiveHourPct} resetsAt={d.fiveHourResetsAt} />
+										)}
+									</td>
+								)}
+								<td className='px-3 py-3'>
+									<AccountWindow pct={d.sevenDayPct} resetsAt={d.sevenDayResetsAt} />
+								</td>
+								<td className='px-3 py-3 text-right text-muted-foreground'>{devices}</td>
+							</tr>
+						)
+					})}
+				</tbody>
+			</table>
+		</div>
+	)
+}
+
+function AccountWindow({ pct, resetsAt }: { pct: number; resetsAt: string | null }) {
+	return (
+		<div className='grid max-w-72 grid-cols-[3.5rem_1fr] items-center gap-x-3 gap-y-1'>
+			<span className={cn('text-right text-base font-semibold', overrun(pct))}>{formatPct(pct)}</span>
+			<UsageBar pct={pct} />
+			<div className='col-start-2 text-xs text-muted-foreground'>
+				<ResetCountdown resetsAt={resetsAt} />
+			</div>
+		</div>
 	)
 }
 
