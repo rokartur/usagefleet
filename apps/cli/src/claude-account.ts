@@ -120,10 +120,10 @@ export function agentClaudeLogins(accountsPath: string): { extId: string; name: 
 	return logins
 }
 
-/** The accountUuid Anthropic says owns this OAuth token, or null when it cannot
+/** The account Anthropic says owns this OAuth token, or null when it cannot
  *  say. Null fails open to the file's identity: the endpoint is undocumented, and
  *  losing it must not stop every collector from reporting limits. */
-export async function tokenOwner(token: string): Promise<string | null> {
+export async function tokenAccount(token: string): Promise<ClaudeAccount | null> {
 	try {
 		const res = await fetch(OAUTH_PROFILE_URL, {
 			headers: {
@@ -136,9 +136,17 @@ export async function tokenOwner(token: string): Promise<string | null> {
 		if (!res.ok) {
 			return null
 		}
-		const body = (await res.json()) as { account?: { uuid?: unknown } } | null
-		const uuid = body?.account?.uuid
-		return typeof uuid === 'string' && uuid !== '' ? uuid.slice(0, 100) : null
+		const body = (await res.json()) as {
+			account?: { uuid?: unknown; email?: unknown }
+			organization?: { name?: unknown }
+		} | null
+		return parseClaudeAccount({
+			oauthAccount: {
+				accountUuid: body?.account?.uuid,
+				emailAddress: body?.account?.email,
+				organizationName: body?.organization?.name,
+			},
+		})
 	} catch {
 		return null
 	}

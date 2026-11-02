@@ -426,6 +426,48 @@ describe('reportLimitsOnce account check', () => {
 		])
 	})
 
+	// 2026-11: the agent's claude-N-pro logins showed as "Unidentified account": accounts.json has no email.
+	it('labels an agent login with the email its token profile names', async () => {
+		const cfg = signedInAs('acc-otter', 'acc-otter')
+		const agentHome = mkdtempSync(join(tmpdir(), 'uf-agent-'))
+		writeFileSync(
+			join(agentHome, 'accounts.json'),
+			JSON.stringify({
+				anthropic: [
+					{
+						access: 'tok-fox',
+						accountId: 'acc-fox',
+						expires: Date.now() + 3_600_000,
+						name: 'fox',
+						type: 'oauth',
+					},
+				],
+			}),
+		)
+		const profiles: Record<string, object> = {
+			'Bearer tok': { account: { uuid: 'acc-otter' } },
+			'Bearer tok-fox': {
+				account: { email: 'fox@example.com', uuid: 'acc-fox' },
+				organization: { name: 'Fox Org' },
+			},
+		}
+		vi.stubGlobal('fetch', async (url: string, init: { headers: Record<string, string> }) =>
+			Response.json(
+				url.endsWith('/profile')
+					? profiles[init.headers.authorization]
+					: { five_hour: { utilization: 1 }, seven_day: { utilization: 2 } },
+			),
+		)
+
+		await reportLimitsOnce({ ...cfg, agentDir: join(agentHome, 'sessions'), jcodeDir: null, pjDir: null })
+
+		expect(postLimits.mock.calls.at(-1)?.[0].account).toStrictEqual({
+			email: 'fox@example.com',
+			extId: 'acc-fox',
+			org: 'Fox Org',
+		})
+	})
+
 	it('also reports the login pi keeps in its auth.json, unless it has expired', async () => {
 		const cfg = signedInAs('acc-otter', 'acc-otter')
 		const piFresh = mkdtempSync(join(tmpdir(), 'uf-pi-'))
