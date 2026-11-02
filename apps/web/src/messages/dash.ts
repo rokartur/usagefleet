@@ -14,6 +14,7 @@ const en = {
 	},
 	admin: {
 		account: 'Account',
+		compare: 'Compare side by side',
 		delete: 'Delete',
 		deleteDescription:
 			'Every device, group and usage record of this account is deleted immediately. This cannot be undone.',
@@ -27,6 +28,8 @@ const en = {
 		lead: '{count, plural, one {# newest account} other {# newest accounts}}. The free allowance applies only while an account has no subscription; paid caps come from Stripe. Blank means the default of {fallback}.',
 		limitLabel: 'Free devices for {email}',
 		plan: 'Plan',
+		select: 'Select {email} to compare',
+		selected: '{count} of 2 selected',
 		unverified: 'unverified',
 		updateFailed: "Couldn't update {email}. Please try again.",
 		updated: '{email} updated',
@@ -432,6 +435,7 @@ const pl: typeof en = {
 	},
 	admin: {
 		account: 'Konto',
+		compare: 'Porównaj obok siebie',
 		delete: 'Usuń',
 		deleteDescription:
 			'Każde urządzenie, grupa i zapis zużycia tego konta zostaną natychmiast usunięte. Tego nie da się cofnąć.',
@@ -445,6 +449,8 @@ const pl: typeof en = {
 		lead: '{count, plural, one {# najnowsze konto} few {# najnowsze konta} many {# najnowszych kont} other {# najnowszych kont}}. Darmowy przydział obowiązuje tylko, dopóki konto nie ma subskrypcji; płatne limity pochodzą ze Stripe. Puste pole oznacza domyślne {fallback}.',
 		limitLabel: 'Darmowe urządzenia dla {email}',
 		plan: 'Plan',
+		select: 'Zaznacz {email} do porównania',
+		selected: 'Zaznaczono {count} z 2',
 		unverified: 'niezweryfikowany',
 		updateFailed: 'Nie udało się zaktualizować {email}. Spróbuj ponownie.',
 		updated: 'Zaktualizowano {email}',

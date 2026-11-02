@@ -19,35 +19,52 @@ const viewData = createServerFn()
 		if (!target) {
 			throw redirect({ to: '/admin' })
 		}
-		return { email: target.email, ...(await getDashboardOverview(userId)) }
+		return { id: userId, email: target.email, ...(await getDashboardOverview(userId)) }
 	})
 
+/** `?compare=<userId>` puts a second user's dashboard beside the first. */
+function validateSearch(search: Record<string, unknown>): { compare?: string } {
+	return { compare: typeof search.compare === 'string' ? search.compare : undefined }
+}
+
 export const Route = createFileRoute('/_dash/admin_/$userId')({
-	loader: ({ params }) => viewData({ data: params.userId }),
+	validateSearch,
+	loaderDeps: ({ search }) => ({ compare: search.compare }),
+	loader: ({ params, deps }) =>
+		Promise.all([params.userId, deps.compare].filter(id => id !== undefined).map(id => viewData({ data: id }))),
 	component: AdminUserPage,
 })
 
 function AdminUserPage() {
 	const t = useTranslations('dash.admin.user')
-	const { email, accounts, history } = Route.useLoaderData()
+	const views = Route.useLoaderData()
 	return (
 		<>
-			<p className='text-sm text-muted-foreground'>
-				{t.rich('viewing', { email, mark: chunks => <span className='text-foreground'>{chunks}</span> })}{' '}
-				<Link to='/admin' className='underline underline-offset-2'>
-					{t('back')}
-				</Link>
-			</p>
+			<Link to='/admin' className='text-sm text-muted-foreground underline underline-offset-2'>
+				{t('back')}
+			</Link>
 			{/* The loader is this page's only feed: a frozen snapshot would read "collector offline" 15 min in. */}
 			<AutoRefresh intervalMs={60_000} />
-			{/* poll off: /api/dashboard answers for the viewer, not this user. */}
-			<Cockpit
-				accounts={accounts}
-				history={history}
-				setup={null}
-				poll={false}
-				notConnected={<p className='text-sm text-muted-foreground'>{t('noUsage')}</p>}
-			/>
+			<div className={views.length > 1 ? 'grid items-start gap-6 lg:grid-cols-2' : undefined}>
+				{views.map(({ id, email, accounts, history }) => (
+					<section key={id} className='flex min-w-0 flex-col gap-4'>
+						<p className='text-sm text-muted-foreground'>
+							{t.rich('viewing', {
+								email,
+								mark: chunks => <span className='text-foreground'>{chunks}</span>,
+							})}
+						</p>
+						{/* poll off: /api/dashboard answers for the viewer, not this user. */}
+						<Cockpit
+							accounts={accounts}
+							history={history}
+							setup={null}
+							poll={false}
+							notConnected={<p className='text-sm text-muted-foreground'>{t('noUsage')}</p>}
+						/>
+					</section>
+				))}
+			</div>
 		</>
 	)
 }

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { desc, eq, inArray, sql } from 'drizzle-orm'
@@ -5,6 +6,7 @@ import { useTranslations } from 'use-intl'
 import { ActionForm } from '@/components/ActionForm'
 import { Badge } from '@/components/arc/badge/badge'
 import { Button, buttonClassName } from '@/components/arc/button/button'
+import { Checkbox } from '@/components/arc/checkbox/checkbox'
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/arc/dialog/dialog'
 import { Input } from '@/components/arc/input/input'
 import { SortableDataTable } from '@/components/arc/sortable-data-table/sortable-data-table'
@@ -114,11 +116,27 @@ function AdminPage() {
 	const t = useTranslations('dash.admin')
 	const tActions = useTranslations('dash.actions')
 	const accounts = Route.useLoaderData()
+	const [picked, setPicked] = useState<string[]>([])
 	return (
 		<>
 			<p className='text-sm text-muted-foreground'>
 				{t('lead', { count: accounts.length, fallback: FREE_DEVICES })}
 			</p>
+			{picked.length > 0 && (
+				<div className='flex items-center gap-3 text-sm'>
+					<span className='text-muted-foreground'>{t('selected', { count: picked.length })}</span>
+					{picked.length === 2 && (
+						<Link
+							to='/admin/$userId'
+							params={{ userId: picked[0] }}
+							search={{ compare: picked[1] }}
+							className={buttonClassName({ size: 'sm' })}
+						>
+							{t('compare')}
+						</Link>
+					)}
+				</div>
+			)}
 			<SortableDataTable
 				rows={accounts}
 				rowKey='id'
@@ -130,6 +148,15 @@ function AdminPage() {
 						sortable: true,
 						render: (_, a) => (
 							<>
+								<Checkbox
+									aria-label={t('select', { email: a.email })}
+									checked={picked.includes(a.id)}
+									disabled={picked.length === 2 && !picked.includes(a.id)}
+									onCheckedChange={on =>
+										setPicked(on ? [...picked, a.id] : picked.filter(id => id !== a.id))
+									}
+									className='mr-2 align-middle'
+								/>
 								<span className='font-medium'>{a.email}</span>
 								{!a.emailVerified && (
 									<Badge tone='warning' size='sm' className='ml-2'>
