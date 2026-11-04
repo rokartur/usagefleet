@@ -147,6 +147,25 @@ describe(oauthLimitsReport, () => {
 		})
 	})
 
+	it("carries Anthropic's weekly split by surface, capped to what the server accepts", () => {
+		const report = oauthLimitsReport({
+			seven_day: { resets_at: '2026-08-21T23:59:59Z', utilization: 15 },
+			seven_day_breakdown: {
+				rows: [
+					{ display_name: 'Claude Code', key: 'claude_code', percent: 99 },
+					{ display_name: '', key: 'chat', percent: 0 },
+					{ display_name: 'x'.repeat(200), key: 'other', percent: 1 },
+					{ display_name: 'No percent', key: 'cowork', percent: null },
+				],
+			},
+		})
+		expect(report?.surfaces).toStrictEqual([
+			{ key: 'claude_code', label: 'Claude Code', pct: 99 },
+			{ key: 'chat', label: 'chat', pct: 0 },
+			{ key: 'other', label: 'x'.repeat(64), pct: 1 },
+		])
+	})
+
 	it('returns null when no account-wide percentage came back, so the cycle is skipped', () => {
 		expect(oauthLimitsReport(null)).toBeNull()
 		expect(oauthLimitsReport({ limits: [] })).toBeNull()

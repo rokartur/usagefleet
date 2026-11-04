@@ -1,0 +1,1 @@
+ALTER TABLE "claude_account" ADD COLUMN "weekly_surfaces" jsonb;

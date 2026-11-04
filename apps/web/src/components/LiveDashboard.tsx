@@ -418,11 +418,67 @@ export function LiveDashboard({
 					))}
 					<Spend dash={dash} />
 				</div>
+				<OutsideCallout dash={dash} now={now} />
 				<GroupList dash={dash} dashes={dashes} />
 			</div>
 		</Section>
 	)
 }
+/** What the meters' grey share was and where to look for it: Anthropic's own
+ *  weekly split by surface, and the collectors on this account that went quiet.
+ *  Quiet needs the viewer's clock, so that row waits for mount (`now` is 0 before). */
+function OutsideCallout({ dash, now }: { dash: DashboardDTO; now: number }) {
+	const t = useTranslations('dash.usage')
+	const session = dash.hasFiveHour ? dash.fiveHourPct - dash.groups.reduce((s, g) => s + g.sessionAccountPct, 0) : 0
+	const week = dash.sevenDayPct - dash.groups.reduce((s, g) => s + g.weeklyAccountPct, 0)
+	if (roundTenth(session) <= 0 && roundTenth(week) <= 0) {
+		return null
+	}
+	const quiet = dash.groups
+		.flatMap(g => g.devices)
+		.filter(d => now > 0 && (d.lastSeenAt === null || now - Date.parse(d.lastSeenAt) > LIMITS_STALE_MS))
+		.toSorted((a, b) => (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''))
+	const points = (n: number) => formatPctNumber(Math.max(0, n))
+	return (
+		<section className='grid min-w-0 grid-cols-1 items-center gap-x-4 gap-y-2.5 rounded-2xl border px-5 py-4 text-xs sm:grid-cols-[10rem_minmax(0,1fr)]'>
+			<h3 className='col-span-full flex items-center gap-2 text-sm font-normal' title={t('outsideHint')}>
+				<span aria-hidden className='size-2 rounded-[2px] bg-(--text-muted)' />
+				{dash.hasFiveHour
+					? t('outsideTitle', { session: points(session), week: points(week) })
+					: t('outsideTitleWeek', { week: points(week) })}
+			</h3>
+			{dash.weeklySurfaces.length > 0 && (
+				<>
+					<span className='text-muted-foreground'>{t('outsideSurfaces')}</span>
+					<ul className='flex flex-wrap gap-1.5'>
+						{dash.weeklySurfaces.map(s => (
+							<li key={s.key}>
+								<Badge size='sm'>
+									{s.label} {formatPct(s.pct)}
+								</Badge>
+							</li>
+						))}
+					</ul>
+				</>
+			)}
+			{quiet.length > 0 && (
+				<>
+					<span className='text-muted-foreground'>{t('outsideQuiet')}</span>
+					<ul className='flex flex-wrap gap-1.5'>
+						{quiet.map(d => (
+							<li key={d.id}>
+								<Badge size='sm'>
+									{d.name} · <RelativeTime date={d.lastSeenAt} />
+								</Badge>
+							</li>
+						))}
+					</ul>
+				</>
+			)}
+		</section>
+	)
+}
+
 /** The pill under the session bar: the moment the limit runs out if it comes
  *  before the reset, otherwise the next full ten on the way. */
 function sessionMark(
