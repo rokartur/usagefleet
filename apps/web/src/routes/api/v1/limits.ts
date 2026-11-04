@@ -52,6 +52,13 @@ const LimitsSchema = type({
 		.array()
 		.atMostLength(16)
 		.or('null'),
+	'surfaces?': type({
+		key: '0 < string <= 64',
+		label: '0 < string <= 64',
+		pct: '0 <= number <= 100',
+	})
+		.array()
+		.atMostLength(16),
 })
 
 /**
@@ -165,6 +172,10 @@ async function POST(req: Request) {
 					resetsAt: toDate(m.resetsAt)?.toISOString() ?? null,
 				})),
 			}),
+		// Same keep-last-good rule: older collectors never send it.
+		...(b.surfaces && {
+			weeklySurfaces: b.surfaces.map(s => ({ key: s.key, label: s.label, pct: s.pct })),
+		}),
 	}
 	// Percentages are Anthropic's and Anthropic reports them per subscription, so
 	// they are stored per account.

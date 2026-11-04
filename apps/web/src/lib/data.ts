@@ -392,7 +392,11 @@ export interface LiveDashboard {
 	modelLimits: LiveModelLimit[]
 	/** Money spent this week (weekly window) and this calendar month. */
 	spend: Spend
+	/** Anthropic's split of the current week by surface; empty when no collector sent it. */
+	weeklySurfaces: WeeklySurface[]
 }
+
+type WeeklySurface = NonNullable<ClaudeAccountRow['weeklySurfaces']>[number]
 
 const HOUR_MS = 60 * 60 * 1000
 const FIVE_H_MS = 5 * HOUR_MS
@@ -819,6 +823,7 @@ async function loadLiveDashboard(
 		sevenDayPct: livePct(acct?.sevenDayPct, sevenDayResetsAt),
 		sevenDayResetsAt,
 		source: (acct?.limitSource as 'sub' | 'api' | null) ?? null,
+		weeklySurfaces: windowExpired(sevenDayResetsAt, now) ? [] : (acct?.weeklySurfaces ?? []),
 	}
 
 	if (!hasLimits) {
@@ -2008,6 +2013,7 @@ export interface DashboardDTO {
 	groups: LiveGroupUsage[]
 	modelLimits: ModelLimitDTO[]
 	spend: Spend
+	weeklySurfaces: WeeklySurface[]
 }
 
 export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
@@ -2038,6 +2044,7 @@ export function toDashboardDTO(d: LiveDashboard): DashboardDTO {
 		sevenDayResetsAt: d.sevenDayResetsAt?.toISOString() ?? null,
 		source: d.source,
 		spend: d.spend,
+		weeklySurfaces: d.weeklySurfaces,
 	}
 }
 

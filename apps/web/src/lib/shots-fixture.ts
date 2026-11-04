@@ -164,6 +164,7 @@ export const dashboard: DashboardDTO = {
 	sevenDayResetsAt: new Date(NOW + 3 * DAY + 9 * HOUR).toISOString(),
 	source: 'sub',
 	spend: { month: spendPeriod(31_400_000, 128.35), week: spendPeriod(6_980_000, 31.62) },
+	weeklySurfaces: [],
 }
 
 /** A past window row: the account percentage split across the three groups. */

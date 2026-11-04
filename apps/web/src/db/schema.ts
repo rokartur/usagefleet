@@ -91,6 +91,9 @@ export const claudeAccounts = pgTable(
 		// list prices stand, which is also the state of every account until it has
 		// enough history. Derived, so it is safe to drop and recompute.
 		calibration: jsonb('calibration').$type<Calibration>(),
+		// Anthropic's split of the weekly window by surface (Claude Code, Chats, ...),
+		// from oauth/usage's `seven_day_breakdown`. Says what the outside-the-fleet share was.
+		weeklySurfaces: jsonb('weekly_surfaces').$type<{ key: string; label: string; pct: number }[]>(),
 		limitsReportedAt: timestamp('limits_reported_at', { withTimezone: true }),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),

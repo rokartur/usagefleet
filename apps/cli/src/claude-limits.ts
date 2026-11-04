@@ -30,6 +30,15 @@ export interface LimitsReport {
 	/** Set only when the plan has no 5h window at all (Ultra), as opposed to a
 	 *  payload that merely dropped it this cycle. */
 	noFiveHourWindow?: true
+	/** Anthropic's own split of the weekly window by surface (Claude Code, Chats,
+	 *  Cowork, Other), from oauth/usage's `seven_day_breakdown`. Absent when not sent. */
+	surfaces?: Surface[]
+}
+
+export interface Surface {
+	key: string
+	label: string
+	pct: number
 }
 
 export function parsePct(v: string | null): number | null {
@@ -258,8 +267,31 @@ export function oauthLimitsReport(body: unknown): LimitsReport | null {
 	if (account.fiveHourPct == null && account.sevenDayPct == null) {
 		return null
 	}
-	const report: LimitsReport = { ...account, modelLimits: parseOauthUsage(body), source: 'sub' }
+	const surfaces = parseSurfaces(body)
+	const report: LimitsReport = {
+		...account,
+		modelLimits: parseOauthUsage(body),
+		source: 'sub',
+		...(surfaces.length > 0 && { surfaces }),
+	}
 	return account.fiveHourPct == null && listsNoSessionLimit(body) ? { ...report, noFiveHourWindow: true } : report
+}
+
+export function parseSurfaces(body: unknown): Surface[] {
+	const rows = (body as { seven_day_breakdown?: { rows?: unknown } } | null)?.seven_day_breakdown?.rows
+	if (!Array.isArray(rows)) {
+		return []
+	}
+	const out: Surface[] = []
+	for (const row of rows as { key?: unknown; display_name?: unknown; percent?: unknown }[]) {
+		const pct = typeof row?.percent === 'number' ? clampPct(row.percent) : null
+		if (typeof row?.key === 'string' && row.key !== '' && pct !== null) {
+			const label = typeof row.display_name === 'string' && row.display_name !== '' ? row.display_name : row.key
+			// Cut to the server's ceilings: an over-long row would get the whole limits post rejected.
+			out.push({ key: row.key.slice(0, 64), label: label.slice(0, 64), pct })
+		}
+	}
+	return out.slice(0, 16)
 }
 
 // Ultra plans have no 5h window. Max lists a `kind: "session"` entry in limits[];
