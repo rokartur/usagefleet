@@ -134,8 +134,6 @@ export interface Store {
 	notifyMode?: NotifyMode
 	/** Utilization % alert thresholds (USAGEFLEET_NOTIFY_THRESHOLDS). */
 	notifyThresholds?: number[]
-	/** false keeps the prompt guard out of Claude Code and pi (USAGEFLEET_HOOK). */
-	hook?: boolean
 	/** false disables self-update while watching (USAGEFLEET_UPDATE). */
 	update?: boolean
 	/** Seconds between update checks (USAGEFLEET_UPDATE_INTERVAL). */

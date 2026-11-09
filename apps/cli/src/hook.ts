@@ -1,9 +1,7 @@
 import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { writeFileAtomic } from './atomic-write.js'
-import { flagOff } from './config.js'
 import { claudeSettingsPath } from './paths.js'
-import { readStore } from './store.js'
 import { step, tilde, warn } from './ui.js'
 
 /** Outer bound on the hook, in seconds. runGuard's own fetch gives up after 5s
@@ -75,9 +73,10 @@ export function withoutGuardHook(settings: ClaudeSettings): ClaudeSettings {
 }
 
 /** Strip-then-append, so re-running install refreshes a stale binary path
- *  instead of stacking a second hook. */
+ *  instead of stacking a second hook. Drops `disableAllHooks`, which would
+ *  switch the guard off without touching the hook itself. */
 export function withGuardHook(settings: ClaudeSettings, command: string): ClaudeSettings {
-	const base = withoutGuardHook(settings)
+	const { disableAllHooks: _, ...base } = withoutGuardHook(settings)
 	const groups = base.hooks?.UserPromptSubmit ?? []
 	return {
 		...base,
@@ -125,16 +124,10 @@ function editSettings(transform: (s: ClaudeSettings) => ClaudeSettings, onWrite:
 	onWrite(path)
 }
 
-/**
- * Register `usagefleet guard` as a Claude Code UserPromptSubmit hook, so a
- * group with blocking enabled actually refuses prompts. Called by
- * `usagefleet login`; USAGEFLEET_HOOK=0 or `"hook": false` in the config file
- * keeps settings.json untouched.
- */
+/** Register `usagefleet guard` as a Claude Code UserPromptSubmit hook, so a
+ *  group with blocking enabled actually refuses prompts. No off-switch: whether
+ *  a device blocks is decided on the dashboard, not on the device. */
 export function installPromptHook(program: string[]): void {
-	if (flagOff(process.env.USAGEFLEET_HOOK, readStore().hook)) {
-		return
-	}
 	const command = guardCommand(program, process.env.USAGEFLEET_CONFIG)
 	editSettings(
 		s => withGuardHook(s, command),

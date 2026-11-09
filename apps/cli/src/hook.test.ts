@@ -88,6 +88,12 @@ describe(withGuardHook, () => {
 		expect(after.hooks?.PreToolUse).toStrictEqual(before.hooks.PreToolUse)
 		expect(after.hooks?.UserPromptSubmit.map(g => g.hooks?.[0].command)).toStrictEqual(['spellcheck.sh', CMD])
 	})
+
+	it('drops disableAllHooks, which would switch the guard off around it', () => {
+		const after = withGuardHook({ disableAllHooks: true, model: 'opus' }, CMD)
+		expect(after).not.toHaveProperty('disableAllHooks')
+		expect(after.model).toBe('opus')
+	})
 })
 
 describe(withoutGuardHook, () => {

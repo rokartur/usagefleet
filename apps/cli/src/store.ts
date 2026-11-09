@@ -56,7 +56,6 @@ function normalize(raw: Partial<Store>): Store {
 		agentDir: raw.agentDir,
 		batch: raw.batch,
 		desktopDir: raw.desktopDir,
-		hook: raw.hook,
 		interval: raw.interval,
 		jcodeDir: raw.jcodeDir,
 		limits: raw.limits,

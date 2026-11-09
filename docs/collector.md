@@ -8,7 +8,7 @@ process per machine. User-facing usage lives in
 
 `index.ts` dispatches: `login` (pairing, interactive setup + autostart),
 `run` (one cycle), `watch` (the daemon loop), `limits` (one limits report),
-`guard` (the prompt hook), `status`, `config` (file path + env reference),
+`guard` (the prompt hook's entrypoint, unadvertised like `watch`), `status`, `config` (file path + env reference),
 `update`, `notify-test`, `uninstall`, `completion` (zsh/fish scripts).
 
 The command list itself lives in `completion.ts` and drives both `help` and the
@@ -192,7 +192,11 @@ the CLI falls back to `osascript`.
 ## Prompt guard
 
 `usagefleet guard` is a Claude Code `UserPromptSubmit` hook, installed into
-`~/.claude/settings.json` by `hook.ts`. It asks
+`~/.claude/settings.json` by `hook.ts`. There is no device-side off-switch:
+whether a device blocks is set on the dashboard. `installGuards()` in
+`service.ts` writes it at `login` and again at the start of every `watch` tick,
+so a deleted hook (or a `disableAllHooks` in that file) is undone within one
+interval; each install skips the write when nothing changed. It asks
 `GET /api/v1/limits`; exit 2 refuses the prompt with the stderr message, exit 0
 lets it through. Nothing is printed on stdout — on this hook stdout is injected
 into the model's context.
@@ -201,8 +205,8 @@ The same guard covers the pi coding agent: `pi-hook.ts` generates a
 self-contained pi extension into `~/.pi/agent/extensions/usagefleet-guard.ts`
 (only when that agent dir already exists) whose `input` handler runs the same
 baked `usagefleet guard` command and refuses the prompt on exit 2. Same
-lifecycle as the Claude hook: written by `login`, refreshed by self-update,
-removed by `uninstall`, skipped with `USAGEFLEET_HOOK=0`.
+lifecycle as the Claude hook: written by `login`, restored by every `watch`
+tick, removed by `uninstall`.
 
 It **fails open** by design: unconfigured, offline, timed out (5s), non-OK
 response, junk JSON, or a server too old to send the fields all return 0. Only an
@@ -228,11 +232,11 @@ keep a window's first `resetsAt` through the jitter, and the cached limits
 reading refreshes its `at` only every 10 minutes while the numbers hold.
 
 Every knob is a top-level file key (`interval`, `limitsInterval`, `batch`,
-`notifications`, `notifyMode`, `notifyThresholds`, `hook`, `update`, `updateInterval`, plus
+`notifications`, `notifyMode`, `notifyThresholds`, `update`, `updateInterval`, plus
 the dirs and `token`) with a matching env var that overrides it:
 `USAGEFLEET_TOKEN`, `_PROJECTS`, `_DESKTOP`, `_PI`, `_JCODE`, `_PJ`, `_BATCH`, `_INTERVAL`,
 `_LIMITS_INTERVAL`, `_UPDATE`, `_UPDATE_INTERVAL`, `_NOTIFY`,
-`_NOTIFY_MODE`, `_NOTIFY_THRESHOLDS`, `_HOOK`. Resolution is env → file → default
+`_NOTIFY_MODE`, `_NOTIFY_THRESHOLDS`. Resolution is env → file → default
 (`positiveNumber`/`flagOff` in `config.ts`); `normalize()` in `store.ts` must
 list each key or the next rewrite drops it (tripwire test in `store.test.ts`).
 

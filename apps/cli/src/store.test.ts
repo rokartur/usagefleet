@@ -97,7 +97,6 @@ describe('store', () => {
 		const path = join(mkdtempSync(join(tmpdir(), 'uf-store-')), 'config.json')
 		const settings = {
 			batch: 200,
-			hook: false,
 			interval: 30,
 			limitsInterval: 120,
 			notifications: false,

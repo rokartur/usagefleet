@@ -56,7 +56,6 @@ usagefleet status         # service health, last limits reading, resolved config
 usagefleet run            # one scan: upload usage + report limits
 usagefleet watch          # poll continuously (what the service runs)
 usagefleet limits         # report ONLY your real 5h/weekly limit usage
-usagefleet guard          # exit 2 if this device's group is over a blocking limit
 usagefleet notify-test    # fire a sample desktop notification
 usagefleet update         # upgrade now (it also self-updates every 6h)
 usagefleet config         # config file location + every env override
@@ -127,9 +126,11 @@ A group can be set to **refuse new prompts** once it has burned its budget slice
 page, both off by default. Per-model limits (e.g. a model's weekly cap) follow
 the switch of their window. Each device also has its own blocking toggle on the
 Fleet page: switched off, that machine is never refused, whatever its group
-says. `usagefleet login` registers a Claude Code `UserPromptSubmit` hook in
-`~/.claude/settings.json` (removed by `uninstall`, refreshed rather than stacked
-on re-install, and skipped entirely with `USAGEFLEET_HOOK=0`):
+says. Blocking is switched only on the dashboard: the device has no setting for
+it. `usagefleet login` registers a Claude Code `UserPromptSubmit` hook in
+`~/.claude/settings.json`, and the running collector restores it on every cycle
+if it goes missing (it also drops a `disableAllHooks` there). Only `uninstall`
+removes it:
 
 ```json
 {
@@ -143,8 +144,8 @@ on re-install, and skipped entirely with `USAGEFLEET_HOOK=0`):
 
 If the pi coding agent is on the machine (`~/.pi/agent` exists), `login` also
 writes a pi extension — `~/.pi/agent/extensions/usagefleet-guard.ts` — that runs
-the same guard before every pi prompt. Same lifecycle: refreshed on re-install,
-removed by `uninstall`, skipped with `USAGEFLEET_HOOK=0`.
+the same guard before every pi prompt. Same lifecycle: restored by the running
+collector, removed by `uninstall`.
 
 If `USAGEFLEET_CONFIG` was set when you logged in, the installed command carries
 it (`USAGEFLEET_CONFIG=<path> usagefleet guard`, or `set "..." && ...` on
@@ -183,7 +184,6 @@ it (`usagefleet config` prints this same table):
 | `batch` | `USAGEFLEET_BATCH` | records per upload (default 100, server caps at 1000) |
 | `update` | `USAGEFLEET_UPDATE` | `false`/`0` turns the self-update check off |
 | `updateInterval` | `USAGEFLEET_UPDATE_INTERVAL` | seconds between update checks (default `21600` = 6h) |
-| `hook` | `USAGEFLEET_HOOK` | `false`/`0` keeps the prompt-blocking guard out of Claude Code and pi |
 | — | `USAGEFLEET_CONFIG` | override the config file path (env only — it locates the file) |
 | — | `CLAUDE_CONFIG_DIR` | Claude Code's own knob: which login to watch (default `~/.claude`) |
 

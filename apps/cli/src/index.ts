@@ -11,7 +11,7 @@ import { sendNotification } from './notify.js'
 import { detectOs } from './os.js'
 import { RELEASE_VERSION } from './release.js'
 import type { DirCache } from './scanner.js'
-import { isServiceProcess, serviceStatus } from './service.js'
+import { installGuards, isServiceProcess, serviceStatus } from './service.js'
 import type { ServiceStatus } from './service.js'
 import { readStore, storePath, updateStore } from './store.js'
 import {
@@ -146,6 +146,7 @@ async function cmdWatch(): Promise<void> {
 		}
 		running = true
 		try {
+			installGuards()
 			const r = await runOnce(cfg, stream, dirCache, tokenOwners)
 			// Dropped records are real data loss, so they must show up even in a
 			// cycle that uploaded nothing.
@@ -372,7 +373,6 @@ function cmdConfig(): void {
 		['notifications', 'USAGEFLEET_NOTIFY', 'desktop notifications (false/0 disables)'],
 		['notifyMode', 'USAGEFLEET_NOTIFY_MODE', 'alert preset: off | quiet | standard | steady | critical'],
 		['notifyThresholds', 'USAGEFLEET_NOTIFY_THRESHOLDS', '% alerts · array; env comma list (replaces the preset)'],
-		['hook', 'USAGEFLEET_HOOK', 'register the prompt guard on install (false/0 skips)'],
 		['update', 'USAGEFLEET_UPDATE', 'self-update while watching (false/0 disables)'],
 		['updateInterval', 'USAGEFLEET_UPDATE_INTERVAL', 'seconds between update checks (default 21600)'],
 		['—', 'USAGEFLEET_CONFIG', 'relocate the config file (env only — it locates the file)'],

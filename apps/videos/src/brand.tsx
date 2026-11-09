@@ -20,7 +20,7 @@ export const BRAND: Brand = {
 		'Anthropic supplies the account-level 5-hour and weekly utilization; UsageFleet attributes it across reporting groups.',
 		'Raw token and cost history can be split by device.',
 		'One subscription used on many machines; a device counts against the account it is signed into.',
-		'Alert at a chosen percentage; `usagefleet guard` blocks prompts at 100% and fails open when offline.',
+		'Alert at a chosen percentage; the prompt guard blocks prompts at 100% and fails open when offline.',
 		'Collector is two commands to install; it self-updates.',
 		'No prompts, responses, file contents or Claude credentials are uploaded.',
 	],

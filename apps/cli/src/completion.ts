@@ -9,12 +9,12 @@ import { writeFileAtomic } from './atomic-write.js'
  *
  *  `watch` is deliberately absent: it is the entrypoint the installed service
  *  runs, not something to type. It still dispatches — every plist and unit on
- *  disk names it — it just isn't advertised. So are `install`/`init`, the former
+ *  disk names it — it just isn't advertised. Nor is `guard`, the entrypoint the
+ *  prompt hooks run; blocking is switched on the dashboard. So are `install`/`init`, the former
  *  names of `login`, kept dispatching for commands already pasted into scripts. */
 export const commands: readonly { name: string; args?: string; meaning: string }[] = [
 	{ name: 'run', meaning: 'scan once, upload usage + report limits' },
 	{ name: 'limits', meaning: 'report only your real 5h/weekly usage' },
-	{ name: 'guard', meaning: 'exit 2 when the group is over a blocking limit' },
 	{ name: 'update', meaning: 'update to the latest release now' },
 	{ name: 'notify-test', meaning: 'fire a test desktop notification' },
 	{ name: 'status', meaning: 'service health, limits, resolved config' },
@@ -30,7 +30,7 @@ export type Shell = (typeof shells)[number]
 /** Everything `main` dispatches, advertised or not — the pool a mistyped command
  *  is matched against. Kept next to `commands` so a new case in the switch has
  *  one obvious place to be listed. */
-const dispatchable = [...commands.map(c => c.name), 'watch', 'install', 'init', 'help']
+const dispatchable = [...commands.map(c => c.name), 'watch', 'guard', 'install', 'init', 'help']
 
 /** The command a typo probably meant, or undefined when nothing is close enough
  *  to guess: `statu` → `status`, `frobnicate` → nothing. */

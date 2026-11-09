@@ -25,10 +25,8 @@ describe(installPiGuard, () => {
 	let agentDir: string
 	beforeEach(() => {
 		agentDir = mkdtempSync(join(tmpdir(), 'uf-pi-'))
-		// Isolate from this machine's real config file and shell: the installer
-		// consults readStore() and USAGEFLEET_HOOK for the hook off-switch.
+		// A shell's USAGEFLEET_CONFIG would otherwise be baked into the extension.
 		vi.stubEnv('USAGEFLEET_CONFIG', join(agentDir, 'store.json'))
-		vi.stubEnv('USAGEFLEET_HOOK', '')
 		vi.spyOn(console, 'log').mockImplementation(() => {})
 	})
 	afterEach(() => {
@@ -53,18 +51,8 @@ describe(installPiGuard, () => {
 		expect(existsSync(absent)).toBeFalsy()
 	})
 
-	it('honours USAGEFLEET_HOOK=0, same switch as the Claude hook', () => {
-		vi.stubEnv('USAGEFLEET_HOOK', '0')
-		installPiGuard(PROG, agentDir)
-		expect(existsSync(piGuardPath(agentDir))).toBeFalsy()
-	})
-
-	it('honours `"hook": false` in the config file, env winning', () => {
+	it('ignores a leftover `"hook": false`, since blocking is the dashboard\'s call', () => {
 		writeFileSync(join(agentDir, 'store.json'), JSON.stringify({ hook: false }))
-		installPiGuard(PROG, agentDir)
-		expect(existsSync(piGuardPath(agentDir))).toBeFalsy()
-
-		vi.stubEnv('USAGEFLEET_HOOK', '1')
 		installPiGuard(PROG, agentDir)
 		expect(existsSync(piGuardPath(agentDir))).toBeTruthy()
 	})

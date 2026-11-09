@@ -67,7 +67,7 @@ export function positiveNumber(env?: string, fromFile?: number): number | null {
 	return null
 }
 
-/** The off-switches (hook, update, notifications): an env value wins when
+/** The off-switches (update, notifications): an env value wins when
  *  present — 0/false/off/no disable, anything else enables — otherwise `false`
  *  under the config-file key disables. */
 export function flagOff(env?: string, fromFile?: boolean): boolean {

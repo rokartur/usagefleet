@@ -77,8 +77,9 @@ time; the free plan keeps working.
 - **Alerts** — desktop notification the first time a window crosses a threshold,
   with a mode per device: quiet (95), standard (80 / 95), steady (every 10) or
   critical (80, 90, 95..99, then every 0.1).
-- **Guard** — `usagefleet guard` is a Claude Code hook that refuses new prompts
-  once a group is over a window it blocks on. Fails open on any problem.
+- **Guard** — a Claude Code and pi prompt hook, kept installed by the collector,
+  that refuses new prompts once a group is over a window it blocks on. Switched
+  on the dashboard only. Fails open on any problem.
 - **Spend** — cost estimate per window, group and model, from published pricing.
 - **History** — past 5-hour blocks and weeks.
 

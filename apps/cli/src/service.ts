@@ -137,6 +137,16 @@ function programArgs(): string[] {
 	return [stableNodePath(process.execPath), '--max-semi-space-size=1', script as string, 'watch']
 }
 
+/** Write the Claude Code hook and the pi extension, or restore whichever went
+ *  missing: `login` calls it once and every `watch` tick again, so a removed
+ *  guard is back within one interval. Same binary, different entry point: the
+ *  service watches, the hooks run the unadvertised `guard` command. */
+export function installGuards(): void {
+	const guardProg = [...programArgs().slice(0, -1), 'guard']
+	installPromptHook(guardProg)
+	installPiGuard(guardProg)
+}
+
 function macPlistPath(): string {
 	return join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`)
 }
@@ -321,12 +331,7 @@ export function install(): void {
 		console.log(warn('path', `another usagefleet runs first · rm ${tilde(shadow)}`))
 	}
 	const env = presentEnv()
-
-	// Same binary, different entry point: the service watches, the hooks enforce.
-	// `prog` ends in "watch"; everything before it is how to launch this build.
-	const guardProg = [...prog.slice(0, -1), 'guard']
-	installPromptHook(guardProg)
-	installPiGuard(guardProg)
+	installGuards()
 
 	if (process.platform === 'darwin') {
 		const envXml = env.map(([k, v]) => `    <key>${xml(k)}</key><string>${xml(v)}</string>`).join('\n')
