@@ -61,6 +61,7 @@ function ColorField({ selected }: { selected?: string }) {
 export function GroupFormDialog({
 	group,
 	atCap = false,
+	enforced = false,
 }: {
 	group?: {
 		id: string
@@ -72,6 +73,8 @@ export function GroupFormDialog({
 		watchOnly: boolean
 	}
 	atCap?: boolean
+	/** An admin enforced blocking on this account: the switches, weight and watch-only read enforced and stay locked. */
+	enforced?: boolean
 }) {
 	const t = useTranslations('dash.groups')
 	const tActions = useTranslations('dash.actions')
@@ -138,6 +141,7 @@ export function GroupFormDialog({
 						placeholder={t('namePlaceholder')}
 					/>
 					<ColorField selected={group?.color} />
+					{enforced && <p className='text-sm text-warning'>{t('enforcedHint')}</p>}
 					<div>
 						<NumberField
 							label={t('sliceWeight')}
@@ -147,6 +151,7 @@ export function GroupFormDialog({
 							min={1}
 							max={100}
 							locale={locale}
+							disabled={enforced}
 						/>
 						<input type='hidden' name='sliceWeight' value={sliceWeight} />
 					</div>
@@ -155,6 +160,7 @@ export function GroupFormDialog({
 						label={t('watchOnly')}
 						description={t('watchOnlyDescription')}
 						defaultChecked={group?.watchOnly}
+						disabled={enforced}
 					/>
 					<fieldset className='grid gap-3'>
 						<legend className='mb-2 text-sm font-medium'>{t('blocking')}</legend>
@@ -162,13 +168,15 @@ export function GroupFormDialog({
 							name='blockOnSessionLimit'
 							label={t('blockSession')}
 							description={t('blockSessionDescription')}
-							defaultChecked={group?.blockOnSessionLimit}
+							defaultChecked={enforced || group?.blockOnSessionLimit}
+							disabled={enforced}
 						/>
 						<Checkbox
 							name='blockOnWeeklyLimit'
 							label={t('blockWeekly')}
 							description={t('blockWeeklyDescription')}
-							defaultChecked={group?.blockOnWeeklyLimit}
+							defaultChecked={enforced || group?.blockOnWeeklyLimit}
+							disabled={enforced}
 						/>
 						<p className='text-sm text-muted-foreground'>
 							{t.rich('blockingHint', { cmd: chunks => <code>{chunks}</code> })}

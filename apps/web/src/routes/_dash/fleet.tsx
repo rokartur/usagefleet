@@ -19,7 +19,14 @@ import { GroupFormDialog } from '@/components/groups/GroupFormDialog'
 import { RelativeTime } from '@/components/RelativeTime'
 import { deleteGroup } from '@/lib/actions'
 import { accountPlan } from '@/lib/billing'
-import { backfillUngroupedDevices, listDevices, listGroups, slottedGroups } from '@/lib/data'
+import {
+	backfillUngroupedDevices,
+	enforceGroup,
+	ensureSettings,
+	listDevices,
+	listGroups,
+	slottedGroups,
+} from '@/lib/data'
 import { OS_LABEL } from '@/lib/format'
 import { planLabel } from '@/lib/plans'
 import { requireUser } from '@/lib/session'
@@ -28,7 +35,15 @@ const fleetData = createServerFn().handler(async () => {
 	const user = await requireUser()
 	// Enforce the "every device is grouped" invariant before listing.
 	await backfillUngroupedDevices(user.id)
-	const [devices, groups, plan] = await Promise.all([listDevices(user.id), listGroups(user.id), accountPlan(user.id)])
+	const [devices, storedGroups, plan, settings] = await Promise.all([
+		listDevices(user.id),
+		listGroups(user.id),
+		accountPlan(user.id),
+		ensureSettings(user.id),
+	])
+	// An admin enforced blocking: show every group and device the way the split and GET /api/v1/limits read them.
+	const enforced = settings.enforcedBlocking
+	const groups = enforced ? storedGroups.map(g => enforceGroup(g)) : storedGroups
 	// Groups with a live device on an account split that account by weight. Stated
 	// only when every account splits the same way, otherwise the dashboard names the
 	// slice per account and one number here would contradict it.
@@ -40,7 +55,8 @@ const fleetData = createServerFn().handler(async () => {
 		shares.add(groups.filter(g => slotted.has(g.id)).reduce((parts, g) => parts + g.sliceWeight, 0))
 	}
 	return {
-		devices,
+		devices: enforced ? devices.map(d => ({ ...d, blockingEnabled: true })) : devices,
+		enforced,
 		groups,
 		plan,
 		sliceShare: shares.size <= 1 ? Math.max(1, ...shares) : null,
@@ -57,7 +73,7 @@ export const Route = createFileRoute('/_dash/fleet')({
 function FleetPage() {
 	const t = useTranslations('dash.devices')
 	const tGroups = useTranslations('dash.groups')
-	const { devices, groups, plan, sliceShare } = Route.useLoaderData()
+	const { devices, enforced, groups, plan, sliceShare } = Route.useLoaderData()
 	const [showRevoked, setShowRevoked] = useState(false)
 	// Revoked devices don't hold a slot — must match createDevice's count.
 	const activeDevices = devices.filter(d => !d.revoked)
@@ -124,6 +140,7 @@ function FleetPage() {
 						</span>
 					)}
 					{groupsAtCap && !atCap && <span className='text-warning'>{tGroups('atCap')}</span>}
+					{enforced && <span className='text-warning'>{tGroups('enforced')}</span>}
 				</p>
 				<div className='flex items-center gap-2'>
 					{devices.length > active && (
@@ -131,7 +148,7 @@ function FleetPage() {
 							{t(showRevoked ? 'hideRevoked' : 'showRevoked', { count: devices.length - active })}
 						</Button>
 					)}
-					<GroupFormDialog atCap={groupsAtCap} />
+					<GroupFormDialog atCap={groupsAtCap} enforced={enforced} />
 					<AddDeviceForm groups={groupOptions} atCap={atCap} />
 				</div>
 			</div>
@@ -182,6 +199,7 @@ function FleetPage() {
 										sliceWeight: g.sliceWeight,
 										watchOnly: g.watchOnly,
 									}}
+									enforced={enforced}
 								/>
 								<ConfirmAction
 									action={deleteGroup}
@@ -246,6 +264,7 @@ function FleetPage() {
 											deviceId={d.id}
 											deviceName={d.name}
 											enabled={d.blockingEnabled}
+											disabled={enforced}
 										/>
 									)}
 									{!d.revoked && (

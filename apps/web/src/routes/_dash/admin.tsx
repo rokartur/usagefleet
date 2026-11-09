@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { desc, eq, inArray, sql } from 'drizzle-orm'
@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/arc/checkbox/checkbox'
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/arc/dialog/dialog'
 import { Input } from '@/components/arc/input/input'
 import { SortableDataTable } from '@/components/arc/sortable-data-table/sortable-data-table'
+import { Switch } from '@/components/arc/switch/switch'
 import { RelativeTime } from '@/components/RelativeTime'
 import { db } from '@/db'
 import { devices, subscription, user, userSettings } from '@/db/schema'
@@ -35,6 +36,7 @@ const adminData = createServerFn().handler(async () => {
 				createdAt: user.createdAt,
 				email: user.email,
 				emailVerified: user.emailVerified,
+				enforcedBlocking: userSettings.enforcedBlocking,
 				freeDeviceLimit: userSettings.freeDeviceLimit,
 				id: user.id,
 				username: user.displayUsername,
@@ -74,6 +76,8 @@ const adminData = createServerFn().handler(async () => {
 			// Mirrors assertDeletable() so the button only shows where it can work.
 			deletable: plan === 'free' && !isAdminEmail(a.email),
 			deviceLimit: plan === 'free' ? (a.freeDeviceLimit ?? FREE_DEVICES) : planDevices(plan, sub?.seats ?? null),
+			// Null when the account never saved a settings row.
+			enforcedBlocking: a.enforcedBlocking ?? false,
 			plan,
 		}
 	})
@@ -89,6 +93,19 @@ const setFreeDeviceLimit = createServerFn({ method: 'POST' })
 		const limit = parseFreeDeviceLimit(String(formData.get('freeDeviceLimit') ?? ''))
 		await ensureSettings(userId)
 		await db.update(userSettings).set({ freeDeviceLimit: limit }).where(eq(userSettings.userId, userId))
+	})
+
+/** Pin the prompt guard on for one account; see `userSettings.enforcedBlocking`. */
+const setEnforcedBlocking = createServerFn({ method: 'POST' })
+	.inputValidator((formData: FormData) => formData)
+	.handler(async ({ data: formData }) => {
+		await requireAdmin()
+		const userId = String(formData.get('userId'))
+		await ensureSettings(userId)
+		await db
+			.update(userSettings)
+			.set({ enforcedBlocking: formData.get('enforcedBlocking') === 'on' })
+			.where(eq(userSettings.userId, userId))
 	})
 
 const deleteUser = createServerFn({ method: 'POST' })
@@ -230,6 +247,13 @@ function AdminPage() {
 						),
 					},
 					{
+						key: 'enforcedBlocking',
+						label: t('enforcedBlocking'),
+						render: (_, a) => (
+							<EnforcedBlockingToggle userId={a.id} email={a.email} enforced={a.enforcedBlocking} />
+						),
+					},
+					{
 						key: 'actions',
 						label: '',
 						render: (_, a) => (
@@ -275,5 +299,33 @@ function AdminPage() {
 				]}
 			/>
 		</>
+	)
+}
+
+/** Saves on change, like the devices page's blocking toggle. */
+function EnforcedBlockingToggle({ userId, email, enforced }: { userId: string; email: string; enforced: boolean }) {
+	const t = useTranslations('dash.admin')
+	const form = useRef<HTMLFormElement>(null)
+	const [checked, setChecked] = useState(enforced)
+
+	// Submit after the state lands in the hidden input.
+	useEffect(() => {
+		if (checked !== enforced) {
+			form.current?.requestSubmit()
+		}
+	}, [checked, enforced])
+
+	return (
+		<ActionForm
+			ref={form}
+			action={setEnforcedBlocking}
+			loadingMessage={t('updating', { email })}
+			successMessage={t('updated', { email })}
+			errorMessage={t('updateFailed', { email })}
+		>
+			<input type='hidden' name='userId' value={userId} />
+			{checked && <input type='hidden' name='enforcedBlocking' value='on' />}
+			<Switch checked={checked} onCheckedChange={setChecked} aria-label={t('enforcedBlockingLabel', { email })} />
+		</ActionForm>
 	)
 }

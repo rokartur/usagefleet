@@ -72,6 +72,7 @@ const ROW_TOTAL = sql`(${usageEvents.inputTokens}::bigint + ${usageEvents.output
  *  `freeDeviceLimit` is absent on purpose: billing.ts and the admin panel read it
  *  with their own narrow selects. */
 const SETTINGS_COLS = {
+	enforcedBlocking: userSettings.enforcedBlocking,
 	userId: userSettings.userId,
 	weekResetHourUtc: userSettings.weekResetHourUtc,
 	weekResetWeekday: userSettings.weekResetWeekday,
@@ -1082,7 +1083,7 @@ function limitWindows(acct: ClaudeAccountRow, now: Date) {
 function loadSharedRows(userId: string, earliest: Date, monthStart: Date) {
 	return Promise.all([
 		loadRecentEvents(userId, earliest),
-		db.select().from(groups).where(eq(groups.ownerId, userId)),
+		loadSplitGroups(userId),
 		loadDailyAggregates(userId, monthStart),
 		db
 			.select({
@@ -1141,6 +1142,50 @@ export interface GroupBlock {
 	resetsAt: Date | null
 }
 
+interface BlockSwitches {
+	blockOnSessionLimit: boolean
+	blockOnWeeklyLimit: boolean
+}
+
+/**
+ * The switches the guard applies to one device, or null when it never blocks. An
+ * admin's `enforcedBlocking` turns both on for every device of the account;
+ * otherwise the device's own toggle gates its group's switches.
+ */
+export function guardSwitches(
+	enforced: boolean,
+	blockingEnabled: boolean,
+	group?: BlockSwitches,
+): BlockSwitches | null {
+	if (enforced) {
+		return { blockOnSessionLimit: true, blockOnWeeklyLimit: true }
+	}
+	return blockingEnabled && group ? group : null
+}
+
+/**
+ * A group as an account under an admin's `enforcedBlocking` runs it: both
+ * windows block, on an equal slice without watch-only, so the owner can neither
+ * switch the guard off nor widen a group's budget past it. Applied on read, so
+ * the stored values come back once the admin lifts it.
+ */
+export function enforceGroup<G extends BlockSwitches & { sliceWeight: number; watchOnly: boolean }>(group: G): G {
+	return { ...group, blockOnSessionLimit: true, blockOnWeeklyLimit: true, sliceWeight: 1, watchOnly: false }
+}
+
+/** The user's groups as every split reads them. Live cards, frozen windows and
+ *  the past-windows card all load through here, so they agree on the slices. */
+async function loadSplitGroups(userId: string) {
+	const [rows, [settings]] = await Promise.all([
+		db.select().from(groups).where(eq(groups.ownerId, userId)),
+		db
+			.select({ enforcedBlocking: userSettings.enforcedBlocking })
+			.from(userSettings)
+			.where(eq(userSettings.userId, userId)),
+	])
+	return settings?.enforcedBlocking ? rows.map(g => enforceGroup(g)) : rows
+}
+
 /**
  * The limit that keeps a group's prompts refused, or null. Per-model limits obey
  * the switch of their window: 5h the session one, any other the weekly one.
@@ -1155,7 +1200,7 @@ export function groupBlock(
 		})[]
 	},
 	groupId: string | null,
-	switches: { blockOnSessionLimit: boolean; blockOnWeeklyLimit: boolean },
+	switches: BlockSwitches,
 ): GroupBlock | null {
 	const usage = dash.groups.find(g => g.groupId === groupId)
 	const limits: GroupBlock[] = [
@@ -1553,7 +1598,7 @@ export async function freezeClosedWindows(
 	const absorbsUnstamped = views.some(v => v.account?.id === account.id && v.absorbsUnstamped)
 	const view = { absorbsUnstamped, account }
 	const [groupRows, deviceRows, points, events] = await Promise.all([
-		db.select().from(groups).where(eq(groups.ownerId, account.userId)),
+		loadSplitGroups(account.userId),
 		db
 			.select({ claudeAccountId: devices.claudeAccountId, groupId: devices.groupId, revoked: devices.revoked })
 			.from(devices)
@@ -1759,7 +1804,7 @@ export async function getWindowHistory(view: AccountView, now: Date): Promise<Wi
 
 	await refreshPrices()
 	const [groupRows, deviceRows, sessionRows, weekRows] = await Promise.all([
-		db.select().from(groups).where(eq(groups.ownerId, userId)),
+		loadSplitGroups(userId),
 		db
 			.select({ claudeAccountId: devices.claudeAccountId, groupId: devices.groupId, revoked: devices.revoked })
 			.from(devices)

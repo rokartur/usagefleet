@@ -3,13 +3,14 @@ import { createFileRoute } from '@tanstack/react-router'
 import { type } from 'arktype'
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '@/db'
-import { claudeAccounts, devices, groups } from '@/db/schema'
+import { claudeAccounts, devices, groups, userSettings } from '@/db/schema'
 import { deviceWithinPlan, overPlanLimit } from '@/lib/billing'
 import {
 	dashboardForDevice,
 	freezeClosedWindows,
 	getLiveDashboards,
 	groupBlock,
+	guardSwitches,
 	recalibrateAccount,
 	recordLimitChangePoint,
 	recordLimitSample,
@@ -83,7 +84,7 @@ async function GET(req: Request) {
 
 	// Owner-scoped so a stray cross-tenant groupId can never read another
 	// account's switches.
-	const [dashboards, group] = await Promise.all([
+	const [dashboards, group, settings] = await Promise.all([
 		getLiveDashboards(device.userId),
 		device.groupId
 			? db
@@ -96,6 +97,12 @@ async function GET(req: Request) {
 					.limit(1)
 					.then(r => r[0])
 			: undefined,
+		db
+			.select({ enforcedBlocking: userSettings.enforcedBlocking })
+			.from(userSettings)
+			.where(eq(userSettings.userId, device.userId))
+			.limit(1)
+			.then(r => r[0]),
 	])
 	// A device is measured against the subscription it is signed into.
 	const dash = dashboardForDevice(dashboards, device.claudeAccountId)
@@ -107,12 +114,13 @@ async function GET(req: Request) {
 	// why a frozen percentage would otherwise refuse prompts forever.
 	const fresh = dash.reportedAt !== null && Date.now() - dash.reportedAt.getTime() <= LIMITS_STALE_MS
 
-	// Per-group enforcement switches, gated by the device's own blocking toggle
-	// — a machine switched off on the devices page is never refused, whatever
-	// its group says. Every limit is measured against the group's budget
-	// slice, so 100% means "ate my share", not "the account is out" — a group
-	// only blocks itself, never its siblings.
-	const block = fresh && device.blockingEnabled && group ? groupBlock(dash, device.groupId, group) : null
+	// The device's own toggle gates its group's switches — a machine switched off
+	// on the devices page is never refused, whatever its group says — unless an
+	// admin enforced blocking on the account (guardSwitches). Every limit is
+	// measured against the group's budget slice, so 100% means "ate my share",
+	// not "the account is out" — a group only blocks itself, never its siblings.
+	const switches = guardSwitches(settings?.enforcedBlocking ?? false, device.blockingEnabled, group)
+	const block = fresh && switches ? groupBlock(dash, device.groupId, switches) : null
 
 	return Response.json(
 		{

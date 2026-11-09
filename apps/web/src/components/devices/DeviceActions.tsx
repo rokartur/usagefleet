@@ -62,10 +62,12 @@ export function DeviceBlockingToggle({
 	deviceId,
 	deviceName,
 	enabled,
+	disabled = false,
 }: {
 	deviceId: string
 	deviceName: string
 	enabled: boolean
+	disabled?: boolean
 }) {
 	const t = useTranslations('dash.devices')
 	const form = useRef<HTMLFormElement>(null)
@@ -94,6 +96,7 @@ export function DeviceBlockingToggle({
 				<Switch
 					checked={checked}
 					onCheckedChange={setChecked}
+					disabled={disabled}
 					aria-label={t('blockingLabel', { name: deviceName })}
 				/>
 			</span>

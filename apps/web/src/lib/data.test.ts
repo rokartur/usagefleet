@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
 	buildPastWindows,
+	enforceGroup,
 	frozenSplit,
 	groupBlock,
 	groupBudgetPct,
+	guardSwitches,
 	shouldRecordPoint,
 	slottedGroups,
 	splitByShare,
@@ -650,5 +652,43 @@ describe(groupBlock, () => {
 
 	it('leaves a group under every slice alone', () => {
 		expect(groupBlock(dash(99, 99, 99), 'a', both)).toBeNull()
+	})
+})
+
+describe(guardSwitches, () => {
+	const off = { blockOnSessionLimit: false, blockOnWeeklyLimit: false }
+	const both = { blockOnSessionLimit: true, blockOnWeeklyLimit: true }
+
+	it('turns both windows on for an enforced account, whatever the device and group say', () => {
+		expect(guardSwitches(true, false, off)).toStrictEqual(both)
+		expect(guardSwitches(true, false)).toStrictEqual(both)
+	})
+
+	it("otherwise lets the device toggle gate its group's switches", () => {
+		expect(guardSwitches(false, false, both)).toBeNull()
+		expect(guardSwitches(false, true, off)).toBe(off)
+		expect(guardSwitches(false, true)).toBeNull()
+	})
+})
+
+describe(enforceGroup, () => {
+	it('takes a heavy or watch-only group back to an equal blocking slice', () => {
+		const stored = [
+			{ blockOnSessionLimit: false, blockOnWeeklyLimit: false, id: 'heavy', sliceWeight: 6, watchOnly: false },
+			{ blockOnSessionLimit: false, blockOnWeeklyLimit: true, id: 'watch', sliceWeight: 1, watchOnly: true },
+		]
+		const onAccount = [
+			{ groupId: 'heavy', revoked: false },
+			{ groupId: 'watch', revoked: false },
+		]
+		const enforced = stored.map(g => enforceGroup(g))
+		expect(slottedGroups(onAccount, enforced)).toStrictEqual(
+			new Map([
+				['heavy', 0.5],
+				['watch', 0.5],
+			]),
+		)
+		expect(enforced.every(g => g.blockOnSessionLimit && g.blockOnWeeklyLimit)).toBeTruthy()
+		expect(stored[0]?.sliceWeight).toBe(6)
 	})
 })

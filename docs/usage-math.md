@@ -218,6 +218,11 @@ Deliberately uncapped: past 100% that group is eating another's slice, which is
 the thing worth seeing. Rounding happens once, at the end — rounding the share
 first would multiply the error by 1/slice.
 
+An account under an admin's `enforced_blocking` reads every group at weight 1 and
+not watch-only, whatever is stored (`enforceGroup()`), so the owner cannot dodge
+the guard with a heavy or watch-only group. Every split loads its groups through
+`loadSplitGroups()` for that; a new one reading `groups` directly would bypass it.
+
 The group table also carries the plain cost-share figure (“by cost”) beside the
 attributed one whenever the two disagree — the same split as if the account had
 no change points, kept visible as a second opinion on the attribution.

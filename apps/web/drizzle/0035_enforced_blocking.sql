@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN IF NOT EXISTS "enforced_blocking" boolean DEFAULT false NOT NULL;

@@ -6,7 +6,7 @@ import { createTranslator } from 'use-intl'
 import { db } from '@/db'
 import { devices, groups, projectMerges } from '@/db/schema'
 import { accountPlan } from '@/lib/billing'
-import { ensureDefaultGroup } from '@/lib/data'
+import { ensureDefaultGroup, ensureSettings } from '@/lib/data'
 import { generateDeviceToken } from '@/lib/device-token'
 import { detectLocale } from '@/lib/i18n'
 import { isNotifyMode } from '@/lib/notify-modes'
@@ -100,22 +100,25 @@ export const updateGroup = createServerFn({ method: 'POST' })
 		const user = await requireUser()
 		const id = String(formData.get('id'))
 		const color = safeColor(String(formData.get('color') ?? '#6366f1'))
-		// Unchecked boxes aren't submitted, so absence is the "off" signal — the
-		// dialog always posts every checkbox.
+		const { enforcedBlocking } = await ensureSettings(user.id)
+		// Unchecked boxes aren't submitted, so absence is the "off" signal. Under enforced
+		// blocking the dialog locks and posts none of them: the stored ones wait for the lift.
 		const set: {
-			blockOnSessionLimit: boolean
-			blockOnWeeklyLimit: boolean
+			blockOnSessionLimit?: boolean
+			blockOnWeeklyLimit?: boolean
 			color: string
 			name?: string
-			sliceWeight: number
-			watchOnly: boolean
-		} = {
-			blockOnSessionLimit: formData.has('blockOnSessionLimit'),
-			blockOnWeeklyLimit: formData.has('blockOnWeeklyLimit'),
-			color,
-			sliceWeight: sliceWeight(formData.get('sliceWeight')),
-			watchOnly: formData.has('watchOnly'),
-		}
+			sliceWeight?: number
+			watchOnly?: boolean
+		} = enforcedBlocking
+			? { color }
+			: {
+					blockOnSessionLimit: formData.has('blockOnSessionLimit'),
+					blockOnWeeklyLimit: formData.has('blockOnWeeklyLimit'),
+					color,
+					sliceWeight: sliceWeight(formData.get('sliceWeight')),
+					watchOnly: formData.has('watchOnly'),
+				}
 		// An absent field and a blank one mean the same thing here: leave the stored
 		// name alone.
 		const name = safeName(formData.get('name'))

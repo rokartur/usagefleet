@@ -83,7 +83,10 @@ Data access is layered so pages stay thin:
   `(user_id, ts)` and `(device_id, ts)`. Never aggregate without folding.
 - `user_settings` — plan preset, token limits, week reset weekday/hour (a grid
   fallback for the past-windows card only — the live weekly window anchors on
-  Anthropic's reported reset), admin free-device grant. Its `*_pct` /
+  Anthropic's reported reset), admin free-device grant, and the admin-only
+  `enforced_blocking` pin (every group blocks on both windows on an equal,
+  non-watch-only slice and no device opts out, whatever the owner stored; the
+  stored values return when it lifts). Its `*_pct` /
   `model_limits` columns are dead as of migration 0017, which moved them to
   `claude_account`.
 - `limit_sample` — peak utilization per `(claude_account, window, window_start)`.
@@ -154,7 +157,10 @@ handlers, and on the `402` path so a parked device still shows as alive.
   keeps working, and nothing decays the stored percentage. Per-model limits
   count too, under the switch of their window (`5h` session, anything else
   weekly). With several over, the one resetting last is reported, because the
-  block lasts until then (`groupBlock` in `lib/data.ts`).
+  block lasts until then (`groupBlock` in `lib/data.ts`). An account with
+  `user_settings.enforced_blocking` set from `/admin` skips the device toggle
+  and the group switches: both windows block from every device, and the Fleet
+  page shows those controls, the weights and watch-only locked.
 
 Status codes carry meaning to the CLI: `401` revoked/unknown token (stop),
 `402` device outside the plan's device limit (park, keep data), `400`
