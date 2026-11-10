@@ -95,6 +95,9 @@ export const claudeAccounts = pgTable(
 		// from oauth/usage's `seven_day_breakdown`. Says what the outside-the-fleet share was.
 		weeklySurfaces: jsonb('weekly_surfaces').$type<{ key: string; label: string; pct: number }[]>(),
 		limitsReportedAt: timestamp('limits_reported_at', { withTimezone: true }),
+		// Set when the user removes the account from the dashboard (e.g. its subscription ended).
+		// Only hides it while no live device is on it; history stays.
+		hiddenAt: timestamp('hidden_at', { withTimezone: true }),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},

@@ -210,6 +210,11 @@ const en = {
 			'Put in the token you copied when you added {machine}. Lost it? Tokens are shown once, so add the device again on <devices>Devices</devices>.',
 		live: 'live',
 		accountSwitcher: 'Claude account',
+		hideAccount: 'Remove from dashboard',
+		hideAccountTitle: 'Remove {name} from the dashboard?',
+		hideAccountDescription:
+			'Use this when the subscription ended. Its history stays, and it comes back once a device signs in to it again.',
+		hiddenAccount: '{name} removed from the dashboard',
 		devicesCount: '{count, plural, one {# device} other {# devices}}',
 		devicesAndModels: 'Devices and models',
 		currentUsage: 'Current usage',
@@ -643,6 +648,11 @@ const pl: typeof en = {
 			'Wpisz token skopiowany przy dodawaniu {machine}. Zgubiłeś go? Tokeny pokazujemy raz, więc dodaj urządzenie ponownie w <devices>Urządzeniach</devices>.',
 		live: 'na żywo',
 		accountSwitcher: 'Konto Claude',
+		hideAccount: 'Usuń z pulpitu',
+		hideAccountTitle: 'Usunąć {name} z pulpitu?',
+		hideAccountDescription:
+			'Na przykład gdy subskrypcja się skończyła. Historia zostaje, a konto wróci, gdy urządzenie znów się na nim zaloguje.',
+		hiddenAccount: 'Usunięto {name} z pulpitu',
 		devicesCount: '{count, plural, one {# urządzenie} few {# urządzenia} many {# urządzeń} other {# urządzenia}}',
 		devicesAndModels: 'Urządzenia i modele',
 		currentUsage: 'Bieżące zużycie',

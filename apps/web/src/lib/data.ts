@@ -771,7 +771,9 @@ export async function listAccountViews(userId: string): Promise<AccountView[]> {
 		rows.filter(
 			a =>
 				liveOn.has(a.id) ||
-				(a.extId === null ? liveOn.has(null) : a.sevenDayResetsAt !== null && a.sevenDayResetsAt > new Date()),
+				(a.extId === null
+					? liveOn.has(null)
+					: a.hiddenAt === null && a.sevenDayResetsAt !== null && a.sevenDayResetsAt > new Date()),
 		),
 		userId,
 	)

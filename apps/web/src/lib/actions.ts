@@ -4,7 +4,7 @@ import { type } from 'arktype'
 import { and, asc, eq, ne, sql } from 'drizzle-orm'
 import { createTranslator } from 'use-intl'
 import { db } from '@/db'
-import { devices, groups, projectMerges } from '@/db/schema'
+import { claudeAccounts, devices, groups, projectMerges } from '@/db/schema'
 import { accountPlan } from '@/lib/billing'
 import { ensureDefaultGroup, ensureSettings } from '@/lib/data'
 import { generateDeviceToken } from '@/lib/device-token'
@@ -286,6 +286,18 @@ export const revokeDevice = createServerFn({ method: 'POST' })
 			.update(devices)
 			.set({ revoked: true })
 			.where(and(eq(devices.id, id), eq(devices.userId, user.id)))
+	})
+
+/** Drops an account with no live device off the dashboard; a device signing back in shows it again. */
+export const hideClaudeAccount = createServerFn({ method: 'POST' })
+	.inputValidator((formData: FormData) => formData)
+	.handler(async ({ data: formData }) => {
+		const user = await requireUser()
+		const id = String(formData.get('id'))
+		await db
+			.update(claudeAccounts)
+			.set({ hiddenAt: new Date() })
+			.where(and(eq(claudeAccounts.id, id), eq(claudeAccounts.userId, user.id)))
 	})
 
 /** Fold project paths into one hand-named project. A path already merged

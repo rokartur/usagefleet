@@ -220,6 +220,7 @@ async function POST(req: Request) {
 			// report from an older client can't blank out a known label.
 			set: {
 				...set,
+				hiddenAt: null,
 				...(identity?.email ? { email: identity.email } : {}),
 				...(identity?.org ? { orgName: identity.org } : {}),
 				// Cleared only once the stored 5h window is over, so one odd payload mid-window

@@ -1,7 +1,7 @@
 import type { ComponentProps, ReactNode } from 'react'
 import { Fragment, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { CheckIcon } from 'lucide-react'
+import { CheckIcon, EyeOff } from 'lucide-react'
 import { useLocale, useTranslations } from 'use-intl'
 import { Accordion } from '@/components/arc/accordion/accordion'
 import { AnimatedCounter } from '@/components/arc/animated-counter/animated-counter'
@@ -11,12 +11,14 @@ import SegmentedControl from '@/components/arc/segmented-control/segmented-contr
 import { Tooltip } from '@/components/arc/tooltip/tooltip'
 import type { UsageMeterSegment } from '@/components/arc/usage-meter/usage-meter'
 import { UsageMeter } from '@/components/arc/usage-meter/usage-meter'
+import { ConfirmAction } from '@/components/ConfirmAction'
 import { InstallCommand } from '@/components/InstallCommand'
 import { RelativeTime } from '@/components/RelativeTime'
 import { clockLabel, ResetCountdown } from '@/components/ResetCountdown'
 import { overrun, Section, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
 import { WindowChart } from '@/components/WindowChart'
 import { useMounted } from '@/hooks/use-mounted'
+import { hideClaudeAccount } from '@/lib/actions'
 import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO } from '@/lib/data'
 import { formatPct, formatPctNumber, formatRelative, formatTokens, formatUsd, roundTenth } from '@/lib/format'
 import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
@@ -561,7 +563,27 @@ function AccountSwitcher({
 								<td className='px-3 py-3'>
 									<AccountWindow pct={d.sevenDayPct} resetsAt={d.sevenDayResetsAt} />
 								</td>
-								<td className='px-3 py-3 text-right text-muted-foreground'>{devices}</td>
+								<td className='px-3 py-3 text-right text-muted-foreground'>
+									{devices === 0 && d.accountId !== null ? (
+										// Above the stretched row button, so the click opens the dialog, not the switch.
+										<span className='relative z-10 inline-flex items-center gap-2'>
+											{devices}
+											<ConfirmAction
+												action={hideClaudeAccount}
+												id={d.accountId}
+												title={t('hideAccountTitle', { name: accountName(d) })}
+												description={t('hideAccountDescription')}
+												confirmLabel={t('hideAccount')}
+												successMessage={t('hiddenAccount', { name: accountName(d) })}
+											>
+												<EyeOff aria-hidden />
+												<span className='sr-only'>{t('hideAccount')}</span>
+											</ConfirmAction>
+										</span>
+									) : (
+										devices
+									)}
+								</td>
 							</tr>
 						)
 					})}

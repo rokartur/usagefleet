@@ -253,6 +253,13 @@
       "when": 1794185083778,
       "tag": "0035_enforced_blocking",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794322882238,
+      "tag": "0036_claude_account_hidden",
+      "breakpoints": true
     }
   ]
 }

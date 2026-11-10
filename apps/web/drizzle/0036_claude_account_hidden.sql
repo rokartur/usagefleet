@@ -1,0 +1,1 @@
+ALTER TABLE "claude_account" ADD COLUMN "hidden_at" timestamp with time zone;
