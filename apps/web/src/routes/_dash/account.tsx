@@ -11,6 +11,7 @@ import { useToast } from '@/components/arc/toast-stack/toast-stack'
 import { DevPlanPanel, PlanSection } from '@/components/billing/PlanSection'
 import { PROVIDERS, ProviderMark } from '@/components/OAuthSignIn'
 import type { ProviderId } from '@/components/OAuthSignIn'
+import { ResetPushToggle } from '@/components/ResetPushToggle'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { db } from '@/db'
 import { account } from '@/db/schema'
@@ -21,6 +22,7 @@ import { isAdminEmail } from '@/lib/flags'
 import { detectLocale, LOCALE_CURRENCY } from '@/lib/i18n'
 import { isPaidPlan } from '@/lib/plans'
 import type { PaidPlan } from '@/lib/plans'
+import { pushPublicKey, RESET_PUSH_MIN_PCT } from '@/lib/reset-push'
 import { requireUser } from '@/lib/session'
 import { planPrices } from '@/lib/stripe-prices'
 
@@ -39,6 +41,8 @@ const accountData = createServerFn().handler(async () => {
 		prices,
 		activeDevices: devices.filter(d => !d.revoked).length,
 		isAdmin: isAdminEmail(user.email),
+		pushKey: pushPublicKey(),
+		pushMinPct: RESET_PUSH_MIN_PCT,
 	}
 })
 
@@ -66,7 +70,8 @@ export const Route = createFileRoute('/_dash/account')({
 function AccountPage() {
 	const t = useTranslations('dash.settings')
 	const tBilling = useTranslations('billing')
-	const { email, connected, plan, prices, activeDevices, isAdmin } = Route.useLoaderData()
+	const { email, connected, plan, prices, activeDevices, isAdmin, pushKey, pushMinPct } = Route.useLoaderData()
+	const tPush = useTranslations('dash.resetPush')
 	const { plan: preselected, error } = Route.useSearch()
 
 	return (
@@ -84,6 +89,12 @@ function AccountPage() {
 			<Section title={t('appearance')} description={t('appearanceDescription')}>
 				<ThemeToggle />
 			</Section>
+
+			{pushKey && (
+				<Section title={tPush('title')} description={tPush('description', { pct: pushMinPct })}>
+					<ResetPushToggle publicKey={pushKey} />
+				</Section>
+			)}
 
 			<Section
 				title={t('signInMethods')}

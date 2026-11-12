@@ -77,7 +77,7 @@ Break one of these and the product silently reports wrong numbers or leaks acces
   exit 0. Only an explicit `blocked: true` refuses a prompt.
 - **Admin is env-only** (`ADMIN_EMAILS`), never a column, so no session can grant
   itself the panel. `/admin` re-checks server-side.
-- **Rate limits and the promise cache are in-process**: single `web` instance
+- **Rate limits, the promise cache and the reset push sweep are in-process**: single `web` instance
   assumed. Add a shared store before running replicas.
 - **Trust boundaries validate with arktype and a capped body** —
   `readJsonCapped(req, max, Schema)`. Every free-form string needs an explicit

@@ -288,6 +288,8 @@ export const limitSamples = pgTable(
 			.notNull()
 			.references(() => claudeAccounts.id, { onDelete: 'cascade' }),
 		peakPct: real('peak_pct').notNull(),
+		/** Set once the reset push for this window went out (lib/reset-push.ts), so it goes out once. */
+		resetNotifiedAt: timestamp('reset_notified_at', { withTimezone: true }),
 		/** Per-group split written once the window closed (freezeClosedWindows); null
 		 *  for the open window and for windows closed before anyone could freeze them. */
 		split: jsonb('split').$type<FrozenGroupSplit[]>(),
@@ -332,6 +334,24 @@ export const limitChangePoints = pgTable(
 		window: text('window').$type<PointWindow>().notNull(),
 	},
 	t => [primaryKey({ columns: [t.claudeAccountId, t.window, t.model, t.at] })],
+)
+
+// One browser's Web Push subscription. The endpoint is the browser's own URL at its push
+// service, so it is the key: the same browser signing in as someone else moves the row.
+export const pushSubscriptions = pgTable(
+	'push_subscription',
+	{
+		auth: text('auth').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		endpoint: text('endpoint').primaryKey(),
+		// The locale the browser subscribed in; the push text is rendered in it.
+		locale: text('locale').notNull(),
+		p256dh: text('p256dh').notNull(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+	},
+	t => [index('push_subscription_user_idx').on(t.userId)],
 )
 
 // A project merged by hand: every path listed under one name reads as a single
