@@ -69,6 +69,10 @@ services:
       STRIPE_PRICE_FLEET: ${STRIPE_PRICE_FLEET:?set STRIPE_PRICE_FLEET in .env}
       # Per-unit price, multiplied by the chosen device count.
       STRIPE_PRICE_CUSTOM: ${STRIPE_PRICE_CUSTOM:?set STRIPE_PRICE_CUSTOM in .env}
+      # Web Push for browser reset notifications; all three or none. See .env.example.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       NODE_ENV: production
     ports:
       # Loopback only: TRUST_PROXY tells the app to believe X-Forwarded-For, and

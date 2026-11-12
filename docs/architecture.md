@@ -108,6 +108,12 @@ Data access is layered so pages stay thin:
 - `project_merge` — `(user_id, path) → name`: cwds a user folded by hand into one
   row of the projects table (`''` is usage logged without a cwd). Display only;
   `usage_event.cwd` is never rewritten.
+- `push_subscription` — one browser's Web Push subscription, keyed by its
+  endpoint, which must be on a known push service host (`isPushEndpoint`, the
+  server POSTs to it). A once-a-minute in-process sweep (`server/reset-push.ts` →
+  `lib/reset-push.ts`) pushes each `limit_sample` window that peaked at 80%+ and
+  just passed its reset, and stamps `limit_sample.reset_notified_at` before
+  sending so it goes out once. Off unless the three `VAPID_*` vars are set.
 
 ## Ingest API contract
 

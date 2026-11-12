@@ -323,6 +323,19 @@ const en = {
 		reset: 'Reset',
 		resetting: 'resetting…',
 	},
+	resetPush: {
+		blocked: 'Notifications are blocked for this site. Allow them in the browser settings.',
+		body: 'Your Claude account can be used again.',
+		bodyAccount: '{account} can be used again.',
+		description:
+			'A notification when a 5-hour or weekly window that reached {pct}% resets, even with this tab closed. This browser only.',
+		failed: 'Could not change reset notifications',
+		fiveHour: '5-hour limit reset',
+		label: 'Notify me about resets',
+		title: 'Reset notifications',
+		unsupported: 'This browser cannot receive push notifications.',
+		weekly: 'Weekly limit reset',
+	},
 	settings: {
 		appearance: 'Appearance',
 		appearanceDescription: 'Light or dark palette, this browser only.',
@@ -762,6 +775,19 @@ const pl: typeof en = {
 		projected: '~{pct}%',
 		reset: 'Reset',
 		resetting: 'resetowanie…',
+	},
+	resetPush: {
+		blocked: 'Powiadomienia są zablokowane dla tej strony. Zezwól na nie w ustawieniach przeglądarki.',
+		body: 'Możesz znowu korzystać z konta Claude.',
+		bodyAccount: 'Możesz znowu korzystać z {account}.',
+		description:
+			'Powiadomienie, gdy okno 5-godzinne albo tygodniowe, które doszło do {pct}%, się zresetuje, nawet przy zamkniętej karcie. Tylko w tej przeglądarce.',
+		failed: 'Nie udało się zmienić powiadomień o resecie',
+		fiveHour: 'Limit 5-godzinny zresetowany',
+		label: 'Powiadamiaj o resetach',
+		title: 'Powiadomienia o resecie',
+		unsupported: 'Ta przeglądarka nie obsługuje powiadomień push.',
+		weekly: 'Limit tygodniowy zresetowany',
 	},
 	settings: {
 		appearance: 'Wygląd',

@@ -260,6 +260,13 @@
       "when": 1794322882238,
       "tag": "0036_claude_account_hidden",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1794442967903,
+      "tag": "0037_reset_push",
+      "breakpoints": true
     }
   ]
 }

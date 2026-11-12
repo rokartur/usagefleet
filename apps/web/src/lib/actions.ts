@@ -4,12 +4,13 @@ import { type } from 'arktype'
 import { and, asc, eq, ne, sql } from 'drizzle-orm'
 import { createTranslator } from 'use-intl'
 import { db } from '@/db'
-import { claudeAccounts, devices, groups, projectMerges } from '@/db/schema'
+import { claudeAccounts, devices, groups, projectMerges, pushSubscriptions } from '@/db/schema'
 import { accountPlan } from '@/lib/billing'
 import { ensureDefaultGroup, ensureSettings } from '@/lib/data'
 import { generateDeviceToken } from '@/lib/device-token'
 import { detectLocale } from '@/lib/i18n'
 import { isNotifyMode } from '@/lib/notify-modes'
+import { isPushEndpoint } from '@/lib/reset-push'
 import { requireUser } from '@/lib/session'
 import { MESSAGES } from '@/messages'
 
@@ -330,4 +331,57 @@ export const unmergeProject = createServerFn({ method: 'POST' })
 		const user = await requireUser()
 		const name = String(formData.get('name'))
 		await db.delete(projectMerges).where(and(eq(projectMerges.userId, user.id), eq(projectMerges.name, name)))
+	})
+
+/** A browser's PushSubscription.toJSON(). p256dh is a 65-byte key and auth 16 bytes, both base64url. */
+const pushInput = type({
+	endpoint: 'string <= 1024',
+	keys: { auth: '/^[A-Za-z0-9_-]{1,64}$/', p256dh: '/^[A-Za-z0-9_-]{1,128}$/' },
+})
+
+/** Browsers per user that may hold a reset push; each one is a POST per reset. */
+const MAX_PUSH_SUBSCRIPTIONS = 20
+
+/** Turn on reset pushes for the calling browser. */
+export const savePushSubscription = createServerFn({ method: 'POST' })
+	.inputValidator((data: unknown) => {
+		const parsed = pushInput(data)
+		if (parsed instanceof type.errors) {
+			throw new TypeError(parsed.summary)
+		}
+		if (!isPushEndpoint(parsed.endpoint)) {
+			throw new TypeError('Not a known push service endpoint')
+		}
+		return parsed
+	})
+	.handler(async ({ data: { endpoint, keys } }) => {
+		const user = await requireUser()
+		const [{ n } = { n: 0 }] = await db
+			.select({ n: sql<number>`count(*)::int` })
+			.from(pushSubscriptions)
+			.where(and(eq(pushSubscriptions.userId, user.id), ne(pushSubscriptions.endpoint, endpoint)))
+		if (n >= MAX_PUSH_SUBSCRIPTIONS) {
+			throw new Error(`At most ${MAX_PUSH_SUBSCRIPTIONS} browsers can get reset notifications`)
+		}
+		const row = { auth: keys.auth, locale: detectLocale(), p256dh: keys.p256dh, userId: user.id }
+		await db
+			.insert(pushSubscriptions)
+			.values({ endpoint, ...row })
+			.onConflictDoUpdate({ set: row, target: pushSubscriptions.endpoint })
+	})
+
+/** Turn reset pushes off for the calling browser. */
+export const deletePushSubscription = createServerFn({ method: 'POST' })
+	.inputValidator((data: unknown) => {
+		const parsed = type({ endpoint: 'string <= 1024' })(data)
+		if (parsed instanceof type.errors) {
+			throw new TypeError(parsed.summary)
+		}
+		return parsed
+	})
+	.handler(async ({ data: { endpoint } }) => {
+		const user = await requireUser()
+		await db
+			.delete(pushSubscriptions)
+			.where(and(eq(pushSubscriptions.userId, user.id), eq(pushSubscriptions.endpoint, endpoint)))
 	})
