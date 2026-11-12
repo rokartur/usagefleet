@@ -180,6 +180,12 @@ Linux daemons) goes only to the alert that crosses into 95+ from below (even one
 that jumps straight to 97) and to 100, so the dense tail does not pile up unread
 notifications.
 
+With `notifyReset` (`USAGEFLEET_NOTIFY_RESET`, off by default) a window that
+crossed a threshold also gets one "limit has reset" notification, on the first
+reading after its stored `resetsAt` has passed. Only that time check tells a
+reset apart from a window starting: an idle account reads `resets_at` null, and
+null to a new time is a rollover too.
+
 On macOS the npm package carries `dist/UsageFleet.app`, a small Swift app
 (`apps/cli/macos/`, built in `release.yml`) that posts through
 UserNotifications under its own name and opens the dashboard on click. The CLI
