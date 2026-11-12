@@ -219,7 +219,12 @@ function cmdNotifyTest(): void {
 	sendNotification('usagefleet', 'Test notification — desktop alerts are working.', {
 		urgency: 'normal',
 	})
-	console.log(step('notified', `${detectOs()} · thresholds ${cfg.thresholds.join(', ')}%`))
+	console.log(
+		step(
+			'notified',
+			`${detectOs()} · thresholds ${cfg.thresholds.join(', ')}%${cfg.notifyReset ? ' · on reset' : ''}`,
+		),
+	)
 }
 
 async function cmdStatus(): Promise<void> {
@@ -372,6 +377,7 @@ function cmdConfig(): void {
 		['batch', 'USAGEFLEET_BATCH', 'records per upload (default 100, max 1000)'],
 		['notifications', 'USAGEFLEET_NOTIFY', 'desktop notifications (false/0 disables)'],
 		['notifyMode', 'USAGEFLEET_NOTIFY_MODE', 'alert preset: off | quiet | standard | steady | critical'],
+		['notifyReset', 'USAGEFLEET_NOTIFY_RESET', 'also alert when a window that crossed a threshold resets'],
 		['notifyThresholds', 'USAGEFLEET_NOTIFY_THRESHOLDS', '% alerts · array; env comma list (replaces the preset)'],
 		['update', 'USAGEFLEET_UPDATE', 'self-update while watching (false/0 disables)'],
 		['updateInterval', 'USAGEFLEET_UPDATE_INTERVAL', 'seconds between update checks (default 21600)'],

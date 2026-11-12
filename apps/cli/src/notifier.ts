@@ -10,6 +10,8 @@ export interface NotifyConfig {
 	/** Ascending utilization thresholds (%) that trigger a notification once each
 	 *  per window, e.g. [80, 95]. */
 	thresholds: number[]
+	/** Also notify when a window that crossed a threshold resets. Opt-in. */
+	notifyReset: boolean
 }
 
 /** Thresholds per mode. `critical` thins out near the wall on purpose: the last
@@ -46,7 +48,7 @@ export function parseNotifyMode(value: unknown): NotifyMode | null {
  *  "50,80,95") or a `notifyThresholds` array replaces the preset's thresholds. */
 export function loadNotifyConfig(
 	env: Record<string, string | undefined> = process.env,
-	file: Pick<Store, 'notifications' | 'notifyMode' | 'notifyThresholds'> = readStore(),
+	file: Pick<Store, 'notifications' | 'notifyMode' | 'notifyReset' | 'notifyThresholds'> = readStore(),
 	serverMode: NotifyMode | null = null,
 ): NotifyConfig {
 	const mode =
@@ -58,7 +60,9 @@ export function loadNotifyConfig(
 	// One decimal, like the readings themselves: 99.1 must stay 99.1.
 	const parsed = candidates.map(n => Math.round(n * 10) / 10).filter(n => Number.isFinite(n) && n > 0 && n <= 100)
 	const thresholds = parsed.length > 0 ? [...new Set(parsed)].toSorted((a, b) => a - b) : NOTIFY_MODES[mode]
-	return { enabled, thresholds }
+	const rawReset = env.USAGEFLEET_NOTIFY_RESET
+	const notifyReset = rawReset?.trim() ? !flagOff(rawReset) : file.notifyReset === true
+	return { enabled, notifyReset, thresholds }
 }
 
 /**
@@ -71,21 +75,29 @@ export function loadNotifyConfig(
  * is lowered so a subsequent re-cross notifies again. A small dip does not move
  * it: a group's slice is derived and wobbles between readings, and a mark that
  * followed every wobble would re-alert each time pct straddled a threshold.
+ *
+ * `reset` is true once, on the first reading after a window that crossed a
+ * threshold has passed its reset time.
  */
 export function evaluateWindow(
 	prev: WindowNotifyState | undefined,
 	pct: number | null,
 	resetsAt: string | null,
 	thresholds: number[],
-): { fire: number | null; urgent: boolean; next: WindowNotifyState } {
+	now: number = Date.now(),
+): { fire: number | null; urgent: boolean; reset: boolean; next: WindowNotifyState } {
 	const rolledOver = !prev || !sameWindow(prev.resetsAt, resetsAt)
 	const lastBucket = rolledOver ? 0 : prev.lastBucket
 	// Within a window the first resetsAt stays, so the jitter alone never rewrites the store.
 	const windowResetsAt = rolledOver ? resetsAt : prev.resetsAt
+	// The time check matters: an idle account reads resets_at null, and the next window
+	// starting from null is a rollover too, but not a reset.
+	const reset =
+		rolledOver && !!prev && prev.lastBucket > 0 && prev.resetsAt !== null && Date.parse(prev.resetsAt) <= now
 
 	if (pct == null) {
 		// No reading this cycle — keep the mark, just track the (possibly new) window.
-		return { fire: null, urgent: false, next: { lastBucket, resetsAt: windowResetsAt } }
+		return { fire: null, urgent: false, reset, next: { lastBucket, resetsAt: windowResetsAt } }
 	}
 
 	// Highest threshold the current pct has reached (thresholds are ascending).
@@ -100,12 +112,12 @@ export function evaluateWindow(
 		// `critical` is sticky on most Linux daemons, so only entering the danger zone and
 		// the wall get it; a dense tail (99.1, 99.2, ...) must not pile up.
 		const urgent = (lastBucket < DANGER_ZONE && top >= DANGER_ZONE) || top >= 100
-		return { fire: top, urgent, next: { lastBucket: top, resetsAt: windowResetsAt } }
+		return { fire: top, urgent, reset, next: { lastBucket: top, resetsAt: windowResetsAt } }
 	}
 	// top <= lastBucket: nothing fires. The mark holds through a wobble and follows
 	// pct down only on a real drop.
 	const mark = pct < lastBucket - REARM_MARGIN ? top : lastBucket
-	return { fire: null, urgent: false, next: { lastBucket: mark, resetsAt: windowResetsAt } }
+	return { fire: null, urgent: false, reset, next: { lastBucket: mark, resetsAt: windowResetsAt } }
 }
 
 // oauth/usage jitters resets_at by milliseconds per request; a real rollover moves it by hours.
@@ -163,6 +175,14 @@ export function maybeNotify(
 		}
 		const fivePct = fmt(report.fiveHourPct ?? 0)
 		const sevenPct = fmt(report.sevenDayPct ?? 0)
+		if (cfg.notifyReset && five.reset) {
+			sendNotification('Claude usage · 5-hour limit', 'Your 5-hour limit has reset.')
+			log('ok', 'notified · 5h window reset')
+		}
+		if (cfg.notifyReset && seven.reset) {
+			sendNotification('Claude usage · weekly limit', 'Your weekly limit has reset.')
+			log('ok', 'notified · weekly window reset')
+		}
 		if (five.fire != null) {
 			sendNotification(
 				'Claude usage · 5-hour limit',

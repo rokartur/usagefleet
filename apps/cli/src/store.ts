@@ -66,6 +66,7 @@ function normalize(raw: Partial<Store>): Store {
 			sevenDay: { ...freshWindow(), ...raw.notify?.sevenDay },
 		},
 		notifyMode: raw.notifyMode,
+		notifyReset: raw.notifyReset,
 		notifyThresholds: raw.notifyThresholds,
 		piDir: raw.piDir,
 		pjDir: raw.pjDir,

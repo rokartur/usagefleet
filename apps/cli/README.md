@@ -118,6 +118,8 @@ WinRT toast via `powershell.exe`.
 `usagefleet notify-test` confirms it works and prints the thresholds in effect.
 For a list of your own use `USAGEFLEET_NOTIFY_THRESHOLDS="50,80,99.5"` (it
 replaces the mode's list), disable everything with `USAGEFLEET_NOTIFY=0`.
+To also hear when a window that crossed a threshold resets, set
+`USAGEFLEET_NOTIFY_RESET=1` or `"notifyReset": true`.
 
 ## Blocking prompts over the limit
 
@@ -180,6 +182,7 @@ it (`usagefleet config` prints this same table):
 | `limitsInterval` | `USAGEFLEET_LIMITS_INTERVAL` | seconds between limit reports (default 60; 300 on API keys, where each report costs a 1-token ping) |
 | `notifications` | `USAGEFLEET_NOTIFY` | desktop notifications, on by default (`false`/`0` disables) |
 | `notifyMode` | `USAGEFLEET_NOTIFY_MODE` | alert preset: `off`, `quiet`, `standard`, `steady`, `critical` (default: the Devices page value, else `standard`) |
+| `notifyReset` | `USAGEFLEET_NOTIFY_RESET` | also notify when a window that crossed a threshold resets, off by default (`true`/`1` enables) |
 | `notifyThresholds` | `USAGEFLEET_NOTIFY_THRESHOLDS` | utilization % that trigger an alert, replacing the mode's list — array in the file, comma list in env, one decimal kept |
 | `batch` | `USAGEFLEET_BATCH` | records per upload (default 100, server caps at 1000) |
 | `update` | `USAGEFLEET_UPDATE` | `false`/`0` turns the self-update check off |

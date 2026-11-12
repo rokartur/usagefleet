@@ -5,8 +5,15 @@ describe(loadNotifyConfig, () => {
 	it('defaults to enabled with 80/95 thresholds', () => {
 		expect(loadNotifyConfig({}, {})).toStrictEqual({
 			enabled: true,
+			notifyReset: false,
 			thresholds: [80, 95],
 		})
+	})
+
+	it('reset alerts are opt-in, env beating the file', () => {
+		expect(loadNotifyConfig({}, { notifyReset: true }).notifyReset).toBeTruthy()
+		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_RESET: '1' }, {}).notifyReset).toBeTruthy()
+		expect(loadNotifyConfig({ USAGEFLEET_NOTIFY_RESET: 'off' }, { notifyReset: true }).notifyReset).toBeFalsy()
 	})
 
 	it('disables on falsey flags (case-insensitive)', () => {
@@ -177,6 +184,32 @@ describe(evaluateWindow, () => {
 		expect(evaluateWindow({ lastBucket: 96, resetsAt: reset }, 97.2, reset, th).urgent).toBeFalsy()
 		expect(evaluateWindow({ lastBucket: 99.9, resetsAt: reset }, 100, reset, th).urgent).toBeTruthy()
 		expect(evaluateWindow(undefined, 82, reset, th).urgent).toBeFalsy()
+	})
+
+	describe('reset', () => {
+		const after = Date.parse(reset) + 60_000
+
+		it('fires once when a window that crossed a threshold has reset', () => {
+			const r = evaluateWindow({ lastBucket: 95, resetsAt: reset }, 0, '2026-06-23T17:00:00Z', TH, after)
+			expect(r.reset).toBeTruthy()
+			expect(evaluateWindow(r.next, 2, '2026-06-23T17:00:00Z', TH, after).reset).toBeFalsy()
+		})
+
+		it('fires when the idle account reads resets_at null', () => {
+			expect(evaluateWindow({ lastBucket: 80, resetsAt: reset }, 0, null, TH, after).reset).toBeTruthy()
+		})
+
+		it('stays quiet for a window that never crossed a threshold', () => {
+			expect(evaluateWindow({ lastBucket: 0, resetsAt: reset }, 0, null, TH, after).reset).toBeFalsy()
+		})
+
+		it('stays quiet when a window starts from null or moves before its reset time', () => {
+			expect(evaluateWindow({ lastBucket: 80, resetsAt: null }, 1, reset, TH, after).reset).toBeFalsy()
+			const before = Date.parse(reset) - 3_600_000
+			expect(
+				evaluateWindow({ lastBucket: 80, resetsAt: reset }, 1, '2026-06-23T17:00:00Z', TH, before).reset,
+			).toBeFalsy()
+		})
 	})
 
 	it('keeps the mark and tracks the window when pct is null', () => {

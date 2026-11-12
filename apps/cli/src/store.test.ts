@@ -100,6 +100,7 @@ describe('store', () => {
 			interval: 30,
 			limitsInterval: 120,
 			notifications: false,
+			notifyReset: true,
 			notifyThresholds: [50, 90],
 			update: false,
 			updateInterval: 3600,

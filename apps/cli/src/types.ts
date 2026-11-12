@@ -132,6 +132,8 @@ export interface Store {
 	/** Alert preset for this machine (USAGEFLEET_NOTIFY_MODE). Beats the mode set on
 	 *  the Devices page; an explicit `notifyThresholds` list beats both. */
 	notifyMode?: NotifyMode
+	/** true also notifies when a window that crossed a threshold resets (USAGEFLEET_NOTIFY_RESET). */
+	notifyReset?: boolean
 	/** Utilization % alert thresholds (USAGEFLEET_NOTIFY_THRESHOLDS). */
 	notifyThresholds?: number[]
 	/** false disables self-update while watching (USAGEFLEET_UPDATE). */
