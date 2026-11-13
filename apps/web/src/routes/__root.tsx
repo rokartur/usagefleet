@@ -67,7 +67,8 @@ export const Route = createRootRoute({
 				crossOrigin: 'anonymous',
 			},
 		],
-		scripts: [{ children: THEME_SCRIPT }],
+		// /_vx/script.js is Vexdock analytics, served first-party by the proxy in front of this app.
+		scripts: [{ children: THEME_SCRIPT }, { src: '/_vx/script.js', defer: true }],
 	}),
 	shellComponent: RootDocument,
 })
