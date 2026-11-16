@@ -37,6 +37,8 @@ Break one of these and the product silently reports wrong numbers or leaks acces
   keys); the server only *splits* them per group. The split is **delta
   attribution**: `limit_change_point` records every reading whose pct rose
   (identified accounts only; readings under a minute apart merge at read time),
+  plus any fall of 10+ points: Anthropic reset the window early, and the split
+  restarts from there (`sinceEarlyReset`),
   and each rise goes to the groups whose events fall in that interval, weighted
   by cost inside it. Per-model limits get their own series, keyed by model id.
   Cost share over the whole window is the fallback when an account has no points.

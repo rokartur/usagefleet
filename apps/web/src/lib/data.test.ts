@@ -253,6 +253,24 @@ describe(splitByShare, () => {
 		expect(s.get('b')?.exactPct).toBeCloseTo(20, 6)
 	})
 
+	it('splits only what was used after an early reset', () => {
+		// a filled the window to 100 by 11:00, then Anthropic reset it early; the 28%
+		// now shown is all b's, recorded as the drop at 13:00 plus one rise after.
+		const s = splitByShare(
+			[
+				ev('a', 'claude-sonnet-4', 9_000_000, new Date('2026-06-18T10:30:00Z')),
+				ev('b', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T12:00:00Z')),
+				ev('b', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T13:30:00Z')),
+			],
+			WIN_START,
+			NOW,
+			28,
+			[pt('2026-06-18T11:00:00Z', 100), pt('2026-06-18T13:00:00Z', 20), pt('2026-06-18T14:00:00Z', 28)],
+		)
+		expect(s.get('a')?.exactPct ?? 0).toBeCloseTo(0, 6)
+		expect(s.get('b')?.exactPct).toBeCloseTo(28, 6)
+	})
+
 	it('attributes the headline across a caller-supplied model key', () => {
 		const s = splitByShare(
 			[
@@ -376,9 +394,9 @@ describe(splitByShare, () => {
 	})
 
 	it('gives a falling interval no weight and keeps its events out of the next one', () => {
-		// The account corrected 40 → 10 before climbing back to 30. b worked only
-		// during that fall, so it explains nothing; a and c share the two real rises
-		// (40 and 20) normalized onto the official 30.
+		// The account corrected 40 → 35 before climbing to 45. b worked only during
+		// that fall, so it explains nothing; a and c share the two real rises (40
+		// and 10) normalized onto the official 30. A fall of 10+ is an early reset.
 		const s = splitByShare(
 			[
 				ev('a', 'claude-sonnet-4', 1_000_000, new Date('2026-06-18T10:30:00Z')),
@@ -388,10 +406,10 @@ describe(splitByShare, () => {
 			WIN_START,
 			NOW,
 			30,
-			[pt('2026-06-18T11:00:00Z', 40), pt('2026-06-18T12:00:00Z', 10), pt('2026-06-18T13:00:00Z', 30)],
+			[pt('2026-06-18T11:00:00Z', 40), pt('2026-06-18T12:00:00Z', 35), pt('2026-06-18T13:00:00Z', 45)],
 		)
-		expect(s.get('a')?.exactPct).toBeCloseTo(20, 6)
-		expect(s.get('c')?.exactPct).toBeCloseTo(10, 6)
+		expect(s.get('a')?.exactPct).toBeCloseTo(24, 6)
+		expect(s.get('c')?.exactPct).toBeCloseTo(6, 6)
 		expect(s.get('b')?.exactPct).toBe(0)
 	})
 
@@ -537,6 +555,13 @@ describe(shouldRecordPoint, () => {
 		// of them; readings too close to attribute apart are merged at read time now,
 		// where a better-calibrated read can still change its mind about them.
 		expect(shouldRecordPoint(prev, 45)).toBeTruthy()
+	})
+
+	it('records a fall deep enough to be an early reset', () => {
+		// Anthropic zeroed a full weekly limit mid-window, same resets_at. Without the
+		// row no later reading rises past 100 and the new usage goes unattributed.
+		expect(shouldRecordPoint({ pct: 100 }, 28)).toBeTruthy()
+		expect(shouldRecordPoint(prev, 31)).toBeFalsy()
 	})
 })
 

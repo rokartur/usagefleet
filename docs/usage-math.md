@@ -108,6 +108,13 @@ in the morning. Details that matter:
   inflating the denominator and diluting every real group. A reset needs no row:
   the write compares only against the current window's points, and `riseWeights`
   anchors each window at 0.
+- The exception is an **early reset**: Anthropic can drop a window's pct mid-window
+  and keep the same `resets_at` (seen in November 2026: a full weekly limit fell to
+  28%). A fall of `EARLY_RESET_DROP_PCT` (10) points or more is recorded, and
+  `sinceEarlyReset()` makes `riseWeights` and the session pace read only what
+  follows it, opening at the last reading before the drop. Without that row no
+  later reading rises past the old peak, so every rise until `resets_at` went
+  unattributed while the old peak's rises, scaled down, still split the headline.
 - Event timestamps come off the device's clock, change points off ours. Ingest
   measures the difference from the `sentAt` the collector stamps at upload and
   shifts the batch onto server time (`lib/usage/clock.ts`), so a drifting
