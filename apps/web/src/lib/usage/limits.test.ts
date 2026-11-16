@@ -72,6 +72,15 @@ describe(projectSession, () => {
 		expect(projectSession(rises, 50, start, reset, at('12:40'))?.fullAt).toBeNull()
 	})
 
+	it('reads the pace from the early reset on, not from the peak before it', () => {
+		// 90% at 11:00, reset early to 0 and back up to 10% by 11:30: 20 points in the last hour.
+		const early = [
+			{ at: at('11:00'), pct: 90 },
+			{ at: at('11:30'), pct: 10 },
+		]
+		expect(projectSession(early, 20, start, reset, at('12:00'))?.next).toStrictEqual({ at: at('12:30'), pct: 30 })
+	})
+
 	it('has no next ten when the reset comes first or the next one is the limit itself', () => {
 		// 45% at 13:50, 50% at 14:50: 60% would take two hours, the reset is in ten minutes.
 		expect(projectSession([{ at: at('13:50'), pct: 45 }], 50, start, reset, at('14:50'))?.next).toBeNull()

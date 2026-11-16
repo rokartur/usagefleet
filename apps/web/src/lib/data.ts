@@ -23,6 +23,7 @@ import {
 	costUsd,
 	EMPTY_TOTALS,
 	filterByWindow,
+	EARLY_RESET_DROP_PCT,
 	fitCalibration,
 	foldEvents,
 	MERGE_INTERVAL_MS,
@@ -33,6 +34,7 @@ import {
 	PROJECT_DAYS,
 	projectSession,
 	refreshPrices,
+	sinceEarlyReset,
 	sumTokens,
 	weekWindowStart,
 	weightedCost,
@@ -498,13 +500,15 @@ export function windowExpired(resetsAt: Date | null, now: Date): boolean {
 /** Whether a reading opens a new change point, given the last one stored for the
  *  same window (undefined when it is the window's first).
  *
- *  Only rises are recorded. Anthropic's utilization does not fall inside a
- *  window, so a fall means two devices on this account read the endpoint moments
- *  apart and their posts landed out of order (the timestamp is receipt time).
- *  Storing that dip would make the recovery back to the true value read as an
- *  extra rise, inflating the denominator and diluting every real group. A reset
- *  needs no row: the caller scopes `prev` to the current window and riseWeights
- *  anchors each window at 0. The tolerance covers `real`-column float32
+ *  Rises are recorded, and falls only when deep enough to be an early reset
+ *  ({@link EARLY_RESET_DROP_PCT}). A shallow fall means two devices on this
+ *  account read the endpoint moments apart and their posts landed out of order
+ *  (the timestamp is receipt time). Storing that dip would make the recovery back
+ *  to the true value read as an extra rise, inflating the denominator and
+ *  diluting every real group. An early reset needs its row, or no later reading
+ *  would rise past the old peak and the window's new usage would go unattributed.
+ *  A reset on schedule needs none: the caller scopes `prev` to the current window
+ *  and riseWeights anchors each window at 0. The tolerance covers `real`-column float32
  *  round-tripping; readings carry one decimal.
  *
  *  Every rise is stored. Readings too close together to attribute separately
@@ -514,7 +518,7 @@ export function windowExpired(resetsAt: Date | null, now: Date): boolean {
  *  Duplicate posts cost nothing: repeated devices report the same pct, which
  *  is not a rise. */
 export function shouldRecordPoint(prev: { pct: number } | undefined, pct: number): boolean {
-	return !prev || pct - prev.pct >= 0.05
+	return !prev || pct - prev.pct >= 0.05 || prev.pct - pct >= EARLY_RESET_DROP_PCT
 }
 
 /**
@@ -548,16 +552,20 @@ function riseWeights(
 	targetPct: number,
 	lagMs: number,
 ): Map<string | null, number> | null {
-	const startMs = windowStart.getTime()
 	const nowMs = now.getTime()
+	// After an early reset the official pct counts from 0 again, so the window
+	// effectively reopens at the last reading before the drop.
+	const live = sinceEarlyReset(
+		points
+			.filter(p => p.at.getTime() > windowStart.getTime() && p.at.getTime() <= nowMs)
+			.toSorted((a, b) => a.at.getTime() - b.at.getTime()),
+	)
+	const startMs = live.from?.getTime() ?? windowStart.getTime()
 	let last = { at: startMs, pct: 0 }
 	const bounds = [last]
 	// A merged-away reading's rise carries forward to the next kept reading (or to
 	// the synthetic final one below).
-	const kept = mergePoints(
-		points.filter(p => p.at.getTime() > startMs && p.at.getTime() <= nowMs),
-		startMs,
-	)
+	const kept = mergePoints(live.points, startMs)
 	for (const p of kept) {
 		last = { at: p.at.getTime(), pct: p.pct }
 		bounds.push(last)

@@ -51,6 +51,29 @@ export function mergePoints<T extends { at: Date }>(points: T[], since = 0): T[]
 	return out
 }
 
+/**
+ * A fall at least this deep inside one window is Anthropic resetting the meter
+ * early: in November 2026 it dropped a full weekly limit to 28% and kept the
+ * same `resets_at`. Two posts landing out of order differ by a point, not by ten.
+ */
+export const EARLY_RESET_DROP_PCT = 10
+
+/**
+ * The part of one window's series that the current percentage belongs to: the
+ * readings after the last early reset, and the instant that stretch opens at,
+ * i.e. the reading before the drop, the last time the old meter was seen.
+ * `from` is null when the window never reset early. Expects one window's
+ * readings, in order.
+ */
+export function sinceEarlyReset<T extends { at: Date; pct: number }>(points: T[]): { from: Date | null; points: T[] } {
+	for (let i = points.length - 1; i > 0; i--) {
+		if (points[i - 1].pct - points[i].pct >= EARLY_RESET_DROP_PCT) {
+			return { from: points[i - 1].at, points: points.slice(i) }
+		}
+	}
+	return { from: null, points }
+}
+
 const PACE_LOOKBACK_MS = 60 * 60 * 1000
 const MIN_WINDOW_AGE_MS = 30 * 60 * 1000
 
@@ -85,8 +108,9 @@ export function projectSession(
 	}
 	const from = now.getTime() - Math.min(PACE_LOOKBACK_MS, age)
 	let pctThen = 0
-	for (const rise of rises) {
-		if (rise.at.getTime() >= windowStart.getTime() && rise.at.getTime() <= from) {
+	const live = sinceEarlyReset(rises.filter(r => r.at.getTime() >= windowStart.getTime())).points
+	for (const rise of live) {
+		if (rise.at.getTime() <= from) {
 			pctThen = Math.max(pctThen, rise.pct)
 		}
 	}
