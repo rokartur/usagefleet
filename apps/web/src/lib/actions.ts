@@ -90,7 +90,8 @@ export const createGroup = createServerFn({ method: 'POST' })
 			name,
 			ownerId: user.id,
 			sliceWeight: sliceWeight(formData.get('sliceWeight')),
-			watchOnly: formData.has('watchOnly'),
+			// Enforced blocking exempts watch-only groups, so a new one would dodge it.
+			watchOnly: formData.has('watchOnly') && !(await ensureSettings(user.id)).enforcedBlocking,
 		})
 	})
 
@@ -142,7 +143,8 @@ export const deleteGroup = createServerFn({ method: 'POST' })
 			.select({ id: groups.id })
 			.from(groups)
 			.where(and(eq(groups.ownerId, user.id), ne(groups.id, id)))
-			.orderBy(asc(groups.createdAt))
+			// A watch-only target would let enforced blocking's devices dodge the guard.
+			.orderBy(asc(groups.watchOnly), asc(groups.createdAt))
 			.limit(1)
 		const hasDevices = (
 			await db
@@ -175,17 +177,24 @@ export const deleteGroup = createServerFn({ method: 'POST' })
 	})
 
 /** Returns groupId only if it belongs to the user; null otherwise. Prevents
- *  attaching a device to another tenant's group (IDOR). */
+ *  attaching a device to another tenant's group (IDOR), and under enforced
+ *  blocking to a watch-only group, which sits outside the guard and the split. */
 async function ownedGroupId(userId: string, groupId: string | null): Promise<string | null> {
 	if (!groupId) {
 		return null
 	}
-	const owned = await db
-		.select({ id: groups.id })
+	const [owned] = await db
+		.select({ watchOnly: groups.watchOnly })
 		.from(groups)
 		.where(and(eq(groups.id, groupId), eq(groups.ownerId, userId)))
 		.limit(1)
-	return owned[0] ? groupId : null
+	if (!owned) {
+		return null
+	}
+	if (owned.watchOnly && (await ensureSettings(userId)).enforcedBlocking) {
+		return null
+	}
+	return groupId
 }
 
 export const assignDeviceGroup = createServerFn({ method: 'POST' })

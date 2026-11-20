@@ -55,7 +55,12 @@ const fleetData = createServerFn().handler(async () => {
 		shares.add(groups.filter(g => slotted.has(g.id)).reduce((parts, g) => parts + g.sliceWeight, 0))
 	}
 	return {
-		devices: enforced ? devices.map(d => ({ ...d, blockingEnabled: true })) : devices,
+		devices: enforced
+			? devices.map(d => ({
+					...d,
+					blockingEnabled: d.blockingEnabled || !groups.some(g => g.id === d.groupId && g.watchOnly),
+				}))
+			: devices,
 		enforced,
 		groups,
 		plan,
@@ -264,7 +269,7 @@ function FleetPage() {
 											deviceId={d.id}
 											deviceName={d.name}
 											enabled={d.blockingEnabled}
-											disabled={enforced}
+											disabled={enforced && !groups.some(g => g.id === d.groupId && g.watchOnly)}
 										/>
 									)}
 									{!d.revoked && (

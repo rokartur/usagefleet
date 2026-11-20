@@ -247,7 +247,7 @@ export const userSettings = pgTable('user_settings', {
 	// without a subscription (null = the catalog's FREE_DEVICES). Only ever set
 	// from the admin panel, never from Settings.
 	freeDeviceLimit: integer('free_device_limit'),
-	// Admin-only: every group blocks on both windows on an equal, non-watch-only
+	// Admin-only: every non-watch-only group blocks on both windows on an equal
 	// slice and no device opts out, whatever is stored (enforceGroup, guardSwitches).
 	enforcedBlocking: boolean('enforced_blocking').notNull().default(false),
 	cacheWriteTtl: text('cache_write_ttl').notNull().default('5m'),

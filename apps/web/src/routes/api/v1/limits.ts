@@ -91,6 +91,7 @@ async function GET(req: Request) {
 					.select({
 						blockOnSessionLimit: groups.blockOnSessionLimit,
 						blockOnWeeklyLimit: groups.blockOnWeeklyLimit,
+						watchOnly: groups.watchOnly,
 					})
 					.from(groups)
 					.where(and(eq(groups.id, device.groupId), eq(groups.ownerId, device.userId)))

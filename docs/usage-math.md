@@ -225,9 +225,11 @@ Deliberately uncapped: past 100% that group is eating another's slice, which is
 the thing worth seeing. Rounding happens once, at the end — rounding the share
 first would multiply the error by 1/slice.
 
-An account under an admin's `enforced_blocking` reads every group at weight 1 and
-not watch-only, whatever is stored (`enforceGroup()`), so the owner cannot dodge
-the guard with a heavy or watch-only group. Every split loads its groups through
+An account under an admin's `enforced_blocking` reads every non-watch-only group
+at weight 1 with both switches on, whatever is stored (`enforceGroup()`), so the
+owner cannot dodge the guard with a heavy group. Watch-only groups keep their
+stored settings and stay off the top: two groups and a watch one split 50/50, and
+the guard leaves watch-only devices to their own toggle. Every split loads its groups through
 `loadSplitGroups()` for that; a new one reading `groups` directly would bypass it.
 
 The group table also carries the plain cost-share figure (“by cost”) beside the

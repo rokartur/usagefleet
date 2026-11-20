@@ -1159,15 +1159,15 @@ interface BlockSwitches {
 
 /**
  * The switches the guard applies to one device, or null when it never blocks. An
- * admin's `enforcedBlocking` turns both on for every device of the account;
- * otherwise the device's own toggle gates its group's switches.
+ * admin's `enforcedBlocking` turns both on for every device outside a watch-only
+ * group; otherwise the device's own toggle gates its group's switches.
  */
 export function guardSwitches(
 	enforced: boolean,
 	blockingEnabled: boolean,
-	group?: BlockSwitches,
+	group?: BlockSwitches & { watchOnly: boolean },
 ): BlockSwitches | null {
-	if (enforced) {
+	if (enforced && !group?.watchOnly) {
 		return { blockOnSessionLimit: true, blockOnWeeklyLimit: true }
 	}
 	return blockingEnabled && group ? group : null
@@ -1175,12 +1175,16 @@ export function guardSwitches(
 
 /**
  * A group as an account under an admin's `enforcedBlocking` runs it: both
- * windows block, on an equal slice without watch-only, so the owner can neither
- * switch the guard off nor widen a group's budget past it. Applied on read, so
- * the stored values come back once the admin lifts it.
+ * windows block on an equal slice, so the owner can neither switch the guard off
+ * nor widen a group's budget past it. A watch-only group holds no slice and is
+ * left as stored, so two groups and a watch one split 50/50, not 33/33/33.
+ * Applied on read, so the stored values come back once the admin lifts it.
  */
 export function enforceGroup<G extends BlockSwitches & { sliceWeight: number; watchOnly: boolean }>(group: G): G {
-	return { ...group, blockOnSessionLimit: true, blockOnWeeklyLimit: true, sliceWeight: 1, watchOnly: false }
+	if (group.watchOnly) {
+		return group
+	}
+	return { ...group, blockOnSessionLimit: true, blockOnWeeklyLimit: true, sliceWeight: 1 }
 }
 
 /** The user's groups as every split reads them. Live cards, frozen windows and
@@ -2136,7 +2140,8 @@ export async function ensureDefaultGroup(userId: string) {
 		.select()
 		.from(groups)
 		.where(eq(groups.ownerId, userId))
-		.orderBy(asc(groups.createdAt))
+		// Not watch-only where one exists: enforced blocking skips those groups.
+		.orderBy(asc(groups.watchOnly), asc(groups.createdAt))
 		.limit(1)
 	if (existing[0]) {
 		return existing[0]

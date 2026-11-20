@@ -681,7 +681,7 @@ describe(groupBlock, () => {
 })
 
 describe(guardSwitches, () => {
-	const off = { blockOnSessionLimit: false, blockOnWeeklyLimit: false }
+	const off = { blockOnSessionLimit: false, blockOnWeeklyLimit: false, watchOnly: false }
 	const both = { blockOnSessionLimit: true, blockOnWeeklyLimit: true }
 
 	it('turns both windows on for an enforced account, whatever the device and group say', () => {
@@ -689,31 +689,42 @@ describe(guardSwitches, () => {
 		expect(guardSwitches(true, false)).toStrictEqual(both)
 	})
 
+	it('leaves a watch-only group on an enforced account to its device toggle', () => {
+		const watch = { ...off, watchOnly: true }
+		expect(guardSwitches(true, false, watch)).toBeNull()
+		expect(guardSwitches(true, true, watch)).toBe(watch)
+	})
+
 	it("otherwise lets the device toggle gate its group's switches", () => {
-		expect(guardSwitches(false, false, both)).toBeNull()
+		expect(guardSwitches(false, false, { ...both, watchOnly: false })).toBeNull()
 		expect(guardSwitches(false, true, off)).toBe(off)
 		expect(guardSwitches(false, true)).toBeNull()
 	})
 })
 
 describe(enforceGroup, () => {
-	it('takes a heavy or watch-only group back to an equal blocking slice', () => {
+	it('takes heavy groups back to equal blocking slices and leaves a watch-only one out', () => {
 		const stored = [
 			{ blockOnSessionLimit: false, blockOnWeeklyLimit: false, id: 'heavy', sliceWeight: 6, watchOnly: false },
-			{ blockOnSessionLimit: false, blockOnWeeklyLimit: true, id: 'watch', sliceWeight: 1, watchOnly: true },
+			{ blockOnSessionLimit: false, blockOnWeeklyLimit: true, id: 'light', sliceWeight: 1, watchOnly: false },
+			{ blockOnSessionLimit: false, blockOnWeeklyLimit: false, id: 'watch', sliceWeight: 1, watchOnly: true },
 		]
 		const onAccount = [
 			{ groupId: 'heavy', revoked: false },
+			{ groupId: 'light', revoked: false },
 			{ groupId: 'watch', revoked: false },
 		]
 		const enforced = stored.map(g => enforceGroup(g))
 		expect(slottedGroups(onAccount, enforced)).toStrictEqual(
 			new Map([
 				['heavy', 0.5],
-				['watch', 0.5],
+				['light', 0.5],
 			]),
 		)
-		expect(enforced.every(g => g.blockOnSessionLimit && g.blockOnWeeklyLimit)).toBeTruthy()
+		expect(
+			enforced.filter(g => !g.watchOnly).every(g => g.blockOnSessionLimit && g.blockOnWeeklyLimit),
+		).toBeTruthy()
+		expect(enforced[2]).toBe(stored[2])
 		expect(stored[0]?.sliceWeight).toBe(6)
 	})
 })
