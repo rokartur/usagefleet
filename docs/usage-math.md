@@ -87,6 +87,15 @@ from its limits posts) only decides where its group takes a budget slice and
 which headline its guard reads. Devices that never report a login fold into the
 unidentified bucket, or into the only account there is.
 
+Groups follow the same rule. Each row carries the group its device was in when
+the row came in (`usage_event.group_id`), so moving a machine to another group
+moves only its later usage: the group it left keeps what it burned. Before
+migration 0038 the split read the device's current group, so a move rewrote the
+open week: under enforced blocking a group over its slice could move its
+heaviest machine away and hand the whole week to another group. 0038 stamped only
+the last 8 days: older rows still follow their device, but only the history
+explorer and never-frozen past windows read them, not a live split.
+
 `splitByShare()` (`lib/data.ts`) apportions one official percentage across
 groups by **delta attribution**: every limits post that moved a window's pct
 appends a timestamped change point (`limit_change_point`, written by
