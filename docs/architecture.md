@@ -81,6 +81,11 @@ Data access is layered so pages stay thin:
   prices on held-out data, and null when it does not (see `usage-math.md`).
 - `usage_event` — one raw JSONL segment. Unique on `(user_id, uuid)`; indexed on
   `(user_id, ts)` and `(device_id, ts)`. Never aggregate without folding.
+  `claude_account_id` and `group_id` are stamped at ingest from the batch and the
+  device, so a machine that changes account or group leaves its history behind.
+  `group_id` is NULL when its group was deleted and on rows more than 8 days
+  older than migration 0038; reads then take the device's current group (where
+  `deleteGroup` moved it).
 - `user_settings` — plan preset, token limits, week reset weekday/hour (a grid
   fallback for the past-windows card only — the live weekly window anchors on
   Anthropic's reported reset), admin free-device grant, and the admin-only

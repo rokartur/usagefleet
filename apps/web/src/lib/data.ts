@@ -66,6 +66,9 @@ const FOLD_KEY = sql`(CASE WHEN NULLIF(${usageEvents.messageId}, '') IS NOT NULL
 // raise `integer out of range` on that user's every dashboard, history and guard
 // query, permanently and with no way to delete it from the app.
 const ROW_TOTAL = sql`(${usageEvents.inputTokens}::bigint + ${usageEvents.outputTokens} + ${usageEvents.cacheCreationTokens} + ${usageEvents.cacheReadTokens})`
+// The group stamped at ingest, so a device moved since keeps its history where it was. NULL for a
+// deleted group (deleteGroup moved its devices) and rows older than migration 0038's backfill.
+const GROUP_ID = sql`COALESCE(${usageEvents.groupId}, d.group_id)`
 
 /** The columns of `user_settings` anything actually reads. The rest of the table
  *  is dead weight kept only because dropping columns is one-way (see
@@ -127,7 +130,7 @@ export async function loadRecentEvents(
       ${usageEvents.ts} AS ts,
       MIN(${usageEvents.ts}) OVER (PARTITION BY ${FOLD_KEY}) AS started_at,
       ${usageEvents.deviceId} AS device_id,
-      d.group_id AS group_id,
+      ${GROUP_ID} AS group_id,
       ${usageEvents.claudeAccountId} AS claude_account_id,
       ${usageEvents.inputTokens} AS input_tokens,
       ${usageEvents.outputTokens} AS output_tokens,
@@ -213,6 +216,7 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
       SELECT DISTINCT ON (${FOLD_KEY})
         ${usageEvents.ts} AS ts,
         ${usageEvents.deviceId} AS device_id,
+        ${GROUP_ID} AS group_id,
         ${usageEvents.claudeAccountId} AS claude_account_id,
         ${usageEvents.model} AS model,
         ${usageEvents.source} AS source,
@@ -223,13 +227,14 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
         ${usageEvents.cacheCreation1hTokens} AS cache_creation_1h,
         ${usageEvents.cacheReadTokens} AS cache_read_tokens
       FROM ${usageEvents}
+      JOIN ${devices} d ON d.id = ${usageEvents.deviceId}
       WHERE ${usageEvents.userId} = ${userId}
         ${since ? sql`AND ${usageEvents.ts} >= ${since.toISOString()}::timestamptz` : sql``}
       ORDER BY ${FOLD_KEY}, ${ROW_TOTAL} DESC, ${usageEvents.ts} ASC
     )
     SELECT
       to_char(date_trunc('day', folded.ts AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
-      d.group_id AS group_id,
+      folded.group_id AS group_id,
       folded.model AS model,
       folded.source AS source,
       folded.device_id AS device_id,
@@ -241,7 +246,6 @@ export async function loadDailyAggregates(userId: string, since?: Date): Promise
       sum(coalesce(folded.cache_creation_1h, 0))::bigint AS cache_creation_1h,
       sum(folded.cache_read_tokens)::bigint AS cache_read
     FROM folded
-    JOIN ${devices} d ON d.id = folded.device_id
     GROUP BY 1, 2, 3, 4, 5, 6
     HAVING (
       sum(folded.input_tokens) + sum(folded.output_tokens) +
@@ -877,8 +881,7 @@ async function loadLiveDashboard(
 			.filter(p => p.at >= start)
 			.map(p => ({ at: p.at, pct: p.pct }))
 
-	// Usage belongs to the account its device is signed into *now*, the same way
-	// it already follows a device between groups.
+	// The devices signed into this account now: they decide which groups hold a slice here.
 	const myDevices = deviceRows.filter(d => inAccount(view, d.claudeAccountId))
 	// Usage goes by the account stamped on each event, not the device's current
 	// one: a machine that switched Claude accounts leaves its history behind.
@@ -1275,6 +1278,7 @@ async function loadWindowAggregates(view: AccountView, spans: WindowSpan[]): Pro
       SELECT DISTINCT ON (${FOLD_KEY})
         ${usageEvents.ts} AS ts,
         ${usageEvents.deviceId} AS device_id,
+        ${GROUP_ID} AS group_id,
         ${usageEvents.claudeAccountId} AS claude_account_id,
         ${usageEvents.model} AS model,
         ${usageEvents.inputTokens} AS input_tokens,
@@ -1284,6 +1288,7 @@ async function loadWindowAggregates(view: AccountView, spans: WindowSpan[]): Pro
         ${usageEvents.cacheCreation1hTokens} AS cache_creation_1h,
         ${usageEvents.cacheReadTokens} AS cache_read_tokens
       FROM ${usageEvents}
+      JOIN ${devices} d ON d.id = ${usageEvents.deviceId}
       WHERE ${usageEvents.userId} = ${userId}
         AND ${usageEvents.ts} >= ${since.toISOString()}::timestamptz
         AND ${usageEvents.ts} < ${until.toISOString()}::timestamptz
@@ -1291,7 +1296,7 @@ async function loadWindowAggregates(view: AccountView, spans: WindowSpan[]): Pro
     )
     SELECT
       extract(epoch from win.win_start)::bigint AS bin,
-      d.group_id AS group_id,
+      folded.group_id AS group_id,
       folded.model AS model,
       sum(folded.input_tokens)::bigint AS input,
       sum(folded.output_tokens)::bigint AS output,
@@ -1300,7 +1305,6 @@ async function loadWindowAggregates(view: AccountView, spans: WindowSpan[]): Pro
       sum(coalesce(folded.cache_creation_1h, 0))::bigint AS cache_creation_1h,
       sum(folded.cache_read_tokens)::bigint AS cache_read
     FROM folded
-    JOIN ${devices} d ON d.id = folded.device_id
     JOIN (VALUES ${spanValues}) AS win(win_start, win_end)
       ON folded.ts >= win.win_start AND folded.ts < win.win_end
     WHERE ${accountFilterSql(view, sql`folded.claude_account_id`)}
@@ -1941,7 +1945,7 @@ export async function getProjectUsage(userId: string, now = new Date()): Promise
       SELECT DISTINCT ON (${FOLD_KEY})
         ${usageEvents.ts} AS ts,
         ${usageEvents.cwd} AS cwd,
-        d.group_id AS group_id,
+        ${GROUP_ID} AS group_id,
         ${usageEvents.model} AS model,
         ${usageEvents.inputTokens} AS input_tokens,
         ${usageEvents.outputTokens} AS output_tokens,

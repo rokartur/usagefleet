@@ -177,6 +177,9 @@ export const usageEvents = pgTable(
 		claudeAccountId: text('claude_account_id').references(() => claudeAccounts.id, {
 			onDelete: 'set null',
 		}),
+		// The device's group at ingest, so moving a machine moves only its later usage.
+		// NULL (group deleted, or older than migration 0038): reads take the device's current group.
+		groupId: text('group_id').references(() => groups.id, { onDelete: 'set null' }),
 		uuid: text('uuid').notNull(),
 		messageId: text('message_id'),
 		requestId: text('request_id'),

@@ -113,6 +113,7 @@ async function POST(req: Request) {
 			userId: device.userId,
 			deviceId: device.id,
 			claudeAccountId,
+			groupId: device.groupId,
 			uuid: r.uuid,
 			messageId: r.messageId ?? null,
 			requestId: r.requestId ?? null,

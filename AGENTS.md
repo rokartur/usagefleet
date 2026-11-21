@@ -61,6 +61,9 @@ Break one of these and the product silently reports wrong numbers or leaks acces
   device counts against the account it is signed into, while each usage row
   keeps the account stamped on it at ingest (`usage_event.claude_account_id`), so
   switching a machine between accounts never moves history. One user can hold several.
+  Groups work the same way: `usage_event.group_id` is the device's group at ingest,
+  so moving a machine to another group moves only its later usage. Reads take
+  `GROUP_ID` in `lib/data.ts`, never `devices.group_id` alone.
 - **A group's percentage is its budget slice**, i.e. share × 1/slice, where only groups
   with a live (non-revoked) device on that account hold a slice, each the group's
   `slice_weight` over the sum of theirs (`slottedGroups()`): with two equal such
