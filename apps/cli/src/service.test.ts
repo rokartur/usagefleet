@@ -122,13 +122,17 @@ describe(windowsLauncherVbs, () => {
 		'C:\\logs\\usagefleet.log',
 	)
 
-	it('runs the collector hidden, logged, and waits for it', () => {
-		// window style 0 = no console window; True = wait, so the Scheduled Task
-		// instance lives as long as the collector (restart-on-failure works).
+	it('runs the collector hidden and logged, restarting it until it exits 0', () => {
+		// window style 0 = no console window; True = wait for its exit code.
 		// Unescaped, the VBS literal is the canonical cmd form:
 		//   cmd /c ""C:\..\usagefleet.exe" "watch" > "C:\logs\usagefleet.log" 2>&1"
 		expect(script).toContain(
-			'sh.Run "cmd /c """"C:\\Program Files\\usagefleet\\usagefleet.exe"" ""watch"" > ""C:\\logs\\usagefleet.log"" 2>&1""", 0, True',
+			[
+				'Do',
+				'\tIf sh.Run("cmd /c """"C:\\Program Files\\usagefleet\\usagefleet.exe"" ""watch"" > ""C:\\logs\\usagefleet.log"" 2>&1""", 0, True) = 0 Then Exit Do',
+				'\tWScript.Sleep 30000',
+				'Loop',
+			].join('\r\n'),
 		)
 	})
 

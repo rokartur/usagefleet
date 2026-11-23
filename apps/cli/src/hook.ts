@@ -15,6 +15,7 @@ const GUARD_COMMAND = /usagefleet.*\bguard\b/
 interface HookCommand {
 	type?: string
 	command?: string
+	args?: string[]
 	timeout?: number
 }
 interface HookGroup {
@@ -28,24 +29,20 @@ interface ClaudeSettings {
 	[key: string]: unknown
 }
 
-/** `/path/to/usagefleet guard`, quoted for the shell Claude Code runs it in.
- *  Carries USAGEFLEET_CONFIG through when set: the documented two-subscription
- *  setup (apps/cli/README.md) gives each account its own store *and* its own
- *  Claude settings.json, so without it both hooks would read the default config
- *  and block against the wrong account. `platform` is a parameter so the two
- *  shells can be tested; cmd.exe has no inline `VAR=value cmd` form, and the
- *  POSIX prefix there would be read as a program name and never launch. */
-export function guardCommand(program: string[], configPath?: string, platform: string = process.platform): string {
-	// Claude Code on Windows runs hooks through Git Bash, which strips the backslashes
-	// from an unquoted `C:\Users\...\index.js`; node then exits 1 and the prompt passes.
-	const quote = (p: string) => (p.includes(' ') || p.includes('\\') ? `"${p}"` : p)
-	const command = program.map(quote).join(' ')
-	if (!configPath) {
-		return command
+/** Exec form (`args`, Claude Code 2.1.139+): spawned without a shell. Shell form
+ *  runs through Git Bash or PowerShell on Windows, which need opposite quoting.
+ *  `--config` carries USAGEFLEET_CONFIG: the two-subscription setup
+ *  (apps/cli/README.md) gives each account its own store and settings.json. */
+export function guardHook(program: string[], configPath?: string): HookCommand {
+	const [command, ...args] = program
+	if (configPath) {
+		args.push('--config', configPath)
 	}
-	return platform === 'win32'
-		? `set "USAGEFLEET_CONFIG=${configPath}" && ${command}`
-		: `USAGEFLEET_CONFIG=${quote(configPath)} ${command}`
+	return { args, command, timeout: HOOK_TIMEOUT_S, type: 'command' }
+}
+
+function isGuardHook(hook: HookCommand): boolean {
+	return GUARD_COMMAND.test([hook.command, ...(hook.args ?? [])].join(' '))
 }
 
 /** Drop every guard hook we ever installed, leaving the rest of the file alone. */
@@ -57,7 +54,7 @@ export function withoutGuardHook(settings: ClaudeSettings): ClaudeSettings {
 	const kept = groups
 		.map(g => ({
 			...g,
-			hooks: (g.hooks ?? []).filter(h => !GUARD_COMMAND.test(h.command ?? '')),
+			hooks: (g.hooks ?? []).filter(h => !isGuardHook(h)),
 		}))
 		.filter(g => g.hooks.length > 0)
 	const hooks = { ...settings.hooks }
@@ -75,14 +72,14 @@ export function withoutGuardHook(settings: ClaudeSettings): ClaudeSettings {
 /** Strip-then-append, so re-running install refreshes a stale binary path
  *  instead of stacking a second hook. Drops `disableAllHooks`, which would
  *  switch the guard off without touching the hook itself. */
-export function withGuardHook(settings: ClaudeSettings, command: string): ClaudeSettings {
+export function withGuardHook(settings: ClaudeSettings, hook: HookCommand): ClaudeSettings {
 	const { disableAllHooks: _, ...base } = withoutGuardHook(settings)
 	const groups = base.hooks?.UserPromptSubmit ?? []
 	return {
 		...base,
 		hooks: {
 			...base.hooks,
-			UserPromptSubmit: [...groups, { hooks: [{ command, timeout: HOOK_TIMEOUT_S, type: 'command' }] }],
+			UserPromptSubmit: [...groups, { hooks: [hook] }],
 		},
 	}
 }
@@ -128,9 +125,9 @@ function editSettings(transform: (s: ClaudeSettings) => ClaudeSettings, onWrite:
  *  group with blocking enabled actually refuses prompts. No off-switch: whether
  *  a device blocks is decided on the dashboard, not on the device. */
 export function installPromptHook(program: string[]): void {
-	const command = guardCommand(program, process.env.USAGEFLEET_CONFIG)
+	const hook = guardHook(program, process.env.USAGEFLEET_CONFIG)
 	editSettings(
-		s => withGuardHook(s, command),
+		s => withGuardHook(s, hook),
 		path => console.log(step('hook', `prompt guard · ${tilde(path)}`)),
 	)
 }

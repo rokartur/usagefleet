@@ -149,9 +149,8 @@ writes a pi extension — `~/.pi/agent/extensions/usagefleet-guard.ts` — that 
 the same guard before every pi prompt. Same lifecycle: restored by the running
 collector, removed by `uninstall`.
 
-If `USAGEFLEET_CONFIG` was set when you logged in, the installed command carries
-it (`USAGEFLEET_CONFIG=<path> usagefleet guard`, or `set "..." && ...` on
-Windows). That is what binds the hook to the right store, and so to the right
+If `USAGEFLEET_CONFIG` was set when you logged in, the installed hook carries
+it (`usagefleet guard --config <path>`). That is what binds the hook to the right store, and so to the right
 Anthropic account — see "Two Claude accounts on one machine" below.
 
 `guard` **fails open** everywhere else — no config, server down, timeout (5s),
@@ -236,8 +235,8 @@ until you re-run `usagefleet login` under the new one.
 - **Linux without systemd** (a Docker container, WSL without it) — no service.
   Run `usagefleet watch` as the container's command or under your own
   supervisor, with a restart policy such as `restart: unless-stopped`.
-- **Windows** — a Scheduled Task (`usagefleet`) starting at logon, restarting on
-  failure, running hidden through a `wscript` launcher in
+- **Windows** — a Scheduled Task (`usagefleet`) starting at logon, restarting the
+  collector 30s after a crash, running hidden through a `wscript` launcher in
   `%LOCALAPPDATA%\usagefleet` (which carries the env values set at install
   time). Log: `%LOCALAPPDATA%\usagefleet\usagefleet.log`. Inspect with
   `schtasks /query /tn usagefleet /v /fo list`.

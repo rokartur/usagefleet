@@ -147,10 +147,11 @@ reports the second subscription. With that variable set the macOS Keychain is
 deliberately not consulted: its item is global and belongs to the default login,
 so falling back to it would report one account's limits under the other's uuid.
 `service.ts` bakes the variable into the launchd/systemd unit for the same
-reason, and `hook.ts` bakes `USAGEFLEET_CONFIG` into the prompt-guard command so
-the guard resolves the same store the collector writes (`guardCommand` emits the
-POSIX `VAR=value cmd` prefix, or `set "VAR=value" && cmd` on win32, since cmd.exe
-has no inline form).
+reason, and `hook.ts` bakes `USAGEFLEET_CONFIG` into the prompt-guard hook as
+`guard --config <path>` so the guard resolves the same store the collector
+writes. The hook is exec form (`command` + `args`, Claude Code 2.1.139+), spawned
+without a shell: on Windows shell form runs through Git Bash or PowerShell, and
+no one quoting works in both.
 
 The unit *name* is not per-config, though: the launchd label, systemd unit and
 Scheduled Task name are constants, so only one collector can be installed as a

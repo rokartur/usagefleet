@@ -183,8 +183,8 @@ function vbs(s: string): string {
  *  collector with window style 0. It also carries the USAGEFLEET_* env the way
  *  the plist/unit does (Task XML has no env support) and redirects output to a
  *  log file, since a hidden process has no console to print to.
- *  Waits (`True`) so the task instance lives as long as the collector — that's
- *  what makes RestartOnFailure in the task XML meaningful. */
+ *  The loop restarts a collector that exits non-zero, 30s apart like systemd's
+ *  RestartSec: Task Scheduler sees only wscript's exit code, never the collector's. */
 export function windowsLauncherVbs(prog: string[], env: [string, string][], logPath: string): string {
 	const quoted = prog.map(p => `"${p}"`).join(' ')
 	// `cmd /c ""prog" args > "log""` is cmd's canonical form for quoted paths.
@@ -198,7 +198,10 @@ export function windowsLauncherVbs(prog: string[], env: [string, string][], logP
 		'Set sh = CreateObject("WScript.Shell")',
 		'Set env = sh.Environment("Process")',
 		...envLines,
-		`sh.Run ${vbs(cmdLine)}, 0, True`,
+		'Do',
+		`	If sh.Run(${vbs(cmdLine)}, 0, True) = 0 Then Exit Do`,
+		'	WScript.Sleep 30000',
+		'Loop',
 		'',
 	].join('\r\n')
 }
@@ -484,8 +487,10 @@ WantedBy=default.target
 		const vbsPath = windowsVbsPath()
 		mkdirSync(stableBinDir(), { recursive: true })
 		// 0600: the launcher script embeds the same secrets as the plist/unit.
-		writeFileSync(vbsPath, windowsLauncherVbs(prog, env, windowsLogPath()), {
-			encoding: 'utf-8',
+		// UTF-16 with BOM: wscript reads anything else as the ANSI code page, so a
+		// profile like C:\Users\Łukasz would launch a path that does not exist.
+		writeFileSync(vbsPath, `\uFEFF${windowsLauncherVbs(prog, env, windowsLogPath())}`, {
+			encoding: 'utf16le',
 			mode: 0o600,
 		})
 
@@ -540,7 +545,12 @@ export function serviceStatus(): ServiceStatus {
 	// not something to spill onto the user's terminal.
 	const query = (cmd: string, args: string[]): string | null => {
 		try {
-			return execFileSync(cmd, args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] })
+			// windowsHide: the service has no console, so a console child would open its own window.
+			return execFileSync(cmd, args, {
+				encoding: 'utf-8',
+				stdio: ['ignore', 'pipe', 'ignore'],
+				windowsHide: true,
+			})
 		} catch {
 			return null
 		}
@@ -568,11 +578,17 @@ export function serviceStatus(): ServiceStatus {
 	}
 
 	if (process.platform === 'win32') {
-		const out = query('schtasks', ['/query', '/tn', TASK, '/fo', 'list'])
+		// schtasks prints its labels and states in the UI language; the State enum name does not change.
+		const out = query('powershell.exe', [
+			'-NoProfile',
+			'-NonInteractive',
+			'-Command',
+			`(Get-ScheduledTask -TaskName ${TASK} -ErrorAction Stop).State`,
+		])
 		if (!out) {
 			return { state: 'not installed' }
 		}
-		return { state: /Status:\s*Running/i.test(out) ? 'running' : 'stopped' }
+		return { state: out.trim() === 'Running' ? 'running' : 'stopped' }
 	}
 
 	return { state: 'no autostart' }
