@@ -445,6 +445,11 @@ async function main(): Promise<void> {
 			return cmdLimits()
 		}
 		case 'guard': {
+			// The hook bakes the store path as `--config` (hook.ts guardHook): exec form has no env.
+			const config = flag('config')
+			if (config) {
+				process.env.USAGEFLEET_CONFIG = config
+			}
 			process.exitCode = await runGuard()
 			return
 		}
