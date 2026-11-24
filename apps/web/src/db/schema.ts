@@ -372,6 +372,18 @@ export const projectMerges = pgTable(
 	t => [primaryKey({ columns: [t.userId, t.path] })],
 )
 
+// The user's Anthropic Console Admin API key, read only to fetch API-key spend.
+// The key administers the whole Console org, so only ciphertext is stored, sealed with BETTER_AUTH_SECRET.
+export const anthropicAdminKeys = pgTable('anthropic_admin_key', {
+	ciphertext: text('ciphertext').notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	// Last 4 characters, so the page can say which key is connected.
+	hint: text('hint').notNull(),
+	userId: text('user_id')
+		.primaryKey()
+		.references(() => user.id, { onDelete: 'cascade' }),
+})
+
 export const groupsRelations = relations(groups, ({ many, one }) => ({
 	devices: many(devices),
 	owner: one(user, { fields: [groups.ownerId], references: [user.id] }),

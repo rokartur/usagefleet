@@ -15,6 +15,7 @@ const en = {
 	nav: {
 		account: 'Account',
 		admin: 'Admin',
+		apiKeys: 'API keys',
 		breadcrumb: 'Breadcrumb',
 		dashboard: 'Dashboard',
 		fleet: 'Fleet',
@@ -63,6 +64,7 @@ const pl: typeof en = {
 	nav: {
 		account: 'Konto',
 		admin: 'Administracja',
+		apiKeys: 'Klucze API',
 		breadcrumb: 'Ścieżka',
 		dashboard: 'Pulpit',
 		fleet: 'Flota',
