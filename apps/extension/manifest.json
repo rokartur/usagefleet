@@ -1,0 +1,9 @@
+{
+	"manifest_version": 3,
+	"name": "UsageFleet Console sync",
+	"version": "1.0.0",
+	"description": "Sends the 30-day spend per API key from platform.claude.com to your UsageFleet dashboard.",
+	"permissions": ["alarms", "cookies"],
+	"host_permissions": ["https://platform.claude.com/*", "https://usagefleet.com/*"],
+	"background": { "service_worker": "background.mjs", "type": "module" }
+}

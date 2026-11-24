@@ -7,11 +7,14 @@ const SPEND_DAYS = 30
 
 export const ADMIN_KEY_PREFIX = 'sk-ant-admin'
 
+// Also the shape the Console extension posts, so every free-form string is capped.
+export const costRow = type({
+	cost: { amount: /^\d{1,15}(\.\d{1,12})?$/, 'requests?': 'number | null' },
+	group: { 'api_key_id?': 'string <= 100 | null', 'api_key_name?': 'string <= 500 | null' },
+})
+
 const costPage = type({
-	data: type({
-		cost: { amount: 'string', 'requests?': 'number | null' },
-		group: { 'api_key_id?': 'string | null' },
-	}).array(),
+	data: costRow.array(),
 	has_more: 'boolean',
 	'next_page?': 'string | null',
 	'data_refreshed_at?': 'string | null',
@@ -23,7 +26,7 @@ const keysPage = type({
 	'last_id?': 'string | null',
 })
 
-type CostRow = (typeof costPage.infer)['data'][number]
+type CostRow = typeof costRow.infer
 type ApiKey = (typeof keysPage.infer)['data'][number]
 
 function secret() {
@@ -99,7 +102,7 @@ export function spendRows(rows: CostRow[], keys: ApiKey[]) {
 			return {
 				hint: key?.partial_key_hint ?? null,
 				id,
-				name: key?.name ?? null,
+				name: key?.name ?? row.group.api_key_name ?? null,
 				requests: row.cost.requests ?? null,
 				status: key?.status ?? null,
 				usd: Number(row.cost.amount) / 100,
@@ -108,9 +111,7 @@ export function spendRows(rows: CostRow[], keys: ApiKey[]) {
 		.toSorted((a, b) => b.usd - a.usd)
 }
 
-async function loadSpend(ciphertext: string) {
-	const adminKey = await symmetricDecrypt({ key: secret(), data: ciphertext })
-	const [cost, keys] = await Promise.all([costByKey(adminKey), listKeys(adminKey)])
+export function toSpend(cost: { refreshedAt: string | null; rows: CostRow[]; since: string }, keys: ApiKey[]) {
 	const rows = spendRows(cost.rows, keys)
 	return {
 		refreshedAt: cost.refreshedAt,
@@ -118,6 +119,14 @@ async function loadSpend(ciphertext: string) {
 		since: cost.since,
 		totalUsd: rows.reduce((sum, row) => sum + row.usd, 0),
 	}
+}
+
+export type ApiKeySpend = ReturnType<typeof toSpend>
+
+async function loadSpend(ciphertext: string) {
+	const adminKey = await symmetricDecrypt({ key: secret(), data: ciphertext })
+	const [cost, keys] = await Promise.all([costByKey(adminKey), listKeys(adminKey)])
+	return toSpend(cost, keys)
 }
 
 /** Keyed by ciphertext, which is fresh per save, so a replaced key never reads the old one's cache.

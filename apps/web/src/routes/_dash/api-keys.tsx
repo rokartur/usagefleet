@@ -7,9 +7,10 @@ import { Alert } from '@/components/arc/alert/alert'
 import { Button } from '@/components/arc/button/button'
 import { PasswordField } from '@/components/arc/password-field/password-field'
 import { db } from '@/db'
-import { anthropicAdminKeys } from '@/db/schema'
+import { anthropicAdminKeys, consoleSpend } from '@/db/schema'
 import { removeAdminKey, saveAdminKey } from '@/lib/actions'
 import { ADMIN_KEY_PREFIX, apiKeySpend } from '@/lib/anthropic-admin'
+import type { ApiKeySpend } from '@/lib/anthropic-admin'
 import { formatUsd } from '@/lib/format'
 import { requireUser } from '@/lib/session'
 
@@ -20,13 +21,22 @@ const apiKeysData = createServerFn().handler(async () => {
 		.from(anthropicAdminKeys)
 		.where(eq(anthropicAdminKeys.userId, user.id))
 	if (!stored) {
-		return { hint: null, spend: null, error: null }
+		const [synced] = await db
+			.select({ spend: consoleSpend.spend, syncedAt: consoleSpend.syncedAt })
+			.from(consoleSpend)
+			.where(eq(consoleSpend.userId, user.id))
+		return { hint: null, spend: synced?.spend ?? null, syncedAt: synced?.syncedAt ?? null, error: null }
 	}
 	try {
-		return { hint: stored.hint, spend: await apiKeySpend(stored.ciphertext), error: null }
+		return { hint: stored.hint, spend: await apiKeySpend(stored.ciphertext), syncedAt: null, error: null }
 	} catch (error) {
 		// A revoked key or an Anthropic outage still renders the page, so the key can be replaced.
-		return { hint: stored.hint, spend: null, error: error instanceof Error ? error.message : String(error) }
+		return {
+			hint: stored.hint,
+			spend: null,
+			syncedAt: null,
+			error: error instanceof Error ? error.message : String(error),
+		}
 	}
 })
 
@@ -36,10 +46,11 @@ export const Route = createFileRoute('/_dash/api-keys')({
 })
 
 const card = 'rounded-(--radius-surface) border bg-surface p-6'
+const EXTENSION_URL = 'https://github.com/rokartur/usagefleet/tree/main/apps/extension'
 
 function ApiKeysPage() {
 	const t = useTranslations('dash.apiKeys')
-	const { hint, spend, error } = Route.useLoaderData()
+	const { hint, spend, syncedAt, error } = Route.useLoaderData()
 
 	return (
 		<div className='flex flex-col gap-6'>
@@ -47,12 +58,23 @@ function ApiKeysPage() {
 				<div>
 					<h2 className='text-sm font-medium'>{t('keyLabel')}</h2>
 					<p className='mt-1 text-sm text-muted-foreground'>{t('keyLead')}</p>
+					{!hint && (
+						<p className='mt-2 text-sm text-muted-foreground'>
+							{t.rich('extensionLead', {
+								link: chunks => (
+									<a className='underline' href={EXTENSION_URL} target='_blank' rel='noreferrer'>
+										{chunks}
+									</a>
+								),
+							})}
+						</p>
+					)}
 				</div>
 				<div className='min-w-0'>{hint ? <ConnectedKey hint={hint} /> : <ConnectKey />}</div>
 			</section>
 
 			{error && <Alert tone='danger' title={`${t('loadFailed')}: ${error}`} />}
-			{spend && <SpendTable spend={spend} />}
+			{spend && <SpendTable spend={spend} syncedAt={syncedAt} />}
 		</div>
 	)
 }
@@ -98,7 +120,7 @@ function ConnectedKey({ hint }: { hint: string }) {
 	)
 }
 
-function SpendTable({ spend }: { spend: Awaited<ReturnType<typeof apiKeySpend>> }) {
+function SpendTable({ spend, syncedAt }: { spend: ApiKeySpend; syncedAt: Date | null }) {
 	const t = useTranslations('dash.apiKeys')
 	const locale = useLocale()
 	return (
@@ -159,6 +181,13 @@ function SpendTable({ spend }: { spend: Awaited<ReturnType<typeof apiKeySpend>> 
 				<p className='mt-4 text-xs text-muted-foreground'>
 					{t('refreshed', {
 						at: `${new Date(spend.refreshedAt).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC`,
+					})}
+				</p>
+			)}
+			{syncedAt && (
+				<p className='mt-1 text-xs text-muted-foreground'>
+					{t('synced', {
+						at: `${syncedAt.toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC`,
 					})}
 				</p>
 			)}
