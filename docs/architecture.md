@@ -40,6 +40,9 @@ Routing is file-based under `src/routes`:
   independently, so the layout guard is UX, not the security boundary.
 - `_dash/{dashboard,devices,groups,settings,billing,admin}.tsx` — the app.
   `admin.tsx` re-checks `requireAdmin()` server-side.
+- `_dash/api-keys.tsx` — Anthropic Console API-key spend (last 30 days), read live from
+  Anthropic's analytics cost endpoint with the user's Admin API key (`lib/anthropic-admin.ts`).
+  Nothing is stored but the sealed key; results are cached in-process for 5 minutes.
 - `api/v1/{usage,limits}.ts` — the collector's ingest API (device-token auth).
 - `api/dashboard.ts` — the browser's live poll; returns `toDashboardDTO(...)`.
 - `api/auth/$.ts` — better-auth handler. `index.tsx`, `login.tsx`,
@@ -110,6 +113,10 @@ Data access is layered so pages stay thin:
   can walk the same series. Pruned past the longest window on write. The live
   group split attributes each rise to the groups active in its interval (delta
   attribution — see `usage-math.md`). Identified accounts only.
+- `anthropic_admin_key` — one Console Admin API key per user, sealed with
+  `BETTER_AUTH_SECRET` (better-auth's `symmetricEncrypt`) plus its last 4 characters.
+  Rotating the secret makes the stored key unreadable; the page then reports the
+  error and the user reconnects.
 - `project_merge` — `(user_id, path) → name`: cwds a user folded by hand into one
   row of the projects table (`''` is usage logged without a cwd). Display only;
   `usage_event.cwd` is never rewritten.

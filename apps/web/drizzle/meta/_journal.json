@@ -274,6 +274,13 @@
       "when": 1795252330129,
       "tag": "0038_usage_event_group",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1795520336594,
+      "tag": "0039_anthropic_admin_key",
+      "breakpoints": true
     }
   ]
 }

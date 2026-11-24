@@ -4,7 +4,8 @@ import { type } from 'arktype'
 import { and, asc, eq, ne, sql } from 'drizzle-orm'
 import { createTranslator } from 'use-intl'
 import { db } from '@/db'
-import { claudeAccounts, devices, groups, projectMerges, pushSubscriptions } from '@/db/schema'
+import { anthropicAdminKeys, claudeAccounts, devices, groups, projectMerges, pushSubscriptions } from '@/db/schema'
+import { ADMIN_KEY_PREFIX, checkAdminKey, sealAdminKey } from '@/lib/anthropic-admin'
 import { accountPlan } from '@/lib/billing'
 import { ensureDefaultGroup, ensureSettings } from '@/lib/data'
 import { generateDeviceToken } from '@/lib/device-token'
@@ -393,4 +394,28 @@ export const deletePushSubscription = createServerFn({ method: 'POST' })
 		await db
 			.delete(pushSubscriptions)
 			.where(and(eq(pushSubscriptions.userId, user.id), eq(pushSubscriptions.endpoint, endpoint)))
+	})
+
+/** Connect an Anthropic Console Admin API key. It is tried against Anthropic first, so a wrong key is never stored. */
+export const saveAdminKey = createServerFn({ method: 'POST' })
+	.inputValidator((formData: FormData) => formData)
+	.handler(async ({ data: formData }) => {
+		const user = await requireUser()
+		const adminKey = String(formData.get('adminKey') ?? '').trim()
+		if (!adminKey.startsWith(ADMIN_KEY_PREFIX) || adminKey.length > 256) {
+			throw new Error('Not an Anthropic Admin API key')
+		}
+		await checkAdminKey(adminKey)
+		const row = { ciphertext: await sealAdminKey(adminKey), hint: adminKey.slice(-4) }
+		await db
+			.insert(anthropicAdminKeys)
+			.values({ ...row, userId: user.id })
+			.onConflictDoUpdate({ set: row, target: anthropicAdminKeys.userId })
+	})
+
+export const removeAdminKey = createServerFn({ method: 'POST' })
+	.inputValidator((formData: FormData) => formData)
+	.handler(async () => {
+		const user = await requireUser()
+		await db.delete(anthropicAdminKeys).where(eq(anthropicAdminKeys.userId, user.id))
 	})

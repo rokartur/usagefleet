@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { Link, useRouter, useRouterState } from '@tanstack/react-router'
-import { LayoutDashboard, MonitorSmartphone, PanelLeft, ShieldCheck, UserRound } from 'lucide-react'
+import { KeyRound, LayoutDashboard, MonitorSmartphone, PanelLeft, ShieldCheck, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useTranslations } from 'use-intl'
@@ -18,6 +18,7 @@ import { signOut } from '@/lib/auth-client'
 const NAV = [
 	{ href: '/dashboard', key: 'dashboard', Icon: LayoutDashboard },
 	{ href: '/fleet', key: 'fleet', Icon: MonitorSmartphone },
+	{ href: '/api-keys', key: 'apiKeys', Icon: KeyRound },
 	{ href: '/account', key: 'account', Icon: UserRound },
 	// Rendered only for ADMIN_EMAILS accounts, but listed here unconditionally so
 	// the breadcrumb can name the page it is on.
