@@ -153,7 +153,11 @@ If `USAGEFLEET_CONFIG` was set when you logged in, the installed hook carries
 it (`usagefleet guard --config <path>`). That is what binds the hook to the right store, and so to the right
 Anthropic account — see "Two Claude accounts on one machine" below.
 
-`guard` **fails open** everywhere else — no config, server down, timeout (5s),
+With the hook installed but no device token (config deleted, token unset), `guard`
+blocks every prompt until you run `usagefleet login` again, so removing the token
+does not switch the guard off.
+
+`guard` **fails open** everywhere else — server down, timeout (5s),
 old server, 429 — because a tracker problem must never stop you working. Only
 whole prompts are blocked, never tool calls mid-turn, so the current turn always
 finishes.

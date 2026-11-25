@@ -79,7 +79,8 @@ Break one of these and the product silently reports wrong numbers or leaks acces
   at creation. Every collector endpoint re-checks the plan
   (`deviceWithinPlan` → 402) because a downgrade parks devices without revoking.
 - **`usagefleet guard` fails open.** Offline, timeout, junk JSON, old server →
-  exit 0. Only an explicit `blocked: true` refuses a prompt.
+  exit 0. Only an explicit `blocked: true` refuses a prompt, plus a missing device
+  token (exit 2, "run `usagefleet login`"), so deleting the token is no bypass.
 - **Admin is env-only** (`ADMIN_EMAILS`), never a column, so no session can grant
   itself the panel. `/admin` re-checks server-side.
 - **Rate limits, the promise cache and the reset push sweep are in-process**: single `web` instance

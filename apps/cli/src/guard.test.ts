@@ -1,5 +1,22 @@
-import { describe, expect, it } from 'vitest'
-import { blockMessage } from './guard.js'
+import { describe, expect, it, vi } from 'vitest'
+import { blockMessage, runGuard } from './guard.js'
+
+vi.mock(import('./config.js'), () => ({
+	ENDPOINT: 'http://127.0.0.1:9',
+	loadConfig: () => {
+		throw new Error('USAGEFLEET_TOKEN is not set')
+	},
+	tokenFor: () => '',
+}))
+
+describe(runGuard, () => {
+	it('blocks when the hook runs without a device token', async () => {
+		const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+		await expect(runGuard()).resolves.toBe(2)
+		expect(stderr).toHaveBeenCalledWith(expect.stringContaining('usagefleet login'))
+		stderr.mockRestore()
+	})
+})
 
 describe(blockMessage, () => {
 	it('blocks only on an explicit blocked:true', () => {
