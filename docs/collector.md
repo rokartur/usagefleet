@@ -215,10 +215,11 @@ baked `usagefleet guard` command and refuses the prompt on exit 2. Same
 lifecycle as the Claude hook: written by `login`, restored by every `watch`
 tick, removed by `uninstall`.
 
-It **fails open** by design: unconfigured, offline, timed out (5s), non-OK
+It **fails open** by design: offline, timed out (5s), non-OK
 response, junk JSON, or a server too old to send the fields all return 0. Only an
 explicit `blocked: true` blocks. A tracker outage must never stop someone from
-working.
+working. The one local exception: no device token while the hook is installed
+exits 2 with "Run `usagefleet login`", so deleting the token cannot bypass it.
 
 The server fails open too: it only answers `blocked: true` while the account's
 last reported utilization is under 15 minutes old. Limits reporting needs live

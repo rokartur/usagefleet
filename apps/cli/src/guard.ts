@@ -53,7 +53,11 @@ export async function runGuard(): Promise<number> {
 	try {
 		cfg = loadConfig()
 	} catch {
-		return 0 // not configured on this machine — nothing to enforce
+		// The hook is installed but the token is gone: refuse, or deleting the token would switch the guard off.
+		process.stderr.write(
+			'usagefleet: no device token on this machine, so new prompts are blocked. Run `usagefleet login`.\n',
+		)
+		return 2
 	}
 
 	let view: GuardView | null
