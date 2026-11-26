@@ -281,6 +281,13 @@
       "when": 1795520336594,
       "tag": "0039_anthropic_admin_key",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1795522468104,
+      "tag": "0040_console_spend",
+      "breakpoints": true
     }
   ]
 }

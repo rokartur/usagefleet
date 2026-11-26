@@ -22,6 +22,8 @@ const en = {
 		disconnected: 'Key removed',
 		disconnecting: 'Removing…',
 		empty: 'No API spend in the last 30 days.',
+		extensionLead:
+			'No organization, so no Admin key? Install the <link>UsageFleet Chrome extension</link>: it reads the same spend with your Console sign-in every hour.',
 		key: 'Key',
 		keyLabel: 'Admin API key',
 		keyLead:
@@ -32,6 +34,7 @@ const en = {
 		requests: 'Requests',
 		spend: 'Spend, 30 days',
 		spendLead: 'What each API key of your Console organization cost, as Anthropic bills it.',
+		synced: 'Last sent by the Chrome extension: {at}.',
 		total: 'Total',
 		unknownKey: 'Deleted key',
 	},
@@ -493,6 +496,8 @@ const pl: typeof en = {
 		disconnected: 'Klucz usunięty',
 		disconnecting: 'Usuwanie…',
 		empty: 'Brak wydatków API w ostatnich 30 dniach.',
+		extensionLead:
+			'Brak organizacji, więc i klucza Admin? Zainstaluj <link>rozszerzenie UsageFleet do Chrome</link>: co godzinę odczytuje te same wydatki przez Twoje logowanie do Console.',
 		key: 'Klucz',
 		keyLabel: 'Klucz Admin API',
 		keyLead:
@@ -503,6 +508,7 @@ const pl: typeof en = {
 		requests: 'Zapytania',
 		spend: 'Wydatki, 30 dni',
 		spendLead: 'Ile kosztował każdy klucz API Twojej organizacji w Console, tak jak liczy to Anthropic.',
+		synced: 'Ostatnio wysłane przez rozszerzenie Chrome: {at}.',
 		total: 'Razem',
 		unknownKey: 'Usunięty klucz',
 	},

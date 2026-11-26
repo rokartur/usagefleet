@@ -14,6 +14,7 @@ import {
 	unique,
 	uniqueIndex,
 } from 'drizzle-orm/pg-core'
+import type { ApiKeySpend } from '@/lib/anthropic-admin'
 import type { NotifyMode } from '@/lib/notify-modes'
 import type { Calibration } from '@/lib/usage/calibration'
 import type { FrozenGroupSplit } from '@/lib/usage/window'
@@ -379,6 +380,16 @@ export const anthropicAdminKeys = pgTable('anthropic_admin_key', {
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 	// Last 4 characters, so the page can say which key is connected.
 	hint: text('hint').notNull(),
+	userId: text('user_id')
+		.primaryKey()
+		.references(() => user.id, { onDelete: 'cascade' }),
+})
+
+// Last 30-day Console spend the browser extension read with the user's Console session,
+// for accounts that cannot create an Admin key (individual Console orgs).
+export const consoleSpend = pgTable('console_spend', {
+	spend: jsonb('spend').$type<ApiKeySpend>().notNull(),
+	syncedAt: timestamp('synced_at', { withTimezone: true }).notNull(),
 	userId: text('user_id')
 		.primaryKey()
 		.references(() => user.id, { onDelete: 'cascade' }),
