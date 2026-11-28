@@ -725,6 +725,22 @@ function GroupSummary({
 }) {
 	const t = useTranslations('dash.overview')
 	const moved = movedAway(g)
+	let slice = null
+	if (g.slicePct !== null) {
+		const pct = formatPctNumber(g.slicePct)
+		const windows = [
+			{ label: '5h', left: hasFiveHour ? g.sessionSliceLeftPct : null },
+			{ label: t('week'), left: g.weeklySliceLeftPct },
+		]
+		// Watch-only usage comes off the top: name what the slice really has wherever it shrank.
+		const left = []
+		for (const w of windows) {
+			if (w.left !== null && formatPctNumber(w.left) !== pct) {
+				left.push(`${w.label} ${formatPctNumber(w.left)}%`)
+			}
+		}
+		slice = left.length === 0 ? t('slice', { pct }) : t('sliceLeft', { left: left.join(', '), pct })
+	}
 	return (
 		<div className='flex flex-col gap-3'>
 			<div className='flex min-w-0 items-center gap-2 text-sm'>
@@ -732,7 +748,7 @@ function GroupSummary({
 				<span className='truncate font-medium'>{g.name}</span>
 				{g.watchOnly && <WatchOnlyMark />}
 				<span className='ml-auto shrink-0 text-xs text-muted-foreground'>
-					{g.slicePct !== null && `${t('slice', { pct: formatPctNumber(g.slicePct) })} · `}
+					{slice !== null && `${slice} · `}
 					{t('devicesCount', { count: g.devices.length })}
 				</span>
 			</div>

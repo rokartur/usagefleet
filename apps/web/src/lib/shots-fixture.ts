@@ -64,6 +64,8 @@ const group = (
 	name: GROUPS[i].name,
 	// Three groups hold a slice each, so a group's points of the account are a third of its slice.
 	slicePct: 100 / GROUPS.length,
+	sessionSliceLeftPct: 100 / GROUPS.length,
+	weeklySliceLeftPct: 100 / GROUPS.length,
 	sessionAccountPct: sessionPct / GROUPS.length,
 	sessionBudgetPct: sessionPct,
 	// Demo data: cost share agrees with attribution, so the by-cost figure hides.

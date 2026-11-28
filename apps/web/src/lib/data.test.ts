@@ -7,6 +7,7 @@ import {
 	groupBudgetPct,
 	guardSwitches,
 	shouldRecordPoint,
+	sliceLeftPct,
 	slottedGroups,
 	splitByShare,
 	windowExpired,
@@ -609,6 +610,14 @@ describe(groupBudgetPct, () => {
 	})
 })
 
+describe(sliceLeftPct, () => {
+	it('takes watch-only usage off the top of the slice', () => {
+		expect(sliceLeftPct(1 / 2, 0)).toBe(50)
+		expect(sliceLeftPct(1 / 2, 10)).toBe(45)
+		expect(sliceLeftPct(1 / 3, 10)).toBe(30)
+		expect(sliceLeftPct(1 / 2, 120)).toBe(0)
+	})
+})
 describe(slottedGroups, () => {
 	it('slices only groups with a live device on the account', () => {
 		const groupRows = [

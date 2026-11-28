@@ -292,6 +292,10 @@ export interface LiveGroupUsage {
 	/** Percent of the account limit this group is budgeted; null when it holds no
 	 *  slice here (watch-only, ungrouped, or moved to another account). */
 	slicePct: number | null
+	/** slicePct minus this group's part of what watch-only groups spent in the window;
+	 *  null when it holds no slice. */
+	sessionSliceLeftPct: number | null
+	weeklySliceLeftPct: number | null
 	/** Usage measured against the group's budget slice (its weighted share of the
 	 *  account limit) — the "am I eating the other group's half?" view. */
 	sessionBudgetPct: number
@@ -435,6 +439,11 @@ export function groupBudgetPct(share: { exactPct: number } | undefined, slice: n
 	// Floor at 1% left: watch groups that ate the whole account would otherwise divide by zero.
 	const left = Math.max(0.01, 1 - watchPct / 100)
 	return roundTenth((share?.exactPct ?? 0) / (slice * left))
+}
+
+/** The part of the account limit a slice really has once watch-only groups took `watchPct` off the top. */
+export function sliceLeftPct(slice: number, watchPct: number) {
+	return roundTenth(slice * Math.max(0, 100 - watchPct))
 }
 
 /** The groups that claim a slice of an account (those with a live device on it),
@@ -910,9 +919,23 @@ async function loadLiveDashboard(
 		}
 	}
 	const sliceOf = (id: string | null) => (id === null ? undefined : slotted.get(id))
+	const exactPctOf = (s: ShareEntry) => s.exactPct
 	const slicePctOf = (id: string | null) => {
 		const slice = sliceOf(id)
 		return slice === undefined ? null : slice * 100
+	}
+	const watchPctIn = (split: Map<string | null, ShareEntry>, pctOf: (s: ShareEntry) => number) => {
+		let watchPct = 0
+		for (const [key, s] of split) {
+			if (isWatchOnly(key)) {
+				watchPct += pctOf(s)
+			}
+		}
+		return watchPct
+	}
+	const sliceLeftPctFor = (id: string | null, split: Map<string | null, ShareEntry>) => {
+		const slice = sliceOf(id)
+		return slice === undefined ? null : sliceLeftPct(slice, watchPctIn(split, exactPctOf))
 	}
 	// A group holds a slice only while a live device of it is on this account; one
 	// that switched away (or watches) reads its plain share. Slotted groups split
@@ -928,15 +951,8 @@ async function loadLiveDashboard(
 		if (slice === undefined) {
 			return groupBudgetPct({ exactPct }, 1)
 		}
-		let watchPct = 0
-		for (const [key, s] of split) {
-			if (isWatchOnly(key)) {
-				watchPct += pctOf(s)
-			}
-		}
-		return groupBudgetPct({ exactPct }, slice, watchPct)
+		return groupBudgetPct({ exactPct }, slice, watchPctIn(split, pctOf))
 	}
-	const exactPctOf = (s: ShareEntry) => s.exactPct
 	const costPctOf = (s: ShareEntry) => s.costPct
 
 	const lastUsed = new Map<string | null, number>()
@@ -952,6 +968,8 @@ async function loadLiveDashboard(
 		groupId: id,
 		...labelFor(id),
 		slicePct: slicePctOf(id),
+		sessionSliceLeftPct: sliceLeftPctFor(id, sessionSplit),
+		weeklySliceLeftPct: sliceLeftPctFor(id, weeklySplit),
 		sessionBudgetPct: budgetPctFor(id, sessionSplit, exactPctOf),
 		weeklyBudgetPct: budgetPctFor(id, weeklySplit, exactPctOf),
 		sessionCostPct: budgetPctFor(id, sessionSplit, costPctOf),
