@@ -15,11 +15,11 @@ import { ConfirmAction } from '@/components/ConfirmAction'
 import { InstallCommand } from '@/components/InstallCommand'
 import { RelativeTime } from '@/components/RelativeTime'
 import { clockLabel, ResetCountdown } from '@/components/ResetCountdown'
-import { overrun, Section, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
+import { overrun, Section, SLICE_TRACK_MAX, UsageBar, WatchOnlyMark } from '@/components/usage-ui'
 import { WindowChart } from '@/components/WindowChart'
 import { useMounted } from '@/hooks/use-mounted'
 import { hideClaudeAccount } from '@/lib/actions'
-import type { DashboardDTO, LiveGroupUsage, ModelLimitDTO } from '@/lib/data'
+import type { DashboardDTO, LiveGroupUsage } from '@/lib/data'
 import { formatPct, formatPctNumber, formatRelative, formatTokens, formatUsd, roundTenth } from '@/lib/format'
 import { TOKEN_PLACEHOLDER } from '@/lib/install-command'
 import type { ModelUsage, TokenTotals } from '@/lib/usage'
@@ -667,8 +667,8 @@ export function Meter({
 	)
 }
 
-/** The groups with usage on this account, one card each against its slice.
- *  Which machines are on the account and what they ran folds away below. */
+/** The groups with usage on this account, one row each against its slice, one
+ *  column per limit window. Which machines are on the account and what they ran folds away below. */
 function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[] }) {
 	// Where a group that left this account went: the one its devices are on now.
 	const accountName = useAccountName()
@@ -680,6 +680,16 @@ function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[
 	}
 	const t = useTranslations('dash.overview')
 	const headingId = useId()
+	const windows = [
+		...(dash.hasFiveHour ? [{ key: '5h', label: '5h', pct: (g: LiveGroupUsage) => g.sessionBudgetPct }] : []),
+		{ key: 'week', label: t('week'), pct: (g: LiveGroupUsage) => g.weeklyBudgetPct },
+		...dash.modelLimits.map(limit => ({
+			key: limit.model,
+			label: limit.label,
+			// Absent from the split means no events of this model in its window.
+			pct: (g: LiveGroupUsage) => limit.groups.find(x => x.groupId === g.groupId)?.budgetPct ?? 0,
+		})),
+	]
 	return (
 		<section aria-labelledby={headingId} className='flex flex-col gap-3'>
 			<h3 id={headingId} className='text-sm font-medium'>
@@ -687,18 +697,53 @@ function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[
 					{t('groups')}
 				</abbr>
 			</h3>
-			<ul className='grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3'>
-				{dash.groups.map(g => (
-					<li key={groupKey(g.groupId)} className='min-w-0 rounded-(--radius-panel) border p-4'>
-						<GroupSummary
-							group={g}
-							modelLimits={dash.modelLimits}
-							hasFiveHour={dash.hasFiveHour}
-							movedTo={movedAway(g) ? movedTo(g) : null}
-						/>
-					</li>
-				))}
-			</ul>
+			<div className='overflow-x-auto'>
+				<table className='w-full min-w-[36rem] text-sm tabular-nums'>
+					<thead>
+						<tr className='border-b border-border text-left text-xs text-muted-foreground'>
+							<th className='px-3 pb-2 font-medium'>
+								<span className='sr-only'>{t('groups')}</span>
+							</th>
+							{windows.map(w => (
+								<th key={w.key} className='px-3 pb-2 font-medium'>
+									{w.label}
+								</th>
+							))}
+							<th className='px-3 pb-2 font-medium'>{t('sliceColumn')}</th>
+							<th className='px-3 pb-2 text-right font-medium'>{t('devices')}</th>
+						</tr>
+					</thead>
+					<tbody>
+						{dash.groups.map(g => {
+							const moved = movedAway(g)
+							return (
+								<tr
+									key={groupKey(g.groupId)}
+									className='border-b border-(--border-subtle) align-top last:border-0'
+								>
+									<th scope='row' className='max-w-56 px-3 py-3 text-left font-normal'>
+										<span className='flex min-w-0 items-center gap-2'>
+											<GroupDot color={g.color} />
+											<span className='truncate font-medium'>{g.name}</span>
+											{g.watchOnly && <WatchOnlyMark />}
+										</span>
+										{moved && <MovedNote group={g} movedTo={movedTo(g)} />}
+									</th>
+									{windows.map(w => (
+										<td key={w.key} className={cn('px-3 py-3', moved && 'opacity-60')}>
+											<GroupWindow pct={w.pct(g)} color={g.color} slotted={g.slicePct !== null} />
+										</td>
+									))}
+									<td className='px-3 py-3 whitespace-nowrap'>
+										<SliceCell group={g} hasFiveHour={dash.hasFiveHour} />
+									</td>
+									<td className='px-3 py-3 text-right text-muted-foreground'>{g.devices.length}</td>
+								</tr>
+							)
+						})}
+					</tbody>
+				</table>
+			</div>
 			<Accordion
 				items={[
 					{
@@ -712,73 +757,69 @@ function GroupList({ dash, dashes }: { dash: DashboardDTO; dashes: DashboardDTO[
 	)
 }
 
-function GroupSummary({
-	group: g,
-	modelLimits,
-	hasFiveHour,
-	movedTo,
-}: {
-	group: LiveGroupUsage
-	modelLimits: ModelLimitDTO[]
-	hasFiveHour: boolean
-	movedTo: string | null
-}) {
+/** A group's figure in one window. Against a slice the track runs to twice it, with the
+ *  slice line mid-track and the overrun past it in red; without one it is the plain account share. */
+function GroupWindow({ pct, color, slotted }: { pct: number; color: string; slotted: boolean }) {
+	const max = slotted ? SLICE_TRACK_MAX : 100
+	const at = (p: number) => `${(Math.min(max, Math.max(0, p)) / max) * 100}%`
+	return (
+		<div className='flex items-center gap-3'>
+			<span className='relative flex h-1.5 min-w-16 flex-1 rounded-full bg-(--surface-muted)' aria-hidden>
+				<span
+					className={cn('rounded-l-full', pct >= 100 || 'rounded-r-full', pct > 0 && 'min-w-1')}
+					style={{ backgroundColor: color, width: at(Math.min(100, pct)) }}
+				/>
+				{slotted && pct > 100 && (
+					<span className='rounded-r-full bg-destructive' style={{ width: at(pct - 100) }} />
+				)}
+				{slotted && <span className='absolute -inset-y-1 left-1/2 border-l border-muted-foreground' />}
+			</span>
+			<span className={cn('w-14 shrink-0 text-right font-medium', overrun(pct))}>{formatPct(pct)}</span>
+		</div>
+	)
+}
+
+/** The group's share of the account, and what is really left of it in a window where
+ *  watch-only usage came off the top. */
+function SliceCell({ group: g, hasFiveHour }: { group: LiveGroupUsage; hasFiveHour: boolean }) {
 	const t = useTranslations('dash.overview')
-	const moved = movedAway(g)
-	let slice = null
-	if (g.slicePct !== null) {
-		const pct = formatPctNumber(g.slicePct)
-		const windows = [
-			{ label: '5h', left: hasFiveHour ? g.sessionSliceLeftPct : null },
-			{ label: t('week'), left: g.weeklySliceLeftPct },
-		]
-		// Watch-only usage comes off the top: name what the slice really has wherever it shrank.
-		const left = []
-		for (const w of windows) {
-			if (w.left !== null && formatPctNumber(w.left) !== pct) {
-				left.push(`${w.label} ${formatPctNumber(w.left)}%`)
-			}
+	const tGroups = useTranslations('dash.groups')
+	if (g.slicePct === null) {
+		return <span className='text-xs text-muted-foreground'>{g.watchOnly ? tGroups('watchOnly') : ''}</span>
+	}
+	const pct = formatPctNumber(g.slicePct)
+	const windows = [
+		{ label: '5h', left: hasFiveHour ? g.sessionSliceLeftPct : null },
+		{ label: t('week'), left: g.weeklySliceLeftPct },
+	]
+	const left = []
+	for (const w of windows) {
+		if (w.left !== null && formatPctNumber(w.left) !== pct) {
+			left.push(`${w.label} ${formatPctNumber(w.left)}%`)
 		}
-		slice = left.length === 0 ? t('slice', { pct }) : t('sliceLeft', { left: left.join(', '), pct })
 	}
 	return (
-		<div className='flex flex-col gap-3'>
-			<div className='flex min-w-0 items-center gap-2 text-sm'>
-				<GroupDot color={g.color} />
-				<span className='truncate font-medium'>{g.name}</span>
-				{g.watchOnly && <WatchOnlyMark />}
-				<span className='ml-auto shrink-0 text-xs text-muted-foreground'>
-					{slice !== null && `${slice} · `}
-					{t('devicesCount', { count: g.devices.length })}
-				</span>
-			</div>
-			<div className={cn('flex flex-col gap-2', moved && 'opacity-60')}>
-				{hasFiveHour && <SliceBar label='5h' pct={g.sessionBudgetPct} color={g.color} />}
-				<SliceBar label={t('week')} pct={g.weeklyBudgetPct} color={g.color} />
-				{modelLimits.map(limit => (
-					<SliceBar
-						key={limit.model}
-						label={limit.label}
-						// Absent from the split means no events of this model in its window.
-						pct={limit.groups.find(x => x.groupId === g.groupId)?.budgetPct ?? 0}
-						color={g.color}
-					/>
-				))}
-			</div>
-			{moved && (
-				<p className='text-xs text-muted-foreground'>
-					{movedTo
-						? t.rich('movedTo', {
-								account: movedTo,
-								mark: chunks => <span className='text-foreground'>{chunks}</span>,
-								time: () => (
-									<RelativeTime date={g.lastUsedAt === null ? null : new Date(g.lastUsedAt)} />
-								),
-							})
-						: t('moved')}
-				</p>
+		<>
+			{pct}%
+			{left.length > 0 && (
+				<span className='block text-xs text-muted-foreground'>{t('sliceReal', { left: left.join(', ') })}</span>
 			)}
-		</div>
+		</>
+	)
+}
+
+function MovedNote({ group: g, movedTo }: { group: LiveGroupUsage; movedTo: string | null }) {
+	const t = useTranslations('dash.overview')
+	return (
+		<p className='mt-1 text-xs whitespace-normal text-muted-foreground'>
+			{movedTo
+				? t.rich('movedTo', {
+						account: movedTo,
+						mark: chunks => <span className='text-foreground'>{chunks}</span>,
+						time: () => <RelativeTime date={g.lastUsedAt === null ? null : new Date(g.lastUsedAt)} />,
+					})
+				: t('moved')}
+		</p>
 	)
 }
 

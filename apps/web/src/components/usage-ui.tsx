@@ -94,6 +94,9 @@ export function Section({
  *  like the printed value, so "100.0%" is never white. */
 export const overrun = (pct: number) => (roundTenth(pct) >= 100 ? 'text-destructive' : undefined)
 
+/** Track end for a group against its slice: twice the slice, so the slice line sits mid-track and an overrun has room to show. */
+export const SLICE_TRACK_MAX = 200
+
 /** A group's bar takes the group's colour. No threshold colours: amber and red
  *  mean offline and overrun elsewhere, so nearness reads from the length and an
  *  overrun from the number beside it ({@link overrun}). */

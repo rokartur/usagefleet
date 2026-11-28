@@ -4,7 +4,7 @@ import { useLocale, useTranslations } from 'use-intl'
 import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import SegmentedControl from '@/components/arc/segmented-control/segmented-control'
 import { Tooltip } from '@/components/arc/tooltip/tooltip'
-import { overrun, Section } from '@/components/usage-ui'
+import { overrun, Section, SLICE_TRACK_MAX } from '@/components/usage-ui'
 import type { PastWindow, WindowHistoryDTO } from '@/lib/data'
 import { formatPct, formatTokens } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -232,9 +232,6 @@ function WindowBar({ window: w, average }: { window: PastWindow; average: number
 		</Tooltip>
 	)
 }
-
-/** Track end: twice the slice, so the slice line sits mid-track and an overrun has room to show. */
-const SLICE_TRACK_MAX = 200
 
 /** One row per group against its own slice over the shown windows: the bar is the
  *  average, the tick the worst window, the solid line 100% of the slice. */

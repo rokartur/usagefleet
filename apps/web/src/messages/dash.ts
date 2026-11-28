@@ -241,7 +241,6 @@ const en = {
 		hideAccountDescription:
 			'Use this when the subscription ended. Its history stays, and it comes back once a device signs in to it again.',
 		hiddenAccount: '{name} removed from the dashboard',
-		devicesCount: '{count, plural, one {# device} other {# devices}}',
 		devicesAndModels: 'Devices and models',
 		currentUsage: 'Current usage',
 		fullMark: '100% at {clock}',
@@ -259,9 +258,9 @@ const en = {
 		movedBadge: '{count} moved',
 		sliceHint:
 			"A group's percentage is its slice of the account limit, so 100% means it used its share. Anthropic reports the account total; the split per group is our estimate.",
-		slice: 'slice {pct}%',
 		sliceAverage: 'Avg',
-		sliceLeft: 'slice {pct}% (real {left})',
+		sliceColumn: 'Slice',
+		sliceReal: 'real {left}',
 		sliceSummary: 'Each group against its slice',
 		sliceUsed: 'Slice used',
 		sliceWorst: 'Worst',
@@ -719,7 +718,6 @@ const pl: typeof en = {
 		hideAccountDescription:
 			'Na przykład gdy subskrypcja się skończyła. Historia zostaje, a konto wróci, gdy urządzenie znów się na nim zaloguje.',
 		hiddenAccount: 'Usunięto {name} z pulpitu',
-		devicesCount: '{count, plural, one {# urządzenie} few {# urządzenia} many {# urządzeń} other {# urządzenia}}',
 		devicesAndModels: 'Urządzenia i modele',
 		currentUsage: 'Bieżące zużycie',
 		fullMark: '100% o {clock}',
@@ -737,9 +735,9 @@ const pl: typeof en = {
 		movedBadge: 'przeniesione: {count}',
 		sliceHint:
 			'Procent grupy to jej przydział limitu konta, więc 100% znaczy, że zużyła swoją część. Anthropic podaje sumę konta, podział na grupy to nasze oszacowanie.',
-		slice: 'przydział {pct}%',
 		sliceAverage: 'Śr.',
-		sliceLeft: 'przydział {pct}% (realnie {left})',
+		sliceColumn: 'Przydział',
+		sliceReal: 'realnie {left}',
 		sliceSummary: 'Każda grupa wobec swojego przydziału',
 		sliceUsed: 'Zużycie przydziału',
 		sliceWorst: 'Najgorsze',
